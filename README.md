@@ -3,8 +3,6 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/cplieger/deadset.svg)](https://pkg.go.dev/github.com/cplieger/deadset)
 [![Go version](https://img.shields.io/github/go-mod/go-version/cplieger/deadset)](https://github.com/cplieger/deadset/blob/main/go.mod)
 [![Mutation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/deadset/badges/mutation.json)](https://github.com/cplieger/deadset/issues?q=label%3Agremlins-tracker)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/PROJECT_ID/badge)](https://www.bestpractices.dev/projects/PROJECT_ID)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cplieger/deadset/badge)](https://scorecard.dev/viewer/?uri=github.com/cplieger/deadset)
 
 One command for dead code across Go and TypeScript, resolving the references that cross the language boundary.
 
