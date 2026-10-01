@@ -1,0 +1,121 @@
+{
+  "description": "The recorded outcome of the cross-language edge harness. Each variant is the target tree its txtar archive holds, and every archive declares one edge pairing the Go type go://example.com/server/internal/wire#ServerEvent with the TypeScript interface ts://@example/web/src/wire/types.gen.ts#ServerEvent. criterion is what the merged report of the variant says: a finding for every symbol in reported, no finding for a symbol in not_reported, and, where shared_component is true, every reported symbol in one component. go, ts and merged each record one run over the variant: the exit code, the pending count, the findings and the edge evaluations by code and symbol, and the version of the analyzer that ran. A half is null where no run of it is recorded.",
+  "variants": [
+    {
+      "archive": "unreferenced-client-used.txtar",
+      "criterion": {
+        "reported": [],
+        "not_reported": [
+          "go://example.com/server/internal/wire#ServerEvent",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
+        ],
+        "shared_component": false
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.18.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "state": "dead",
+            "code": "DS1103"
+          }
+        ]
+      },
+      "ts": null,
+      "merged": null
+    },
+    {
+      "archive": "unreferenced-client-unused.txtar",
+      "criterion": {
+        "reported": [
+          "go://example.com/server/internal/wire#ServerEvent",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
+        ],
+        "not_reported": [],
+        "shared_component": true
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.18.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "state": "dead",
+            "code": "DS1103"
+          }
+        ]
+      },
+      "ts": null,
+      "merged": null
+    },
+    {
+      "archive": "package-local-client-used.txtar",
+      "criterion": {
+        "reported": [],
+        "not_reported": [
+          "go://example.com/server/internal/wire#ServerEvent",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
+        ],
+        "shared_component": false
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.18.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "state": "dead",
+            "code": "DS1101"
+          }
+        ]
+      },
+      "ts": null,
+      "merged": null
+    },
+    {
+      "archive": "package-local-client-unused.txtar",
+      "criterion": {
+        "reported": [
+          "go://example.com/server/internal/wire#ServerEvent",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
+        ],
+        "not_reported": [],
+        "shared_component": true
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.18.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "state": "dead",
+            "code": "DS1101"
+          }
+        ]
+      },
+      "ts": null,
+      "merged": null
+    }
+  ]
+}
