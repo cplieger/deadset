@@ -56,3 +56,14 @@ function Encode is used in test only
 # package's suite.
 function Languages is used in test only
 method (*Resolved).Split is used in test only
+
+# --- The verdict and the summary, which the analyze verb calls, and no verb calls yet.
+#
+# Code is a run's exit code from its report, On the switch position the verb
+# passes by default, and Write and Annotations the lines it prints beside the
+# report; each is pinned by its own package's suite over the Contract's merge
+# vectors.
+function Code is used in test only
+constant On is used in test only
+function Write is used in test only
+function Annotations is used in test only

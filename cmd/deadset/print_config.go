@@ -9,6 +9,7 @@ import (
 
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/internal/verdict"
 )
 
 func init() { register("print-config", runPrintConfig) }
@@ -28,23 +29,27 @@ func runPrintConfig(args []string, stdout, stderr io.Writer) int {
 	central := set.String("central", "", "the central configuration, whose settings the repository configuration overrides")
 	config.RegisterFlags(set)
 	if err := set.Parse(args); err != nil {
-		return exitUsage
+		return verdict.Usage
 	}
 	if set.NArg() != 0 {
 		fmt.Fprintf(stderr, "deadset: print-config takes no argument, got %q\n", set.Arg(0))
 		set.Usage()
-		return exitUsage
+		return verdict.Usage
 	}
 
 	if err := printConfig(set, *target, *central, stdout); err != nil {
 		fmt.Fprintf(stderr, "deadset: %v\n", err)
-		if _, refused := errors.AsType[*config.Error](err); refused || errors.Is(err, fs.ErrNotExist) {
-			set.Usage()
-			return exitUsage
+		code := verdict.ForError(err)
+		if errors.Is(err, fs.ErrNotExist) {
+			// The file that is absent is one a flag or the repository names.
+			code = verdict.Usage
 		}
-		return exitFailure
+		if code == verdict.Usage {
+			set.Usage()
+		}
+		return code
 	}
-	return exitClean
+	return verdict.Clean
 }
 
 // printConfig resolves the documents the parsed flags name and prints the result.

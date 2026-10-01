@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v3"
+	"github.com/cplieger/deadset/internal/verdict"
 )
 
 // TestTheVersionIsTheModuleVersionTheBuildStamped pins what each shape the
@@ -60,8 +61,8 @@ func TestTheVersionVerbPrintsTheDevelVersionUnderTest(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"version"}, &stdout, &stderr); got != exitClean {
-		t.Fatalf("run([version]) = %d, want %d; stderr: %q", got, exitClean, stderr.String())
+	if got := run([]string{"version"}, &stdout, &stderr); got != verdict.Clean {
+		t.Fatalf("run([version]) = %d, want %d; stderr: %q", got, verdict.Clean, stderr.String())
 	}
 	const want = "deadset 0.0.0-devel\ncontract 3.0.0\n"
 	if stdout.String() != want {

@@ -12,15 +12,8 @@ import (
 	"os"
 	"slices"
 	"strings"
-)
 
-// The exit codes contract/exit-codes.json names, which every verb returns.
-const (
-	exitClean    = 0
-	exitFindings = 1
-	exitUsage    = 2
-	exitFailure  = 3
-	exitPending  = 4
+	"github.com/cplieger/deadset/internal/verdict"
 )
 
 // command is one verb of this command's surface and the line the usage text
@@ -43,8 +36,8 @@ var commands = []command{
 }
 
 // handler runs one verb over the arguments that follow the verb's name. It
-// writes its result to stdout and its diagnostics to stderr, and returns the
-// exit code.
+// writes its result to stdout and its diagnostics to stderr, and returns one of
+// the exit codes [verdict] names.
 type handler func(args []string, stdout, stderr io.Writer) int
 
 // handlers maps a verb's name to the function that runs it. Each verb's own
@@ -83,26 +76,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 func dispatch(verbs map[string]handler, args []string, stdout, stderr io.Writer) int {
 	if flagName, ok := requestsFix(args); ok {
 		fmt.Fprintf(stderr, "deadset: %s requested a source edit; deadset is report-only and never edits a source file\n", flagName)
-		return exitUsage
+		return verdict.Usage
 	}
 
 	fs := flag.NewFlagSet("deadset", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, usage(verbs)) }
 	if err := fs.Parse(args); err != nil {
-		return exitUsage
+		return verdict.Usage
 	}
 
 	name := fs.Arg(0)
 	if name == "" {
 		fs.Usage()
-		return exitUsage
+		return verdict.Usage
 	}
 	verb, ok := verbs[name]
 	if !ok {
 		fmt.Fprintf(stderr, "deadset: unknown command %q\n", name)
 		fs.Usage()
-		return exitUsage
+		return verdict.Usage
 	}
 	return verb(fs.Args()[1:], stdout, stderr)
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/internal/verdict"
 )
 
 // develVersion is the version of a build the toolchain stamped no module
@@ -22,7 +23,7 @@ func init() { register("version", runVersion) }
 // implements, one to a line. It reads no argument.
 func runVersion(_ []string, stdout, _ io.Writer) int {
 	fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), report.ContractVersion)
-	return exitClean
+	return verdict.Clean
 }
 
 // version is this command's own version, which the build carries rather than
