@@ -12,7 +12,7 @@
 # `MarshalJSON` and `UnmarshalJSON` satisfy `json.Marshaler` and
 # `json.Unmarshaler`: encoding/json calls them while it encodes and decodes a
 # report, which is what writes a build configuration in its own shape and holds
-# every decode of a report to the schemas. `Unwrap` on the refusal type is what
+# every decode of a report to the schemas. `Unwrap` on the refusal types is what
 # `errors.Is` and `errors.As` call to reach the refusal's cause, and `Error` is
 # what `fmt` calls when a refusal prints through `%v`.
 method (Configuration).MarshalJSON is unused
@@ -21,6 +21,7 @@ method (ConfigurationNotBuilt).MarshalJSON is unused
 method (*ConfigurationNotBuilt).UnmarshalJSON is unused
 method (*Report).UnmarshalJSON is unused
 method (*Error).Unwrap is unused
+method (*AdmissionError).Unwrap is unused
 method (*Error).Error is used in test only
 
 # --- Members of the report document that only encoding/json reads.
@@ -29,23 +30,21 @@ method (*Error).Error is used in test only
 # it and an encode writes it through reflection, so a report read and written
 # again keeps the member, and no Go code names the field while nothing judges
 # its value: the finding's test and generated flags, a symbol's container,
-# visibility and object path, a component's root flag, and the symbol an edge
-# side or a stale suppression names.
+# visibility and object path, and the symbol an edge side or a stale
+# suppression names.
 field TestOnly is unused
 field Generated is unused
 field Parent is unused
 field Exported is unused
 field Objectpath is unused
-field Root is unused
 field Symbol is unused
 field Symbol is used in test only
 
 # --- The report package's surface, which no verb calls yet.
 #
-# Decode, Encode and the schema version are what the analyze verb's report
-# reads, its merge and its verdict call. Each is pinned by the package's own
+# Decode and Encode are what the analyze verb reads each analyzer's report
+# with and writes the merged one with. Each is pinned by the package's own
 # suite against the Contract's examples, negatives and merge vectors.
-constant SchemaVersion is used in test only
 function Decode is used in test only
 function Encode is used in test only
 
@@ -67,3 +66,7 @@ function Code is used in test only
 constant On is used in test only
 function Write is used in test only
 function Annotations is used in test only
+
+# --- The merge, which the analyze verb calls, and no verb calls yet. It is
+# pinned by its package's suite over the Contract's merge vectors.
+function Merge is used in test only
