@@ -19,7 +19,7 @@ Every analyzer implements the same contract, published at [deadset-spec](https:/
 
 ## Status
 
-Pre-release. This build implements contract version `0.1.0` and answers only `deadset version`; every other command is reserved and exits with a usage message.
+Pre-release. This build implements contract version `3.0.0` and answers `deadset version` and `deadset print-config`, which prints the resolved configuration and where each value came from; every other command is reserved and exits with a usage message.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ Go 1.27 or later is required to install from source. The binary is static and ne
 
 ## Dependencies
 
-Standard library only; the module declares no dependency. The analyzers it runs are separate programs with their own releases.
+The binary uses the standard library only. The test suite requires `deadset-spec`, whose Contract files it checks the binary against. The analyzers it runs are separate programs with their own releases.
 
 ## Contributing
 
