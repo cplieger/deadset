@@ -2,14 +2,13 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"maps"
 	"slices"
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	"github.com/cplieger/deadset/internal/verdict"
 )
 
 // TestDispatch pins how a command line reaches a verb over a build whose only
@@ -30,55 +29,55 @@ func TestDispatch(t *testing.T) {
 		{
 			name:       "no_arguments",
 			args:       nil,
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{"usage: deadset", "analyze", "explain", "print-config", "install", "describe", "version"},
 		},
 		{
 			name:       "unknown_command",
 			args:       []string{"frobnicate"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{`unknown command "frobnicate"`, "usage: deadset"},
 		},
 		{
 			name:       "listed_verb_without_a_handler",
 			args:       []string{"analyze", "."},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{`unknown command "analyze"`, "usage: deadset"},
 		},
 		{
 			name:       "undefined_flag",
 			args:       []string{"--verbose", "version"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{"flag provided but not defined: -verbose", "usage: deadset"},
 		},
 		{
 			name:       "fix_after_command",
 			args:       []string{"analyze", "--fix"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{"--fix requested a source edit", "report-only"},
 		},
 		{
 			name:       "fix_before_command",
 			args:       []string{"-fix", "analyze"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{"-fix requested a source edit", "report-only"},
 		},
 		{
 			name:       "fix_with_value",
 			args:       []string{"analyze", "--fix=true"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{"--fix=true requested a source edit", "report-only"},
 		},
 		{
 			name:       "fix_with_version",
 			args:       []string{"version", "--fix"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{"--fix requested a source edit"},
 		},
 		{
 			name:       "fix_as_positional_is_a_command",
 			args:       []string{"fix"},
-			wantExit:   exitUsage,
+			wantExit:   verdict.Usage,
 			wantStderr: []string{`unknown command "fix"`},
 		},
 	}
@@ -102,10 +101,10 @@ func TestDispatch(t *testing.T) {
 					t.Errorf("dispatch(%q) stderr = %q, want it to contain %q", tt.args, stderr.String(), want)
 				}
 			}
-			if tt.wantExit == exitClean && stderr.Len() != 0 {
+			if tt.wantExit == verdict.Clean && stderr.Len() != 0 {
 				t.Errorf("dispatch(%q) stderr = %q, want empty on exit 0", tt.args, stderr.String())
 			}
-			if tt.wantExit != exitClean && stdout.Len() != 0 {
+			if tt.wantExit != verdict.Clean && stdout.Len() != 0 {
 				t.Errorf("dispatch(%q) stdout = %q, want empty on exit %d", tt.args, stdout.String(), tt.wantExit)
 			}
 		})
@@ -128,7 +127,7 @@ commands:
   describe      print this build's capabilities as JSON
   version       print the version of this build and of the contract it implements
 `
-	stub := func([]string, io.Writer, io.Writer) int { return exitClean }
+	stub := func([]string, io.Writer, io.Writer) int { return verdict.Clean }
 	for name, tt := range map[string]struct {
 		verbs map[string]handler
 		want  string
@@ -181,40 +180,5 @@ func TestRegisterRefusesAVerbTheCommandListDoesNotName(t *testing.T) {
 			}()
 			register(verb, runVersion)
 		})
-	}
-}
-
-// TestTheExitCodesAreTheContractsTable pins every exit code this command
-// returns to the code contract/exit-codes.json gives the same name.
-func TestTheExitCodesAreTheContractsTable(t *testing.T) {
-	t.Parallel()
-
-	body, err := spec.Contract.ReadFile("contract/exit-codes.json")
-	if err != nil {
-		t.Fatalf("Setup: read contract/exit-codes.json: %v", err)
-	}
-	var table struct {
-		ExitCodes []struct {
-			Name string `json:"name"`
-			Code int    `json:"code"`
-		} `json:"exit_codes"`
-	}
-	if err := json.Unmarshal(body, &table); err != nil {
-		t.Fatalf("Setup: decode contract/exit-codes.json: %v", err)
-	}
-	contract := make(map[string]int, len(table.ExitCodes))
-	for _, row := range table.ExitCodes {
-		contract[row.Name] = row.Code
-	}
-
-	ours := map[string]int{
-		"clean":    exitClean,
-		"findings": exitFindings,
-		"usage":    exitUsage,
-		"failure":  exitFailure,
-		"pending":  exitPending,
-	}
-	if !maps.Equal(ours, contract) {
-		t.Errorf("exit codes = %v, want contract/exit-codes.json's %v", ours, contract)
 	}
 }
