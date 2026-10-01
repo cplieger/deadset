@@ -10,21 +10,19 @@ import (
 // The patterns contract/report.schema.json and contract/finding.schema.json
 // give their string members, each named for what it spells. A test pins every
 // pattern location in the two schemas to one of these.
-//
-//nolint:gocritic // regexpSimplify: each pattern is the schema's text verbatim, which the test compares as text
 var (
-	semverPattern     = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+	semverPattern     = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	versionPattern    = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
 	tokenPattern      = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 	digestPattern     = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	codePattern       = regexp.MustCompile(`^DS[0-9]{4}$`)
+	codePattern       = regexp.MustCompile(`^DS\d{4}$`)
 	edgePattern       = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$`)
 	oneLinePattern    = regexp.MustCompile(`^[^\r\n]+$`)
 	messagePattern    = regexp.MustCompile(`^[^\r\n]*[^.\r\n]$`)
 	nonBlankPattern   = regexp.MustCompile(`\S`)
-	componentPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*/c-[0-9]+$`)
+	componentPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*/c-\d+$`)
 	gapSymbolPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
-	capabilityPattern = regexp.MustCompile(`^(DS[0-9]{4}|[a-z][a-z0-9]*(-[a-z0-9]+)*)$`)
+	capabilityPattern = regexp.MustCompile(`^(DS\d{4}|[a-z][a-z0-9]*(-[a-z0-9]+)*)$`)
 	artifactPattern   = regexp.MustCompile(`^(\.?[A-Za-z0-9_@-][A-Za-z0-9_@.-]*)(/\.?[A-Za-z0-9_@-][A-Za-z0-9_@.-]*)*$`)
 	relativePattern   = regexp.MustCompile(`^(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*$`)
 	rootPattern       = regexp.MustCompile(`^(?:\.|(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*)$`)

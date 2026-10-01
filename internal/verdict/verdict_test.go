@@ -14,6 +14,7 @@ import (
 	spec "github.com/cplieger/deadset-spec/v3"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/detect"
+	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
 )
@@ -344,6 +345,12 @@ func TestForError(t *testing.T) {
 		t.Fatalf("Setup: Languages(a filter outside the target) = error %v, want detect.ErrFilter", outside)
 	}
 	refusal := &config.Error{Key: "reporters.fail_under", Message: "reporters.fail_under is not a key"}
+	outputLost := &invoke.Error{
+		Err:      errors.New("copy what the analyzer printed: write /dev/full: no space left on device"),
+		Analyzer: "deadset-go",
+		Report:   "report.deadset-go.json",
+		Exit:     verdict.Usage,
+	}
 
 	for _, tc := range []struct {
 		name string
@@ -356,6 +363,55 @@ func TestForError(t *testing.T) {
 		{name: "filter_outside_the_target", err: outside, want: verdict.Usage},
 		{name: "truncated_report", err: truncated, want: verdict.Failure},
 		{name: "any_other_error", err: errors.New("deadset-go exited 3"), want: verdict.Failure},
+		{name: "analyzer_refusing_its_invocation", err: analyzerExited("deadset-go", verdict.Usage), want: verdict.Usage},
+		{name: "analyzer_failing", err: analyzerExited("deadset-go", verdict.Failure), want: verdict.Failure},
+		{name: "analyzer_refusing_its_invocation_with_its_output_lost", err: outputLost, want: verdict.Failure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := verdict.ForError(tc.err); got != tc.want {
+				t.Errorf("ForError(%v) = %d, want %d", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// analyzerExited is the refusal an analyzer that exited with code leaves, as
+// invoke builds it.
+func analyzerExited(analyzer string, code int) *invoke.Error {
+	return &invoke.Error{
+		Err:      fmt.Errorf("exited %d: %w", code, invoke.ErrExited),
+		Analyzer: analyzer,
+		Report:   "report." + analyzer + ".json",
+		Exit:     code,
+	}
+}
+
+// TestForErrorGivesUsageOnlyWhenEveryJoinedRefusalIsUsage pins the code of a
+// run several refusals ended, joined as invoke.Run joins them: Usage when
+// every refusal is one, whichever analyzer or configuration refused, and
+// Failure when any one is not, in either order and under a wrapping.
+func TestForErrorGivesUsageOnlyWhenEveryJoinedRefusalIsUsage(t *testing.T) {
+	t.Parallel()
+
+	goRefused, tsRefused := analyzerExited("deadset-go", verdict.Usage), analyzerExited("deadset-ts", verdict.Usage)
+	tsFailed := analyzerExited("deadset-ts", verdict.Failure)
+	configuration := &config.Error{Key: "ts.entry_files", Message: "ts.entry_files is not a list"}
+
+	for _, tc := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "two_analyzers_refusing", err: errors.Join(goRefused, tsRefused), want: verdict.Usage},
+		{name: "an_analyzer_and_the_configuration_refusing", err: errors.Join(goRefused, configuration), want: verdict.Usage},
+		{name: "a_refusal_then_a_failure", err: errors.Join(goRefused, tsFailed), want: verdict.Failure},
+		{name: "a_failure_then_a_refusal", err: errors.Join(tsFailed, goRefused), want: verdict.Failure},
+		{name: "a_refusal_beside_any_other_error", err: errors.Join(goRefused, errors.New("deadset-ts: killed")), want: verdict.Failure},
+		{name: "wrapped_refusals", err: fmt.Errorf("analyze: %w", errors.Join(goRefused, tsRefused)), want: verdict.Usage},
+		{name: "wrapped_refusal_and_failure", err: fmt.Errorf("analyze: %w", errors.Join(goRefused, tsFailed)), want: verdict.Failure},
+		{name: "a_refusal_and_a_failure_in_one_message", err: fmt.Errorf("%w; %w", goRefused, tsFailed), want: verdict.Failure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
