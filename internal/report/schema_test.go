@@ -5,6 +5,7 @@ import (
 	"maps"
 	"reflect"
 	"regexp"
+	"regexp/syntax"
 	"slices"
 	"strconv"
 	"strings"
@@ -99,7 +100,8 @@ func TestTheTypesDeclareEveryObjectTheSchemasDeclare(t *testing.T) {
 }
 
 // TestThePatternsAreTheSchemas pins every pattern the two schemas declare
-// outside a conditional to the regular expression the decode applies there.
+// outside a conditional to the regular expression the decode applies there,
+// compared as the expressions the two texts parse to.
 func TestThePatternsAreTheSchemas(t *testing.T) {
 	t.Parallel()
 
@@ -165,10 +167,22 @@ func TestThePatternsAreTheSchemas(t *testing.T) {
 		t.Fatalf("the schemas declare a pattern at\n%q\nwant the locations the decode applies one at\n%q", locations, pinned)
 	}
 	for location, pattern := range got {
-		if want[location].String() != pattern {
-			t.Errorf("%s declares %s, want the decode's %s", location, pattern, want[location])
+		if parsed(t, pattern) != parsed(t, want[location].String()) {
+			t.Errorf("%s declares %s, want an expression the decode's %s parses to the same", location, pattern, want[location])
 		}
 	}
+}
+
+// parsed is the simplified expression pattern parses to under the syntax
+// regexp.Compile reads, so two spellings of one expression compare equal.
+func parsed(t *testing.T, pattern string) string {
+	t.Helper()
+
+	expression, err := syntax.Parse(pattern, syntax.Perl)
+	if err != nil {
+		t.Fatalf("Setup: parse the pattern %q: %v", pattern, err)
+	}
+	return expression.Simplify().String()
 }
 
 // TestTheVocabulariesAreTheSchemas pins every enumeration and constant the two

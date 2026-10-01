@@ -15,7 +15,7 @@ import (
 // repository configuration it resolves to the same configuration: resolution
 // ignores the provenance object.
 func (r *Resolved) Print(w io.Writer) error {
-	document, err := r.render(func(*node) bool { return true })
+	document, err := r.render(func(string, *node) bool { return true })
 	if err != nil {
 		return err
 	}
@@ -28,12 +28,16 @@ func (r *Resolved) Print(w io.Writer) error {
 // Split returns the configuration document an analyzer claiming languages receives,
 // in the form Print writes. It holds every key the Contract gives every product or
 // every analyzer, and the section of each language named, and leaves out the keys
-// the orchestrator alone reads and the section of every other language; its
-// provenance object names the source of each setting it holds. The build matrix is
-// passed whole: an analysis reads the entries of the shape its language is built
-// from and leaves the others to the analysis that reads them.
+// the orchestrator alone reads, the reporter settings it applies to the merged
+// report, and the section of every other language; its provenance object names the
+// source of each setting it holds. The build matrix is passed whole: an analysis
+// reads the entries of the shape its language is built from and leaves the others
+// to the analysis that reads them.
 func (r *Resolved) Split(languages ...string) ([]byte, error) {
-	return r.render(func(key *node) bool {
+	return r.render(func(path string, key *node) bool {
+		if slices.Contains(mergedReporterSettings, path) {
+			return false
+		}
 		switch key.owner {
 		case orchestrator:
 			return false
@@ -47,6 +51,11 @@ func (r *Resolved) Split(languages ...string) ([]byte, error) {
 	})
 }
 
+// mergedReporterSettings are the settings the orchestrator applies once, to the
+// merged report in its canonical order. A maximum an analyzer applied to its own
+// report would change what the merge reads.
+var mergedReporterSettings = []string{"reporters.formats", "reporters.max_findings"}
+
 // member is one member of an object written in a fixed order. A value is an
 // object, a JSON document, or a string.
 type member struct {
@@ -56,7 +65,7 @@ type member struct {
 
 // render writes the resolved configuration as one indented JSON object, holding the
 // keys include admits and the provenance of each setting among them.
-func (r *Resolved) render(include func(*node) bool) ([]byte, error) {
+func (r *Resolved) render(include func(path string, key *node) bool) ([]byte, error) {
 	var paths []string
 	document := r.object(&r.keys, "", include, &paths)
 	provenance := make([]member, len(paths))
@@ -79,14 +88,14 @@ func (r *Resolved) render(include func(*node) bool) ([]byte, error) {
 
 // object returns the members of the section n at the dotted path at that include
 // admits, and appends the path of each setting among them to paths.
-func (r *Resolved) object(n *node, at string, include func(*node) bool, paths *[]string) []member {
+func (r *Resolved) object(n *node, at string, include func(path string, key *node) bool, paths *[]string) []member {
 	members := []member{}
 	for i := range n.children {
 		key := &n.children[i]
-		if !include(key) {
+		path := joinKey(at, key.name)
+		if !include(path, key) {
 			continue
 		}
-		path := joinKey(at, key.name)
 		switch key.kind {
 		case section:
 			members = append(members, member{name: key.name, value: r.object(key, path, include, paths)})

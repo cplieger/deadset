@@ -8,6 +8,7 @@ import (
 
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/detect"
+	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/report"
 )
 
@@ -88,15 +89,39 @@ func rank(severity report.Severity) int {
 
 // ForError is the exit code of a run that err ended before a report existed. A
 // configuration the run refuses is Usage, and so is a path filter outside the
-// target and a target in which detection finds no language: each is fixed by
-// changing what the run was asked to do. Every other error is Failure, the code
-// of a run that produced no answer.
+// target, a target in which detection finds no language, and an analyzer that
+// exits with Usage, having refused a value of the configuration it was given:
+// each is fixed by changing what the run was asked to do. An error joining
+// several is Usage only when every error it joins is. Every other error is
+// Failure, the code of a run that produced no answer.
 func ForError(err error) int {
-	if _, refused := errors.AsType[*config.Error](err); refused {
-		return Usage
-	}
-	if errors.Is(err, detect.ErrFilter) || errors.Is(err, detect.ErrNoLanguage) {
+	if refusesTheRequest(err) {
 		return Usage
 	}
 	return Failure
+}
+
+// refusesTheRequest reports whether err, read through every error it wraps, is
+// one ForError gives Usage.
+func refusesTheRequest(err error) bool {
+	switch err := err.(type) {
+	case nil:
+		return false
+	case *config.Error:
+		return true
+	case *invoke.Error:
+		return err.Exit == Usage && errors.Is(err, invoke.ErrExited)
+	case interface{ Unwrap() []error }:
+		joined := err.Unwrap()
+		for _, one := range joined {
+			if !refusesTheRequest(one) {
+				return false
+			}
+		}
+		return len(joined) > 0
+	case interface{ Unwrap() error }:
+		return refusesTheRequest(err.Unwrap())
+	default:
+		return errors.Is(err, detect.ErrFilter) || errors.Is(err, detect.ErrNoLanguage)
+	}
 }

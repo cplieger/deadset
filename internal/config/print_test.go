@@ -80,6 +80,44 @@ func TestSplit_handsEachAnalyzerItsOwnSections(t *testing.T) {
 	}
 }
 
+// The orchestrator renders the formats and applies the maximum finding count to the
+// merged report, so no analyzer is handed either, whatever the target configures,
+// and every other reporter setting reaches each analyzer as resolved.
+func TestSplit_withholdsTheReporterSettingsTheMergedReportTakes(t *testing.T) {
+	t.Parallel()
+
+	r, err := config.Resolve(fromRepository(`{
+		"target": {"kind": "library"},
+		"reporters": {"formats": ["sarif", "json"], "max_findings": 5, "sort": "size", "fail_on": "warn"}
+	}`))
+	if err != nil {
+		t.Fatalf("Setup: Resolve(a target configuring its reporters) = error %v", err)
+	}
+	for _, languages := range [][]string{{"go"}, {"ts"}, {"go", "ts"}} {
+		document, err := r.Split(languages...)
+		if err != nil {
+			t.Fatalf("Split(%v) = error %v", languages, err)
+		}
+		got := decodePrinted(t, document)
+		reporters, isObject := got.Values["reporters"].(map[string]any)
+		if !isObject {
+			t.Fatalf("Split(%v) holds no reporters section\n%s", languages, document)
+		}
+		for _, key := range []string{"formats", "max_findings"} {
+			if value, held := reporters[key]; held {
+				t.Errorf("Split(%v) holds reporters.%s = %v, which the merged report takes\n%s", languages, key, value, document)
+			}
+			if source, held := got.Provenance["reporters."+key]; held {
+				t.Errorf("Split(%v) names the source of reporters.%s, %q, which it does not hold", languages, key, source)
+			}
+		}
+		want := map[string]any{"sort": "size", "cascade": "roots", "fail_on": "warn"}
+		if !reflect.DeepEqual(reporters, want) {
+			t.Errorf("Split(%v) reporters = %v, want %v", languages, reporters, want)
+		}
+	}
+}
+
 // A split document is a configuration: read back as one, it resolves to the values
 // it holds, so an analyzer reading the same closed key list reads it.
 func TestSplit_readsBackAsTheValuesItHolds(t *testing.T) {
@@ -105,7 +143,14 @@ func TestSplit_readsBackAsTheValuesItHolds(t *testing.T) {
 	if !isObject {
 		t.Fatalf("Resolve(the split for ts) holds no analysis section")
 	}
-	delete(analysis, "languages") // the split withholds it, so it reads back as its default
+	reporters, isObject := reread["reporters"].(map[string]any)
+	if !isObject {
+		t.Fatalf("Resolve(the split for ts) holds no reporters section")
+	}
+	// The split withholds these, so they read back as their defaults.
+	delete(analysis, "languages")
+	delete(reporters, "formats")
+	delete(reporters, "max_findings")
 	for key, value := range split {
 		if !reflect.DeepEqual(reread[key], value) {
 			t.Errorf("the split for ts read back holds %s = %v, want %v", key, reread[key], value)

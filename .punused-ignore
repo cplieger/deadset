@@ -23,6 +23,7 @@ method (*Report).UnmarshalJSON is unused
 method (*Error).Unwrap is unused
 method (*AdmissionError).Unwrap is unused
 method (*Error).Error is used in test only
+method (*Error).Error is unused
 
 # --- Members of the report document that only encoding/json reads.
 #
@@ -40,21 +41,20 @@ field Objectpath is unused
 field Symbol is unused
 field Symbol is used in test only
 
-# --- The report package's surface, which no verb calls yet.
-#
-# Decode and Encode are what the analyze verb reads each analyzer's report
-# with and writes the merged one with. Each is pinned by the package's own
-# suite against the Contract's examples, negatives and merge vectors.
-function Decode is used in test only
-function Encode is used in test only
-
 # --- Stages the analyze verb calls, which no verb calls yet.
 #
-# Languages is the language census and Split writes each analyzer's
-# configuration section into the run directory; each is pinned by its own
-# package's suite.
+# Languages is the language census, Create and its methods lay out the run
+# directory each provider entry writes into, and Run invokes every analyzer;
+# each is pinned by its own package's suite.
 function Languages is used in test only
-method (*Resolved).Split is used in test only
+function Run is used in test only
+function Create is used in test only
+method (*Dir).Scope is used in test only
+method (*Dir).WriteMerged is used in test only
+method (*Dir).Entry is used in test only
+method (Entry).Report is used in test only
+method (Entry).WriteDescribe is used in test only
+method (Entry).WriteConfig is used in test only
 
 # --- The verdict and the summary, which the analyze verb calls, and no verb calls yet.
 #
