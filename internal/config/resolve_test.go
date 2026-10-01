@@ -104,24 +104,24 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 	cases := []struct {
 		name     string
 		document string
-		key      string
+		at       string
 	}{
-		{name: "nested-key", document: `{"reporters": {"fail_under": "warn"}}`, key: "reporters.fail_under"},
-		{name: "top-level-key", document: `{"provider": {}}`, key: "provider"},
-		{name: "setting-written-as-one-key", document: `{"analysis": {"matrix.complete": true}}`, key: "analysis.matrix.complete"},
-		{name: "key-in-the-go-section", document: `{"go": {"test_files": []}}`, key: "go.test_files"},
-		{name: "member-of-the-delimiter-pair", document: `{"analysis": {"template_delimiters": {"left": "<", "right": ">", "middle": "|"}}}`, key: "analysis.template_delimiters.middle"},
-		{name: "member-of-a-matrix-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "cgo": true}]}}`, key: "analysis.configurations[0].cgo"},
-		{name: "duplicated-section", document: `{"target": {"kind": "library"}, "target": {"kind": "application"}}`, key: "target"},
-		{name: "duplicated-nested-key", document: `{"target": {"kind": "library", "kind": "application"}}`, key: "target.kind"},
-		{name: "duplicated-member-of-an-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "os": "darwin"}]}}`, key: "analysis.configurations[0].os"},
-		{name: "duplicated-severity-code", document: `{"severity": {"DS1101": "warn", "DS1101": "deny"}}`, key: "severity.DS1101"},
-		{name: "severity-key-spelling", document: `{"severity": {"DS1": "warn"}}`, key: "severity.DS1"},
-		{name: "severity-code-the-contract-fixes", document: `{"severity": {"DS1703": "warn"}}`, key: "severity.DS1703"},
-		{name: "severity-family-holding-a-fixed-code", document: `{"severity": {"DS17": "allow"}}`, key: "severity.DS17"},
-		{name: "severity-code-of-no-kind", document: `{"severity": {"DS2999": "warn"}}`, key: "severity.DS2999"},
-		{name: "severity-family-of-no-kind", document: `{"severity": {"DS29": "warn"}}`, key: "severity.DS29"},
-		{name: "severity-code-retired", document: `{"severity": {"DS1401": "warn"}}`, key: "severity.DS1401"},
+		{name: "nested-key", document: `{"reporters": {"fail_under": "warn"}}`, at: "reporters.fail_under"},
+		{name: "top-level-key", document: `{"provider": {}}`, at: "provider"},
+		{name: "setting-written-as-one-key", document: `{"analysis": {"matrix.complete": true}}`, at: "analysis.matrix.complete"},
+		{name: "key-in-the-go-section", document: `{"go": {"test_files": []}}`, at: "go.test_files"},
+		{name: "member-of-the-delimiter-pair", document: `{"analysis": {"template_delimiters": {"left": "<", "right": ">", "middle": "|"}}}`, at: "analysis.template_delimiters.middle"},
+		{name: "member-of-a-matrix-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "cgo": true}]}}`, at: "analysis.configurations[0].cgo"},
+		{name: "duplicated-section", document: `{"target": {"kind": "library"}, "target": {"kind": "application"}}`, at: "target"},
+		{name: "duplicated-nested-key", document: `{"target": {"kind": "library", "kind": "application"}}`, at: "target.kind"},
+		{name: "duplicated-member-of-an-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "os": "darwin"}]}}`, at: "analysis.configurations[0].os"},
+		{name: "duplicated-severity-code", document: `{"severity": {"DS1101": "warn", "DS1101": "deny"}}`, at: "severity.DS1101"},
+		{name: "severity-key-spelling", document: `{"severity": {"DS1": "warn"}}`, at: "severity.DS1"},
+		{name: "severity-code-the-contract-fixes", document: `{"severity": {"DS1703": "warn"}}`, at: "severity.DS1703"},
+		{name: "severity-family-holding-a-fixed-code", document: `{"severity": {"DS17": "allow"}}`, at: "severity.DS17"},
+		{name: "severity-code-of-no-kind", document: `{"severity": {"DS2999": "warn"}}`, at: "severity.DS2999"},
+		{name: "severity-family-of-no-kind", document: `{"severity": {"DS29": "warn"}}`, at: "severity.DS29"},
+		{name: "severity-code-retired", document: `{"severity": {"DS1401": "warn"}}`, at: "severity.DS1401"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -130,10 +130,10 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 			_, err := config.Resolve(fromRepository(c.document))
 			refusal, isRefusal := errors.AsType[*config.Error](err)
 			if !isRefusal {
-				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.document, err, c.key)
+				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.document, err, c.at)
 			}
-			if refusal.Key != c.key || !strings.Contains(refusal.Message, c.key) {
-				t.Errorf("Resolve(%s) refused naming %q (%s), want %q", c.document, refusal.Key, refusal, c.key)
+			if refusal.Key != c.at || !strings.Contains(refusal.Message, c.at) {
+				t.Errorf("Resolve(%s) refused naming %q (%s), want %q", c.document, refusal.Key, refusal, c.at)
 			}
 		})
 	}
@@ -148,29 +148,29 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 	cases := []struct {
 		name     string
 		document string
-		key      string
+		at       string
 	}{
-		{name: "entry-of-both-shapes", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "project": "tsconfig.json"}]}}`, key: "analysis.configurations[0]"},
-		{name: "entry-of-neither-shape", document: `{"analysis": {"configurations": [{"id": "a"}]}}`, key: "analysis.configurations[0]"},
-		{name: "platform-without-its-architecture", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux"}]}}`, key: "analysis.configurations[0].arch"},
-		{name: "project-leaving-the-target-root", document: `{"analysis": {"configurations": [{"id": "a", "project": "../tsconfig.json"}]}}`, key: "analysis.configurations[0].project"},
-		{name: "project-without-its-identifier", document: `{"analysis": {"configurations": [{"id": "a", "project": "tsconfig.json"}, {"project": "b/tsconfig.json"}]}}`, key: "analysis.configurations[1].id"},
-		{name: "half-a-delimiter-pair", document: `{"analysis": {"template_delimiters": {"right": "]]"}}}`, key: "analysis.template_delimiters.left"},
-		{name: "value-outside-its-set", document: `{"analysis": {"min_confidence": "likely"}}`, key: "analysis.min_confidence"},
-		{name: "null-value", document: `{"analysis": {"template_dirs": null}}`, key: "analysis.template_dirs"},
-		{name: "value-of-another-type", document: `{"consumers": {"complete": "yes"}}`, key: "consumers.complete"},
-		{name: "count-below-its-minimum", document: `{"reporters": {"max_findings": -1}}`, key: "reporters.max_findings"},
-		{name: "fractional-count", document: `{"reporters": {"max_findings": 1.5}}`, key: "reporters.max_findings"},
-		{name: "list-shorter-than-its-minimum", document: `{"reporters": {"formats": []}}`, key: "reporters.formats"},
-		{name: "list-entry-outside-its-set", document: `{"analysis": {"languages": ["go", "rust"]}}`, key: "analysis.languages[1]"},
-		{name: "list-entry-repeated", document: `{"roots": {"patterns": ["go://a#B", "go://a#B"]}}`, key: "roots.patterns[1]"},
-		{name: "exemption-class-spelling", document: `{"exemptions": {"disabled": ["Template_Field"]}}`, key: "exemptions.disabled[0]"},
-		{name: "severity-outside-its-set", document: `{"severity": {"DS1101": "error"}}`, key: "severity.DS1101"},
-		{name: "contract-version-spelling", document: `{"contract_version": "3.0"}`, key: "contract_version"},
-		{name: "provenance-value-spelling", document: `{"provenance": {"target.kind": "the repository"}}`, key: "provenance.target.kind"},
-		{name: "document-of-another-type", document: `[]`, key: ""},
-		{name: "second-value", document: `{} {}`, key: ""},
-		{name: "empty-document", document: ``, key: ""},
+		{name: "entry-of-both-shapes", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "project": "tsconfig.json"}]}}`, at: "analysis.configurations[0]"},
+		{name: "entry-of-neither-shape", document: `{"analysis": {"configurations": [{"id": "a"}]}}`, at: "analysis.configurations[0]"},
+		{name: "platform-without-its-architecture", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux"}]}}`, at: "analysis.configurations[0].arch"},
+		{name: "project-leaving-the-target-root", document: `{"analysis": {"configurations": [{"id": "a", "project": "../tsconfig.json"}]}}`, at: "analysis.configurations[0].project"},
+		{name: "project-without-its-identifier", document: `{"analysis": {"configurations": [{"id": "a", "project": "tsconfig.json"}, {"project": "b/tsconfig.json"}]}}`, at: "analysis.configurations[1].id"},
+		{name: "half-a-delimiter-pair", document: `{"analysis": {"template_delimiters": {"right": "]]"}}}`, at: "analysis.template_delimiters.left"},
+		{name: "value-outside-its-set", document: `{"analysis": {"min_confidence": "likely"}}`, at: "analysis.min_confidence"},
+		{name: "null-value", document: `{"analysis": {"template_dirs": null}}`, at: "analysis.template_dirs"},
+		{name: "value-of-another-type", document: `{"consumers": {"complete": "yes"}}`, at: "consumers.complete"},
+		{name: "count-below-its-minimum", document: `{"reporters": {"max_findings": -1}}`, at: "reporters.max_findings"},
+		{name: "fractional-count", document: `{"reporters": {"max_findings": 1.5}}`, at: "reporters.max_findings"},
+		{name: "list-shorter-than-its-minimum", document: `{"reporters": {"formats": []}}`, at: "reporters.formats"},
+		{name: "list-entry-outside-its-set", document: `{"analysis": {"languages": ["go", "rust"]}}`, at: "analysis.languages[1]"},
+		{name: "list-entry-repeated", document: `{"roots": {"patterns": ["go://a#B", "go://a#B"]}}`, at: "roots.patterns[1]"},
+		{name: "exemption-class-spelling", document: `{"exemptions": {"disabled": ["Template_Field"]}}`, at: "exemptions.disabled[0]"},
+		{name: "severity-outside-its-set", document: `{"severity": {"DS1101": "error"}}`, at: "severity.DS1101"},
+		{name: "contract-version-spelling", document: `{"contract_version": "3.0"}`, at: "contract_version"},
+		{name: "provenance-value-spelling", document: `{"provenance": {"target.kind": "the repository"}}`, at: "provenance.target.kind"},
+		{name: "document-of-another-type", document: `[]`, at: ""},
+		{name: "second-value", document: `{} {}`, at: ""},
+		{name: "empty-document", document: ``, at: ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -179,10 +179,10 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 			_, err := config.Resolve(fromRepository(c.document))
 			refusal, isRefusal := errors.AsType[*config.Error](err)
 			if !isRefusal {
-				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.document, err, c.key)
+				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.document, err, c.at)
 			}
-			if refusal.Key != c.key || !strings.Contains(refusal.Message, c.key) {
-				t.Errorf("Resolve(%s) refused naming %q (%s), want %q", c.document, refusal.Key, refusal, c.key)
+			if refusal.Key != c.at || !strings.Contains(refusal.Message, c.at) {
+				t.Errorf("Resolve(%s) refused naming %q (%s), want %q", c.document, refusal.Key, refusal, c.at)
 			}
 		})
 	}
