@@ -15,12 +15,24 @@ import (
 
 // scopeRead is the part of a scope document these tests compare.
 type scopeRead struct {
-	Target struct {
-		Path string `json:"path"`
-	} `json:"target"`
-	Consumers []struct {
-		Path string `json:"path"`
-	} `json:"consumers"`
+	Target    scopeModuleRead   `json:"target"`
+	Consumers []scopeModuleRead `json:"consumers"`
+}
+
+// scopeModuleRead is one module of a scope document as these tests read it.
+type scopeModuleRead struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
+
+// consumerIDs is the id of every consumer a scope document names, empty
+// where it names none.
+func consumerIDs(read scopeRead) []string {
+	ids := make([]string, 0, len(read.Consumers))
+	for _, consumer := range read.Consumers {
+		ids = append(ids, consumer.ID)
+	}
+	return ids
 }
 
 // readScopeDocument decodes the scope document at path.
@@ -302,5 +314,121 @@ func TestAnalyzeRefusesAScopeItCannotRoute(t *testing.T) {
 				t.Errorf("analyze(%s) ran the analyzer or printed %q, want neither", c.name, got.stdout)
 			}
 		})
+	}
+}
+
+// A module the run loads in both languages is named in the run's scope
+// document by the module path of the Go module holding it, which is what every
+// analyzer's report of it then carries, unless the declared document names it;
+// a module the run loads in one language, and one no go.mod governs, is
+// named by nothing, and its analyzer's load names it.
+func TestAnalyzeNamesAModuleLoadedInBothLanguagesByItsGoModulePath(t *testing.T) {
+	t.Parallel()
+
+	everyConsumer := `"consumers": [{"path": "go-consumer"}, {"path": "ts-consumer"}, {"path": "both"}]`
+	for _, c := range []struct {
+		name     string
+		document string
+		flags    []string
+		setup    func(t *testing.T, base, target string)
+		target   string
+		ids      []string
+	}{
+		{name: "target-alone", target: "example.com/app"},
+		{
+			name: "consumers", document: `{"target": {"path": "target"}, ` + everyConsumer + `}`,
+			target: "example.com/app", ids: []string{"", "", "example.com/both"},
+		},
+		{
+			name:     "declared-names-kept",
+			document: `{"target": {"id": "@example/app", "path": "target"}, "consumers": [{"id": "@example/both", "path": "both"}]}`,
+			target:   "@example/app", ids: []string{"@example/both"},
+		},
+		{
+			name: "one-language", document: `{"target": {"path": "target"}, "consumers": [{"path": "go-consumer"}, {"path": "both"}]}`,
+			flags: []string{"--languages=go"}, ids: []string{"", ""},
+		},
+		{
+			name: "module-above-the-target",
+			setup: func(t *testing.T, base, target string) {
+				removeFile(t, filepath.Join(target, "go.mod"))
+				writeFile(t, filepath.Join(target, "main.go"), []byte("package main\n"))
+				writeFile(t, filepath.Join(base, "go.mod"), []byte("module example.com/base\n"))
+			},
+			target: "example.com/base",
+		},
+		{
+			name: "no-go-module",
+			setup: func(t *testing.T, _, target string) {
+				removeFile(t, filepath.Join(target, "go.mod"))
+				for above := filepath.Dir(target); ; above = filepath.Dir(above) {
+					if _, err := os.Stat(filepath.Join(above, "go.mod")); err == nil {
+						t.Skipf("the temporary directory %s is inside the module at %s", target, above)
+					}
+					if filepath.Dir(above) == above {
+						break
+					}
+				}
+				writeFile(t, filepath.Join(target, "main.go"), []byte("package main\n"))
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			base, target, _, _ := mixedWorkspace(t)
+			if c.setup != nil {
+				c.setup(t, base, target)
+			}
+			flags := slices.Clone(c.flags)
+			if c.document != "" {
+				document := filepath.Join(base, "scope.json")
+				writeFile(t, document, []byte(c.document))
+				flags = append(flags, "--scope="+document)
+			}
+			runDir := filepath.Join(base, "run")
+
+			if got := analyze(t, target, runDir, flags...); got.code != verdict.Findings {
+				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", c.name, got.code, verdict.Findings, got.stderr)
+			}
+			run := readScopeDocument(t, filepath.Join(runDir, "scope.json"))
+			if run.Target.ID != c.target || !slices.Equal(consumerIDs(run), c.ids) {
+				t.Errorf("analyze(%s) wrote scope.json naming the target %q and the consumers %q, want %q and %q",
+					c.name, run.Target.ID, consumerIDs(run), c.target, c.ids)
+			}
+		})
+	}
+}
+
+// A run loading the target in both languages whose go.mod holds no module
+// path ends as a failure naming the file, before any analyzer runs.
+func TestAnalyzeRefusesAMixedTargetWhoseGoModNamesNoModule(t *testing.T) {
+	t.Parallel()
+
+	_, target, goFake, tsFake := mixedWorkspace(t)
+	writeFile(t, filepath.Join(target, "go.mod"), []byte("go 1.27\n"))
+	runDir := filepath.Join(filepath.Dir(target), "run")
+
+	got := analyze(t, target, runDir)
+	if got.code != verdict.Failure || !strings.Contains(got.stderr, filepath.Join(target, "go.mod")) || !strings.Contains(got.stderr, "no module directive") {
+		t.Errorf("analyze = %d with stderr %q, want %d naming %s and its missing module directive",
+			got.code, got.stderr, verdict.Failure, filepath.Join(target, "go.mod"))
+	}
+	if _, err := os.Stat(runDir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("analyze left the run directory %s: %v, want none", runDir, err)
+	}
+	for _, f := range []fake{goFake, tsFake} {
+		if _, err := os.Stat(f.ranIn); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("analyze ran the analyzer %s, want no analyzer run", f.command)
+		}
+	}
+}
+
+// removeFile removes one file a test's setup wrote.
+func removeFile(t *testing.T, path string) {
+	t.Helper()
+
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("Setup: remove %s: %v", path, err)
 	}
 }

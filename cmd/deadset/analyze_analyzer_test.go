@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -124,6 +125,141 @@ func TestAnalyzeOverTheHarnessGoHalfLeavesThePendingEdgeUnresolved(t *testing.T)
 	}
 }
 
+// harnessResult is the part of the harness's recorded result this file reads:
+// per archive, the merge of the report each analyzer wrote over it.
+type harnessResult struct {
+	Variants []struct {
+		Merged  *mergedRun `json:"merged"`
+		Archive string     `json:"archive"`
+	} `json:"variants"`
+}
+
+// mergedRun is what the harness records of a merged report: the exit code of
+// its verdict, its pending count, and its findings and edge evaluations by
+// code and symbol.
+type mergedRun struct {
+	Findings    []mergedFinding    `json:"findings"`
+	Evaluations []mergedEvaluation `json:"evaluations"`
+	Exit        int                `json:"exit"`
+	Pending     int                `json:"pending"`
+}
+
+// mergedFinding is one finding of a merged report, by code, symbol and
+// component.
+type mergedFinding struct {
+	Code      string `json:"code"`
+	Symbol    string `json:"symbol"`
+	Component string `json:"component"`
+}
+
+// mergedEvaluation is one edge evaluation of a merged report, with the code
+// of the finding it carries when its side is dead.
+type mergedEvaluation struct {
+	Edge   string `json:"edge"`
+	Side   string `json:"side"`
+	Symbol string `json:"symbol"`
+	State  string `json:"state"`
+	Code   string `json:"code,omitempty"`
+}
+
+// recordedMerges is every harness archive mapped to the merge the harness
+// records over it.
+func recordedMerges(t *testing.T) map[string]*mergedRun {
+	t.Helper()
+
+	path := filepath.Join("..", "..", "testdata", "harness", "result.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Setup: read %s: %v", path, err)
+	}
+	var result harnessResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("Setup: decode %s: %v", path, err)
+	}
+	merges := make(map[string]*mergedRun, len(result.Variants))
+	for _, variant := range result.Variants {
+		merges[variant.Archive] = variant.Merged
+	}
+	return merges
+}
+
+// harnessView is what the harness records of the merged report r of a run
+// that exited with code.
+func harnessView(r *report.Report, code int) *mergedRun {
+	run := &mergedRun{
+		Findings:    make([]mergedFinding, 0, len(r.Findings)),
+		Evaluations: make([]mergedEvaluation, 0, len(r.EdgeEvaluations)),
+		Exit:        code,
+		Pending:     r.Totals.Pending,
+	}
+	for i := range r.Findings {
+		f := &r.Findings[i]
+		run.Findings = append(run.Findings, mergedFinding{Code: f.Code, Symbol: f.Symbol.Ref, Component: f.Component.ID})
+	}
+	for i := range r.EdgeEvaluations {
+		e := &r.EdgeEvaluations[i]
+		code := ""
+		if e.Finding != nil {
+			code = e.Finding.Code
+		}
+		run.Evaluations = append(run.Evaluations, mergedEvaluation{Edge: e.Edge, Side: string(e.Side), Symbol: e.Symbol, State: string(e.State), Code: code})
+	}
+	return run
+}
+
+// A run of both analyzers over each harness variant, a target holding Go and
+// TypeScript, merges their two reports into one target and exits with the
+// merged report's verdict, and the merged report is the merge the harness
+// records of the two analyzers' own reports over that variant.
+func TestAnalyzeOverTheHarnessMergesBothAnalyzersReports(t *testing.T) {
+	t.Parallel()
+	goAnalyzerOnPath(t)
+	analyzerOnPath(t, "deadset-ts")
+
+	merges := recordedMerges(t)
+	archives, err := filepath.Glob(filepath.Join("..", "..", "testdata", "harness", "*.txtar"))
+	if err != nil || len(archives) == 0 {
+		t.Fatalf("Setup: glob the harness archives = %v, %v", archives, err)
+	}
+	for _, archive := range archives {
+		t.Run(strings.TrimSuffix(filepath.Base(archive), ".txtar"), func(t *testing.T) {
+			t.Parallel()
+
+			want := merges[filepath.Base(archive)]
+			if want == nil {
+				t.Fatalf("Setup: the harness records no merge over %s", archive)
+			}
+			base := t.TempDir()
+			target := filepath.Join(base, "target")
+			extractArchive(t, archive, target)
+			got := analyze(t, target, filepath.Join(base, "run"))
+			if got.code != want.Exit {
+				t.Fatalf("analyze(%s) = %d, want %d, the verdict of the recorded merge\nstderr: %s", archive, got.code, want.Exit, got.stderr)
+			}
+			r := mergedReport(t, filepath.Join(base, "run"))
+			gotJSON, err := json.Marshal(harnessView(r, got.code))
+			if err != nil {
+				t.Fatalf("encode the merged run: %v", err)
+			}
+			wantJSON, err := json.Marshal(want)
+			if err != nil {
+				t.Fatalf("Setup: encode the recorded merge: %v", err)
+			}
+			if string(gotJSON) != string(wantJSON) {
+				t.Errorf("analyze(%s) merged %s\nwant %s, the merge the harness records", archive, gotJSON, wantJSON)
+			}
+			var names []string
+			for _, from := range r.MergedFrom {
+				names = append(names, from.Name)
+			}
+			if !slices.Equal(names, []string{"deadset-go", "deadset-ts"}) || r.Target.Identity != "example.com/server" {
+				t.Errorf("analyze(%s) merged the reports of %q over the target %q, want deadset-go and deadset-ts over example.com/server",
+					archive, names, r.Target.Identity)
+			}
+		})
+	}
+}
+
 // extractArchive writes every file of a txtar archive under root: a marker
 // line "-- NAME --" opens each file, whose content runs to the next marker.
 func extractArchive(t *testing.T, archive, root string) {
@@ -202,32 +338,45 @@ func claims(r *report.Report) []string {
 }
 
 // A library and one consumer referencing part of its published API, run
-// through each real analyzer with the archive's scope document and without
-// it. With it, the merged report names the consumer under consumers.loaded,
-// every finding is certain and names the consumer, and the unreferenced
-// exported function is reported; without it, nothing is loaded and the one
-// finding a library with no consumer information keeps is possible.
+// through the real analyzers of its languages with the archive's scope
+// document and without it. With it, the merged report names the consumer
+// once under consumers.loaded, by the name every analyzer's report of it
+// carries, every finding is certain and names the consumer, and the
+// unreferenced exported function is reported; without it, nothing is loaded
+// and the one finding per language a library with no consumer information
+// keeps is possible.
 func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 	t.Parallel()
 
 	for _, c := range []struct {
-		archive, analyzer, consumer string
-		with, without               []string
+		archive, consumer string
+		analyzers         []string
+		with, without     []string
 	}{
 		{
-			archive: "go.txtar", analyzer: "deadset-go", consumer: "example.com/consumer",
+			archive: "go.txtar", analyzers: []string{"deadset-go"}, consumer: "example.com/consumer",
 			with:    []string{"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]"},
 			without: []string{"DS1003 Options.Spare possible []"},
 		},
 		{
-			archive: "ts.txtar", analyzer: "deadset-ts", consumer: "@example/consumer",
+			archive: "ts.txtar", analyzers: []string{"deadset-ts"}, consumer: "@example/consumer",
 			with:    []string{"DS1003 Options.spare certain [@example/consumer]", "DS1001 farewell certain [@example/consumer]"},
 			without: []string{"DS1003 Options.spare possible []"},
+		},
+		{
+			archive: "mixed.txtar", analyzers: []string{"deadset-go", "deadset-ts"}, consumer: "example.com/consumer",
+			with: []string{
+				"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]",
+				"DS1003 Options.spare certain [example.com/consumer]", "DS1001 farewell certain [example.com/consumer]",
+			},
+			without: []string{"DS1003 Options.Spare possible []", "DS1003 Options.spare possible []"},
 		},
 	} {
 		t.Run(strings.TrimSuffix(c.archive, ".txtar"), func(t *testing.T) {
 			t.Parallel()
-			analyzerOnPath(t, c.analyzer)
+			for _, analyzer := range c.analyzers {
+				analyzerOnPath(t, analyzer)
+			}
 
 			for _, run := range []struct {
 				name     string
@@ -262,9 +411,13 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 					if found := claims(merged); !slices.Equal(found, run.findings) {
 						t.Errorf("analyze(%s, %s) findings = %q, want %q", c.archive, run.name, found, run.findings)
 					}
-					if merged.Target.Root != run.root || len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != c.analyzer {
-						t.Errorf("analyze(%s, %s) merged %+v over the root %q, want %s alone over %q",
-							c.archive, run.name, merged.MergedFrom, merged.Target.Root, c.analyzer, run.root)
+					var names []string
+					for _, from := range merged.MergedFrom {
+						names = append(names, from.Name)
+					}
+					if merged.Target.Root != run.root || !slices.Equal(names, c.analyzers) {
+						t.Errorf("analyze(%s, %s) merged the reports of %q over the root %q, want %q over %q",
+							c.archive, run.name, names, merged.Target.Root, c.analyzers, run.root)
 					}
 				})
 			}
