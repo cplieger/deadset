@@ -33,13 +33,13 @@ type Caller struct {
 }
 
 // Merge admits every input against the accepted schema versions, carries every
-// record of every input under the name of its analyzer, and orders the merged
-// arrays by the canonical key. The merged report's versions and analyzer member
-// are the caller's, with the inputs' languages and accepted beside them. Merge
-// modifies none of its arguments.
-//
-// It returns no report with [ErrNoInput] or an admission refusal, an
-// [*AdmissionError] per refused input or one error for the first two that cannot merge.
+// record of every input under its analyzer's name, resolves every pending
+// finding, reports every stale edge, and orders the merged arrays by the
+// canonical key, inside the caller's versions and analyzer member. It modifies
+// none of its arguments. It returns no report with [ErrNoInput], an admission
+// refusal ([*AdmissionError] per refused input or one error for the first two
+// that cannot merge), or an [*UnresolvedError] for a pending finding no report
+// can resolve.
 func Merge(inputs []Input, accepted []string, caller *Caller) (*report.Report, error) {
 	if len(inputs) == 0 {
 		return nil, ErrNoInput
@@ -50,6 +50,9 @@ func Merge(inputs []Input, accepted []string, caller *Caller) (*report.Report, e
 		return nil, err
 	}
 	carried := union(ordered)
+	if err := carried.resolve(ordered, caller.Name); err != nil {
+		return nil, err
+	}
 	carried.order()
 	return envelope(ordered, accepted, caller, carried), nil
 }
