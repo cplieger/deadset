@@ -17,6 +17,11 @@ type Config struct {
 	// Languages is analysis.languages: the languages in scope, or none when the
 	// orchestrator detects them from the target tree.
 	Languages []string
+
+	// Providers is providers.analyzers: every analyzer the run may invoke, in the
+	// list's order. A run invokes those of them that claim a language in scope.
+	Providers []Provider
+
 	Reporters Reporters
 }
 
@@ -72,8 +77,9 @@ const (
 )
 
 // Error is a configuration the orchestrator refuses: a document that is not one
-// instance of the closed key list, a key it does not implement, or a resolution no
-// source supplied a required setting for. Every refusal exits with the usage code.
+// instance of the closed key list, a key it does not implement, a resolution no
+// source supplied a required setting for, or a provider list in which no entry
+// claims a language in scope. Every refusal exits with the usage code.
 type Error struct {
 	// Key is the key or field the refusal names, spelled as the document spells
 	// it: the dotted path to a nested key, and an array entry's index in brackets
