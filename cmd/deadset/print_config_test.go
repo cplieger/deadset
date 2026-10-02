@@ -66,6 +66,42 @@ func TestPrintConfigPrintsTheResolutionAndItsSources(t *testing.T) {
 	}
 }
 
+// A target that is not a directory is a failure, not a usage error: the run
+// had a target to read and could not read it, which no configuration fixes,
+// and a central configuration supplying the target kind changes nothing.
+func TestPrintConfigFailsOnATargetItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatalf("Setup: write %s: %v", file, err)
+	}
+	central := filepath.Join(t.TempDir(), "central.json")
+	if err := os.WriteFile(central, []byte(`{"target": {"kind": "library"}}`), 0o600); err != nil {
+		t.Fatalf("Setup: write %s: %v", central, err)
+	}
+	for name, target := range map[string]string{
+		"absent":        filepath.Join(t.TempDir(), "absent"),
+		"not-directory": file,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout, stderr bytes.Buffer
+			args := []string{"print-config", "--target=" + target, "--central=" + central}
+			if code := run(args, &stdout, &stderr); code != verdict.Failure {
+				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, verdict.Failure, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "target") || strings.Contains(stderr.String(), "usage:") {
+				t.Errorf("run(%q) stderr = %q, want it to name the target and print no usage", args, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("run(%q) stdout = %q, want no configuration printed", args, stdout.String())
+			}
+		})
+	}
+}
+
 // A configuration print-config refuses exits with the usage code, naming the key,
 // and prints no configuration: a target whose sources supply no target kind is
 // refused rather than printed with a guessed one, a configuration absent included.

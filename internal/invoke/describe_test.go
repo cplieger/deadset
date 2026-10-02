@@ -171,44 +171,69 @@ func TestDescribeAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion(t *testing.T) {
 	}
 }
 
-// TestDescribeRefusesACommandThatResolvesToNoExecutable pins step 1 of the
-// handshake: an entry whose command names no file, a file that cannot be
-// executed, or a name PATH does not hold ends the run with the failure code
-// naming the entry and its command, and nothing is run or kept.
-func TestDescribeRefusesACommandThatResolvesToNoExecutable(t *testing.T) {
+// TestDescribeRefusesACommandItCannotRun pins step 1 of the handshake: a
+// command that is not an absolute path is refused before anything runs, and
+// an absolute path naming no file or a file that cannot be executed ends the
+// run with the failure code naming the entry and its command, and nothing is
+// kept.
+func TestDescribeRefusesACommandItCannotRun(t *testing.T) {
 	t.Parallel()
 
 	notExecutable := filepath.Join(t.TempDir(), "analyzer")
 	if err := os.WriteFile(notExecutable, []byte("#!/bin/sh\nexit 0\n"), 0o600); err != nil {
 		t.Fatalf("Setup: write %s: %v", notExecutable, err)
 	}
-	for name, command := range map[string]string{
-		"absent-path":    filepath.Join(t.TempDir(), "absent"),
-		"not-executable": notExecutable,
-		"absent-name":    "deadset-analyzer-no-path-holds",
+	for name, c := range map[string]struct {
+		command string
+		want    error
+	}{
+		"absent-path":    {command: filepath.Join(t.TempDir(), "absent"), want: fs.ErrNotExist},
+		"not-executable": {command: notExecutable, want: fs.ErrPermission},
+		"a-name":         {command: "deadset-go", want: invoke.ErrUnresolvedCommand},
+		"relative-path":  {command: "bin/deadset-go", want: invoke.ErrUnresolvedCommand},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			req := request(t, "deadset-third-party", command)
+			req := request(t, "deadset-third-party", c.command)
 			entry := kept(t, req.Analyzer)
 			got, err := invoke.Describe(t.Context(), &req, entry, accepted)
 			if got != nil {
-				t.Errorf("Describe(command %s) = %+v, want no description", command, got)
+				t.Errorf("Describe(command %s) = %+v, want no description", c.command, got)
 			}
-			refused := handshakeRefusal(t, err, invoke.ErrNoCommand)
+			refused := handshakeRefusal(t, err, c.want)
 			if refused.Exit != -1 {
-				t.Errorf("Describe(command %s) refused with exit %d, want -1", command, refused.Exit)
+				t.Errorf("Describe(command %s) refused with exit %d, want -1", c.command, refused.Exit)
 			}
-			for _, named := range []string{"deadset-third-party", command} {
+			for _, named := range []string{"deadset-third-party", c.command} {
 				if !strings.Contains(err.Error(), named) {
-					t.Errorf("Describe(command %s) = %q, want the message to name %q", command, err, named)
+					t.Errorf("Describe(command %s) = %q, want the message to name %q", c.command, err, named)
 				}
 			}
 			if _, err := os.Stat(entry.Describe()); !errors.Is(err, fs.ErrNotExist) {
-				t.Errorf("after Describe(command %s), Stat(%s) = %v, want nothing kept", command, entry.Describe(), err)
+				t.Errorf("after Describe(command %s), Stat(%s) = %v, want nothing kept", c.command, entry.Describe(), err)
 			}
 		})
+	}
+}
+
+// TestDescribeRefusesAnAnalyzerDescribingItselfUnderAnotherName pins that the
+// description must name the provider entry it was run for: an entry whose
+// command runs a different analyzer ends the run with the failure code, naming
+// the entry and the name the analyzer gave.
+func TestDescribeRefusesAnAnalyzerDescribingItselfUnderAnotherName(t *testing.T) {
+	t.Parallel()
+
+	req := request(t, "deadset-go-fork", describer(t, 0, document(describedMembers())).command)
+	got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), accepted)
+	if got != nil {
+		t.Errorf("Describe(an entry named deadset-go-fork running deadset-go) = %+v, want no description", got)
+	}
+	handshakeRefusal(t, err, invoke.ErrDescribedName)
+	for _, named := range []string{"deadset-go-fork", `"deadset-go"`} {
+		if !strings.Contains(err.Error(), named) {
+			t.Errorf("Describe(an entry named deadset-go-fork running deadset-go) = %q, want the message to name %s", err, named)
+		}
 	}
 }
 

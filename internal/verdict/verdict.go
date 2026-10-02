@@ -51,16 +51,16 @@ func Code(r *report.Report, failOn config.Severity, exitCode Switch) int {
 	switch {
 	case totals.Pending > 0:
 		return Pending
-	case totals.StaleSuppressions > 0, failing(&totals.BySeverity, failOn):
+	case totals.StaleSuppressions > 0, Failing(&totals.BySeverity, failOn):
 		return Findings
 	default:
 		return Clean
 	}
 }
 
-// failing reports whether any finding the counts hold fails a run whose failing
-// severity is failOn.
-func failing(counts *report.BySeverity, failOn config.Severity) bool {
+// Failing reports whether any finding the counts hold fails a run whose
+// failing severity is failOn.
+func Failing(counts *report.BySeverity, failOn config.Severity) bool {
 	return (counts.Deny > 0 && Fails(report.SeverityDeny, failOn)) ||
 		(counts.Warn > 0 && Fails(report.SeverityWarn, failOn)) ||
 		(counts.Allow > 0 && Fails(report.SeverityAllow, failOn))
@@ -87,13 +87,35 @@ func rank(severity report.Severity) int {
 	}
 }
 
+// InvocationError is a command line the run refuses before it reads a target:
+// a flag value outside the flag's set, an argument the verb takes none of, or
+// a file or directory a flag names that the run cannot use.
+type InvocationError struct {
+	// Err is why the invocation is refused.
+	Err error
+
+	// Flag is the flag at fault, without its dashes, or empty for an argument.
+	Flag string
+}
+
+// Error names the flag and why its value is refused.
+func (e *InvocationError) Error() string {
+	if e.Flag == "" {
+		return e.Err.Error()
+	}
+	return "--" + e.Flag + ": " + e.Err.Error()
+}
+
+// Unwrap is why the invocation is refused.
+func (e *InvocationError) Unwrap() error { return e.Err }
+
 // ForError is the exit code of a run that err ended before a report existed. A
-// configuration the run refuses is Usage, and so is a path filter outside the
-// target, a target in which detection finds no language, and an analyzer that
-// exits with Usage, having refused a value of the configuration it was given:
-// each is fixed by changing what the run was asked to do. An error joining
-// several is Usage only when every error it joins is. Every other error is
-// Failure, the code of a run that produced no answer.
+// configuration or an invocation the run refuses is Usage, and so is a path
+// filter outside the target, a target in which detection finds no language,
+// and an analyzer that exits with Usage, having refused a value of the
+// configuration it was given: each is fixed by changing what the run was asked
+// to do. An error joining several is Usage only when every error it joins is.
+// Every other error is Failure, the code of a run that produced no answer.
 func ForError(err error) int {
 	if refusesTheRequest(err) {
 		return Usage
@@ -107,7 +129,7 @@ func refusesTheRequest(err error) bool {
 	switch err := err.(type) {
 	case nil:
 		return false
-	case *config.Error:
+	case *config.Error, *InvocationError:
 		return true
 	case *invoke.Error:
 		return err.Exit == Usage && errors.Is(err, invoke.ErrExited)

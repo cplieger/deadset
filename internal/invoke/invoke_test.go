@@ -207,6 +207,28 @@ func TestAnalyzeRefusesAnAnalyzerItCannotRun(t *testing.T) {
 	}
 }
 
+// TestAnalyzeRefusesACommandThatIsNotAnAbsolutePath pins that a request whose
+// command would be looked up on PATH is refused without running anything, so
+// the analysis runs the file the handshake ran and no other.
+func TestAnalyzeRefusesACommandThatIsNotAnAbsolutePath(t *testing.T) {
+	t.Parallel()
+
+	analyzer := fakeAnalyzer(t, 0, published(t, oneReport))
+	req := request(t, "deadset-go", "")
+	relative, err := filepath.Rel(req.Dir, analyzer.command)
+	if err != nil {
+		t.Fatalf("Setup: Rel(%s, %s): %v", req.Dir, analyzer.command, err)
+	}
+	req.Command = relative
+	got, err := invoke.Analyze(t.Context(), &req)
+	if got != nil || !errors.Is(err, invoke.ErrUnresolvedCommand) {
+		t.Fatalf("Analyze(command %q) = %+v, %v, want no report and ErrUnresolvedCommand", req.Command, got, err)
+	}
+	if _, err := os.Stat(analyzer.args); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("after Analyze(command %q), Stat(%s) = %v, want the analyzer never run", req.Command, analyzer.args, err)
+	}
+}
+
 // TestAnalyzeInterruptsTheAnalyzerOfACancelledRun pins that cancelling the run
 // interrupts the analyzer rather than killing it, and that the report and the
 // verdict it answers the interrupt with are not read: the run was cancelled,

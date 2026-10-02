@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,10 +17,6 @@ import (
 
 // The refusals a handshake makes, each carried by a [*HandshakeError].
 var (
-	// ErrNoCommand reports a provider entry whose command resolves to no
-	// executable on the local filesystem; the analyzer is not run.
-	ErrNoCommand = errors.New("the provider entry's command resolves to no executable")
-
 	// ErrDescribeExited reports a describe verb that exited with a code other
 	// than 0, so what it printed is not read.
 	ErrDescribeExited = errors.New("describe did not describe the analyzer")
@@ -36,6 +31,10 @@ var (
 	// ErrSchemaVersion reports an analyzer that reads no report schema version
 	// the run accepts.
 	ErrSchemaVersion = errors.New("the analyzer reads no schema version the run accepts")
+
+	// ErrDescribedName reports an analyzer that describes itself under a name
+	// other than its provider entry's.
+	ErrDescribedName = errors.New("the analyzer describes itself under another name than its provider entry's")
 )
 
 // Description is what an analyzer's describe verb states about it.
@@ -63,7 +62,7 @@ type HandshakeError struct {
 	Err error
 
 	Analyzer string // the provider entry
-	Command  string // the command the provider entry names
+	Command  string // the executable the provider entry's command resolved to
 
 	// Exit is the describe verb's exit code, or -1 when it did not run or did
 	// not exit on its own.
@@ -78,29 +77,30 @@ func (e *HandshakeError) Error() string {
 // Unwrap is the refusal's cause.
 func (e *HandshakeError) Unwrap() error { return e.Err }
 
-// Describe runs the handshake with the analyzer req names, before any analysis:
-// it resolves the entry's command on the local filesystem, runs its describe
-// verb, keeps what the verb printed at kept's describe file whatever it printed,
-// and reads the document. It admits the analyzer when the document records a
-// conformance pass and the analyzer reads at least one of the accepted report
-// schema versions, and returns the description; otherwise it returns no
-// description and a [*HandshakeError]. What the verb writes to stderr goes to
-// req.Diagnostics; the scope, configuration and report paths are not read.
+// Describe runs the describe verb of req.Command before any analysis, keeps
+// what it printed at kept's describe file, a command that never started
+// keeping nothing, and reads the document. It admits the analyzer, returning
+// the description, when the document names the provider entry's name, records
+// a conformance pass and reads one of the accepted report schema versions;
+// otherwise it returns a [*HandshakeError]. The verb's stderr goes to
+// req.Diagnostics, and the scope, configuration and report paths are not read.
 func Describe(ctx context.Context, req *Request, kept rundir.Entry, accepted []string) (*Description, error) {
 	refuse := func(exit int, err error) error {
 		return &HandshakeError{Err: err, Analyzer: req.Analyzer, Command: req.Command, Exit: exit}
 	}
-	path, err := exec.LookPath(req.Command)
-	if err != nil {
-		return nil, refuse(-1, fmt.Errorf("%w: %w", ErrNoCommand, err))
+	if err := resolved(req.Command); err != nil {
+		return nil, refuse(-1, err)
 	}
 
 	var printed bytes.Buffer
-	cmd := command(ctx, req, path, "describe")
+	cmd := command(ctx, req, req.Command, "describe")
 	diagnostics, copied := diagnosticsOf(req.Diagnostics)
 	cmd.Stdout = &printed
 	cmd.Stderr = diagnostics
 	exit, runErr := wait(ctx, cmd, copied)
+	if cmd.Process == nil {
+		return nil, refuse(exit, runErr)
+	}
 	keepErr := kept.WriteDescribe(printed.Bytes())
 	switch {
 	case runErr != nil || keepErr != nil:
@@ -112,6 +112,9 @@ func Describe(ctx context.Context, req *Request, kept rundir.Entry, accepted []s
 	described, err := decodeDescription(printed.Bytes())
 	if err != nil {
 		return nil, refuse(exit, err)
+	}
+	if described.Name != req.Analyzer {
+		return nil, refuse(exit, fmt.Errorf("%w: it names itself %q", ErrDescribedName, described.Name))
 	}
 	if err := admit(described, accepted); err != nil {
 		return nil, refuse(exit, err)

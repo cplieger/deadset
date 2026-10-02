@@ -23,6 +23,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -51,6 +52,11 @@ var (
 	// ErrReportExists reports a file already at the report path, which no read
 	// could tell from a report the analyzer wrote; the analyzer is not run.
 	ErrReportExists = errors.New("a file is at the report path before the analyzer ran")
+
+	// ErrUnresolvedCommand reports a request whose command is not an absolute
+	// path, which running would look up on PATH; neither verb runs it, and a
+	// handshake carries it in a [*HandshakeError].
+	ErrUnresolvedCommand = errors.New("the command is not the absolute path provider selection resolves")
 )
 
 // Request is one analyze invocation: the provider entry it runs, and the
@@ -63,8 +69,9 @@ type Request struct {
 	// Analyzer is the name of the provider entry, which every refusal names.
 	Analyzer string
 
-	// Command is the analyzer's executable: an absolute path, or a name
-	// looked up on PATH.
+	// Command is the absolute path of the analyzer's executable, as provider
+	// selection resolved it. Nothing here looks a command up again, so the file
+	// the handshake ran is the file the analysis runs.
 	Command string
 
 	// Dir is the directory the analyzer runs in, which a report names its
@@ -104,6 +111,9 @@ func (e *Error) Unwrap() error { return e.Err }
 func Analyze(ctx context.Context, req *Request) (*report.Report, error) {
 	refuse := func(exit int, err error) error {
 		return &Error{Err: err, Analyzer: req.Analyzer, Report: req.Report, Exit: exit}
+	}
+	if err := resolved(req.Command); err != nil {
+		return nil, refuse(-1, err)
 	}
 	if _, err := os.Lstat(req.Report); !errors.Is(err, fs.ErrNotExist) {
 		return nil, refuse(-1, cmp.Or(err, ErrReportExists))
@@ -156,6 +166,14 @@ func Run(ctx context.Context, requests []Request) ([]*report.Report, error) {
 		return nil, errors.Join(failures...)
 	}
 	return reports, nil
+}
+
+// resolved refuses a command that is not an absolute path.
+func resolved(command string) error {
+	if !filepath.IsAbs(command) {
+		return fmt.Errorf("%w: %q", ErrUnresolvedCommand, command)
+	}
+	return nil
 }
 
 // command is the analyzer at path run with args in the directory req names. A

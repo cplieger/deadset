@@ -19,7 +19,7 @@ Every analyzer implements the same contract, published at [deadset-spec](https:/
 
 ## Status
 
-Pre-release. This build implements contract version `3.0.0` and answers `deadset version` and `deadset print-config`, which prints the resolved configuration and where each value came from; every other command is reserved and exits with a usage message.
+Pre-release. This build implements contract version `3.2.0`. `deadset analyze` runs every analyzer the provider list holds for a language in the target, merges their reports, prints the findings, the summary and the annotations on standard output, keeps the evidence of the run in a run directory and exits with the merged report's verdict; it renders the `text`, `json` and `github` formats and refuses a configuration naming `sarif` or `template`. `deadset print-config` prints the resolved configuration and where each value came from, and `deadset version` prints the build's versions. Every other command is reserved and exits with a usage message.
 
 ## Quick start
 

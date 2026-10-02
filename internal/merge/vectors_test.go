@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"path"
@@ -60,32 +61,45 @@ func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			c := readCase(t, name)
-			merged, err := Merge(c.inputs, c.accepted, &c.caller)
-			if c.expected == nil {
-				want, known := refusedCases[name]
-				if !known {
-					t.Fatalf("case %s holds no expected.json and names no refusal this test expects", name)
-				}
-				if merged != nil || !errors.Is(err, want) {
-					t.Fatalf("Merge(%s) = %v, %v, want no report and an error wrapping %v", name, merged, err, want)
-				}
-				if got := verdict.ForError(err); got != c.exit {
-					t.Errorf("ForError(Merge(%s)) = %d, want expected_exit %d", name, got, c.exit)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Merge(%s) = %v, want a report", name, err)
-			}
-			if got := encode(t, merged); !bytes.Equal(got, c.expected) {
-				t.Errorf("Merge(%s) =\n%s\nwant expected.json\n%s", name, got, c.expected)
-			}
-			if got := verdict.Code(merged, c.failOn, verdict.On); got != c.exit {
-				t.Errorf("Code(Merge(%s), %s, On) = %d, want expected_exit %d", name, c.failOn, got, c.exit)
+			if err := answer(readCase(t, name), name); err != nil {
+				t.Error(err)
 			}
 		})
 	}
+}
+
+// answer is nil when the merge answers the published case c named name as
+// the case states: its merged report byte for byte and its exit code, or its
+// typed refusal and that refusal's exit code. Otherwise it says how the
+// answer differs.
+func answer(c vectorCase, name string) error {
+	merged, err := Merge(c.inputs, c.accepted, &c.caller)
+	if c.expected == nil {
+		want, known := refusedCases[name]
+		switch {
+		case !known:
+			return fmt.Errorf("case %s holds no expected.json and names no refusal this test expects", name)
+		case merged != nil || !errors.Is(err, want):
+			return fmt.Errorf("Merge(%s) = %v, %v, want no report and an error wrapping %v", name, merged, err, want)
+		case verdict.ForError(err) != c.exit:
+			return fmt.Errorf("ForError(Merge(%s)) = %d, want expected_exit %d", name, verdict.ForError(err), c.exit)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("Merge(%s) = %w, want a report", name, err)
+	}
+	var written bytes.Buffer
+	if err := report.Encode(&written, merged); err != nil {
+		return fmt.Errorf("report.Encode(Merge(%s)) = %w", name, err)
+	}
+	if !bytes.Equal(written.Bytes(), c.expected) {
+		return fmt.Errorf("Merge(%s) =\n%s\nwant expected.json\n%s", name, written.Bytes(), c.expected)
+	}
+	if got := verdict.Code(merged, c.failOn, verdict.On); got != c.exit {
+		return fmt.Errorf("Code(Merge(%s), %s, On) = %d, want expected_exit %d", name, c.failOn, got, c.exit)
+	}
+	return nil
 }
 
 // TestMergeRefusesThePublishedCasesNamingWhatFailed pins what each published
