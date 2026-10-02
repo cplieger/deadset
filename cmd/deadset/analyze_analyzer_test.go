@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -140,5 +141,41 @@ func extractArchive(t *testing.T, archive, root string) {
 			t.Fatalf("Setup: %s names the file %q outside its root", archive, name)
 		}
 		writeFile(t, filepath.Join(root, filepath.FromSlash(name)), body)
+	}
+}
+
+// The SARIF log of a run over a Go module carries, for the Go analyzer's
+// finding, the fingerprints the Go analyzer computes for the same finding in
+// its own SARIF log, and the template renders the finding.
+func TestAnalyzeRendersTheGoAnalyzersFindingAsTheGoAnalyzerDoes(t *testing.T) {
+	t.Parallel()
+	goAnalyzerOnPath(t)
+
+	target, runDir := goModule(t, "package main\n\nfunc main() {}\n\nfunc unused() {}\n")
+	template := filepath.Join(t.TempDir(), "report.tmpl")
+	writeFile(t, template, []byte("{{range .Findings}}{{.Code}} {{.Analyzer}} {{.Position.Path}}:{{.Position.Line}}\n{{end}}"))
+	got := analyze(t, target, runDir, "--formats=sarif,template", "--template="+template)
+	if got.code != verdict.Findings {
+		t.Fatalf("analyze = %d, want %d\nstdout: %s\nstderr: %s", got.code, verdict.Findings, got.stdout, got.stderr)
+	}
+	rendered, err := os.ReadFile(filepath.Join(runDir, "report.json.tmpl"))
+	if err != nil || string(rendered) != "DS1002 deadset-go main.go:5\n" {
+		t.Errorf("the template rendering is %q (%v), want %q", rendered, err, "DS1002 deadset-go main.go:5\n")
+	}
+
+	own := filepath.Join(t.TempDir(), "report.json")
+	direct := exec.CommandContext(t.Context(), "deadset-go", "analyze", "--target=.", "--report="+own, "--format=sarif")
+	direct.Dir = target
+	if output, err := direct.CombinedOutput(); direct.ProcessState == nil || direct.ProcessState.ExitCode() != verdict.Findings {
+		t.Fatalf("Setup: deadset-go analyze over %s = %v\n%s", target, err, output)
+	}
+	merged, analyzerOwn := readSARIF(t, filepath.Join(runDir, "report.json.sarif")), readSARIF(t, own+".sarif")
+	if len(merged.Runs) != 1 || len(merged.Runs[0].Results) != 1 || len(analyzerOwn.Runs) != 1 || len(analyzerOwn.Runs[0].Results) != 1 {
+		t.Fatalf("the merged log holds %+v and the Go analyzer's %+v, want one run with one result each", merged.Runs, analyzerOwn.Runs)
+	}
+	ours, theirs := merged.Runs[0].Results[0], analyzerOwn.Runs[0].Results[0]
+	if ours.RuleID != "DS1002" || !maps.Equal(ours.PartialFingerprints, theirs.PartialFingerprints) {
+		t.Errorf("the merged log's result is %s with %v, want DS1002 with the Go analyzer's own %v",
+			ours.RuleID, ours.PartialFingerprints, theirs.PartialFingerprints)
 	}
 }

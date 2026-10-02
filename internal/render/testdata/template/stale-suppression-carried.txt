@@ -1,0 +1,3 @@
+analyzer deadset-go 1.0.0
+deadset-ignore.json:4:5 DS1703 deadset-go
+0 findings, 1 stale, 0 omitted

@@ -1,0 +1,3 @@
+analyzer deadset-go 1.1.0
+analyzer example-go 1.0.0
+0 findings, 0 stale, 0 omitted

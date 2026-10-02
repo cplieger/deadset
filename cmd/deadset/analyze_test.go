@@ -250,23 +250,23 @@ func TestAnalyzeKeepsTheEvidenceAndExitsWithTheMergedVerdict(t *testing.T) {
 func TestAnalyzeHandsEachAnalyzerTheSectionsOfItsLanguagesInScope(t *testing.T) {
 	t.Parallel()
 
-	both := fakeAnalyzer(t, "both", []string{"go", "ts"}, 1, goFindings)
-	target, runDir := goTarget(t, []provider{{Name: "both", Command: both.command, Languages: []string{"go", "ts"}}},
+	both := fakeAnalyzer(t, "deadset-go", []string{"go", "ts"}, 1, goFindings)
+	target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: both.command, Languages: []string{"go", "ts"}}},
 		`, "ts": {"entry_files": ["src/cli.ts"]}`)
 
 	if got := analyze(t, target, runDir); got.code != verdict.Findings {
 		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Findings, got.stderr)
 	}
 	var handed map[string]json.RawMessage
-	body, err := os.ReadFile(filepath.Join(runDir, "config.both.json"))
+	body, err := os.ReadFile(filepath.Join(runDir, "config.deadset-go.json"))
 	if err != nil || json.Unmarshal(body, &handed) != nil {
-		t.Fatalf("read config.both.json: %v", err)
+		t.Fatalf("read config.deadset-go.json: %v", err)
 	}
 	_, goSection := handed["go"]
 	_, tsSection := handed["ts"]
 	_, providerList := handed["providers"]
 	if !goSection || tsSection || providerList {
-		t.Errorf("config.both.json holds go %t, ts %t, providers %t, want the go section alone of the three", goSection, tsSection, providerList)
+		t.Errorf("config.deadset-go.json holds go %t, ts %t, providers %t, want the go section alone of the three", goSection, tsSection, providerList)
 	}
 }
 
@@ -334,14 +334,36 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			names: []string{"--central", "central.json"},
 		},
 		{
-			name: "a-format-this-build-does-not-render",
+			name: "template-format-without-a-template",
 			setup: func(t *testing.T) (string, string, []string) {
 				f := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
-				return target, runDir, []string{"--formats=text,sarif"}
+				return target, runDir, []string{"--formats=text,template"}
 			},
 			code:  verdict.Usage,
-			names: []string{"reporters.formats", `"sarif"`},
+			names: []string{"--template", "template format"},
+		},
+		{
+			name: "template-that-does-not-parse",
+			setup: func(t *testing.T) (string, string, []string) {
+				f := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
+				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
+				template := filepath.Join(t.TempDir(), "report.tmpl")
+				writeFile(t, template, []byte("{{range .Findings}}"))
+				return target, runDir, []string{"--formats=template", "--template=" + template}
+			},
+			code:  verdict.Usage,
+			names: []string{"--template", "parse the template"},
+		},
+		{
+			name: "report-under-another-analyzer-name",
+			setup: func(t *testing.T) (string, string, []string) {
+				f := fakeAnalyzer(t, "deadset-go-fork", []string{"go"}, 1, goFindings)
+				target, runDir := goTarget(t, []provider{{Name: "deadset-go-fork", Command: f.command, Languages: []string{"go"}}}, "")
+				return target, runDir, nil
+			},
+			code:  verdict.Failure,
+			names: []string{"deadset-go-fork", `"deadset-go"`, "report.deadset-go-fork.json"},
 		},
 		{
 			name: "unclaimed-language",
@@ -478,5 +500,131 @@ func TestAnalyzeFailsOnAFindingAtOrAboveTheFailingSeverity(t *testing.T) {
 				t.Errorf("analyze(--fail-on=%s) stdout = %q, want the remediation printed: %t", c.failOn, got.stdout, c.remediation)
 			}
 		})
+	}
+}
+
+// sourceFiles writes, below target, every source file the published reports
+// the fakes copy name, each long enough to hold the line its finding names.
+func sourceFiles(t *testing.T, target string) {
+	t.Helper()
+
+	for _, path := range []string{"internal/store/store.go", "web/src/tabs.ts", "web/src/wire.ts"} {
+		var lines strings.Builder
+		for line := range 64 {
+			fmt.Fprintf(&lines, "// %s line %d\n", path, line+1)
+		}
+		writeFile(t, filepath.Join(target, filepath.FromSlash(path)), []byte(lines.String()))
+	}
+}
+
+// sarifLog is the members of a SARIF log a run's rendering is checked by.
+type sarifLog struct {
+	Runs []struct {
+		Tool struct {
+			Driver struct {
+				Name string `json:"name"`
+			} `json:"driver"`
+		} `json:"tool"`
+		Results []struct {
+			RuleID    string `json:"ruleId"`
+			Locations []struct {
+				PhysicalLocation struct {
+					ArtifactLocation struct {
+						URI string `json:"uri"`
+					} `json:"artifactLocation"`
+				} `json:"physicalLocation"`
+			} `json:"locations"`
+			PartialFingerprints map[string]string `json:"partialFingerprints"`
+		} `json:"results"`
+	} `json:"runs"`
+}
+
+// readSARIF decodes the SARIF log at path.
+func readSARIF(t *testing.T, path string) *sarifLog {
+	t.Helper()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var log sarifLog
+	if err := json.Unmarshal(body, &log); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+	return &log
+}
+
+// A run naming the sarif and template formats writes each beside the merged
+// report and names both paths after the summary. The SARIF log holds one run
+// per analyzer with a result per finding it carried, its line fingerprints
+// read from the target root rather than the directory the run was started
+// in, and the template renders the findings the text lines print.
+func TestAnalyzeWritesTheSARIFAndTemplateRenderingsBesideTheMergedReport(t *testing.T) {
+	t.Parallel()
+
+	goFake := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
+	tsFake := fakeAnalyzer(t, "deadset-ts", []string{"ts"}, 1, tsFindings)
+	target, runDir := goTarget(t, []provider{
+		{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}},
+		{Name: "deadset-ts", Command: tsFake.command, Languages: []string{"ts"}},
+	}, "")
+	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
+	sourceFiles(t, target)
+	template := filepath.Join(t.TempDir(), "report.tmpl")
+	writeFile(t, template, []byte("{{range .Findings}}{{.Code}} {{.Position.Path}}:{{.Position.Line}}\n{{end}}"))
+
+	got := analyze(t, target, runDir, "--formats=sarif,text,template", "--template="+template)
+	if got.code != verdict.Findings {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Findings, got.stderr)
+	}
+	sarifPath, templatePath := filepath.Join(runDir, "report.json.sarif"), filepath.Join(runDir, "report.json.tmpl")
+	lines := strings.Split(strings.TrimSuffix(got.stdout, "\n"), "\n")
+	summaryAt := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "summary: ") })
+	if summaryAt < 0 || len(lines) < summaryAt+3 ||
+		lines[summaryAt+1] != "sarif "+sarifPath || lines[summaryAt+2] != "template "+templatePath {
+		t.Errorf("analyze stdout =\n%s\nwant the summary line followed by %q and %q", got.stdout, "sarif "+sarifPath, "template "+templatePath)
+	}
+
+	log := readSARIF(t, sarifPath)
+	var runs []string
+	results := 0
+	for _, run := range log.Runs {
+		runs = append(runs, run.Tool.Driver.Name)
+		results += len(run.Results)
+		for _, result := range run.Results {
+			if result.PartialFingerprints["primaryLocationLineHash"] == "" {
+				t.Errorf("the %s result at %v carries no line fingerprint", result.RuleID, result.Locations)
+			}
+		}
+	}
+	if !slices.Equal(runs, []string{"deadset-go", "deadset-ts"}) || results != 3 {
+		t.Errorf("the SARIF log holds the runs %q with %d results, want deadset-go and deadset-ts with the 3 findings", runs, results)
+	}
+
+	rendered, err := os.ReadFile(templatePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", templatePath, err)
+	}
+	want := "DS1002 internal/store/store.go:41\nDS1003 web/src/tabs.ts:31\nDS1001 web/src/wire.ts:8\n"
+	if string(rendered) != want {
+		t.Errorf("the template rendering is %q, want %q", rendered, want)
+	}
+}
+
+// A SARIF rendering that cannot read a source file its results name fails the
+// run with the failure code, after the merged report is written and before
+// anything is presented as the run's result.
+func TestAnalyzeFailsASARIFRenderingOfAnUnreadableSourceFile(t *testing.T) {
+	t.Parallel()
+
+	f := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
+	target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
+	got := analyze(t, target, runDir, "--formats=sarif")
+	if got.code != verdict.Failure || !strings.Contains(got.stderr, "read internal/store/store.go") || got.stdout != "" {
+		t.Errorf("analyze = %d, stdout %q, stderr %q, want %d naming the read of internal/store/store.go and no stdout",
+			got.code, got.stdout, got.stderr, verdict.Failure)
+	}
+	if names := listing(t, runDir); !slices.Contains(names, "report.json") || slices.Contains(names, "report.json.sarif") {
+		t.Errorf("the run directory holds %q, want the merged report and no SARIF log", names)
 	}
 }

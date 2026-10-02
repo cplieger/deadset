@@ -2,7 +2,8 @@
 // the orchestrator returns. Per provider entry it holds what the analyzer
 // described itself as, the configuration it was handed and the report it
 // wrote, each keyed by the entry's name because two entries may claim one
-// language; beside them it holds the scope document and the merged report.
+// language; beside them it holds the scope document, the merged report and
+// the renderings of the merged report that are files of their own.
 //
 // A run directory belongs to one run. [Create] refuses a directory that
 // already exists and every write refuses a file that already exists, so no
@@ -73,6 +74,16 @@ func (d *Dir) WriteMerged(r *report.Report) error {
 		return err
 	}
 	return writeOnce(d.Merged(), encoded.Bytes())
+}
+
+// Rendering is the path of the merged report's rendering whose file carries
+// suffix, appended to the merged report's own name.
+func (d *Dir) Rendering(suffix string) string { return d.Merged() + suffix }
+
+// WriteRendering writes data as the merged report's rendering whose file
+// carries suffix.
+func (d *Dir) WriteRendering(suffix string, data []byte) error {
+	return writeOnce(d.Rendering(suffix), data)
 }
 
 // Entry is the files of one provider entry.

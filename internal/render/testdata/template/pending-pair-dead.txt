@@ -1,0 +1,6 @@
+analyzer deadset-go 1.0.0
+analyzer deadset-ts 1.0.0
+internal/wire/wire.go:14:6 DS1001 unused-exported deny deadset-go
+web/src/decode.ts:5:10 DS1002 unused-unexported deny deadset-ts
+web/src/wire.ts:8:18 DS1001 unused-exported deny deadset-ts
+3 findings, 0 stale, 0 omitted
