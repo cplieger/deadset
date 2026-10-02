@@ -1,0 +1,149 @@
+{
+  "schema_version": "6.0.0",
+  "contract_version": "3.2.0",
+  "analyzer": {
+    "name": "deadset-ts",
+    "version": "3.12.0",
+    "languages": [
+      "ts"
+    ],
+    "schema_versions_accepted": [
+      "6.0.0"
+    ],
+    "conformance": {
+      "corpus_version": "1.9.0",
+      "result": "pass",
+      "digest": "sha256:3e9e40876551faa2c196311bf06d47d220ab5127a9fb8921969aae552c42e824"
+    }
+  },
+  "target": {
+    "kind": "application",
+    "root": "target",
+    "identity": "example.com/server"
+  },
+  "configurations": [
+    {
+      "id": "web/tsconfig.json",
+      "project": "web/tsconfig.json"
+    }
+  ],
+  "configurations_not_built": [],
+  "consumers": {
+    "declared": 0,
+    "loaded": [],
+    "unavailable": []
+  },
+  "findings": [
+    {
+      "code": "DS1001",
+      "kind": "unused-exported",
+      "language": "ts",
+      "position": {
+        "path": "web/src/app.ts",
+        "line": 4,
+        "column": 17,
+        "end_line": 6
+      },
+      "symbol": {
+        "ref": "ts://@example/web/src/app.ts#describe",
+        "kind": "function",
+        "name": "describe",
+        "size_lines": 3
+      },
+      "reachability_class": "certain",
+      "confidence": "certain",
+      "liveness_relation": "reference-counting",
+      "test_only": false,
+      "generated": false,
+      "component": {
+        "id": "deadset-ts/c-0001",
+        "root": true,
+        "symbol_count": 1,
+        "deletable_lines": 3
+      },
+      "retained_by": [],
+      "configurations": [
+        "web/tsconfig.json"
+      ],
+      "consumers_loaded": [],
+      "fixability": "deletable",
+      "severity": "deny",
+      "message": "exported function has no reference in the target and none from any loaded consumer",
+      "details": {}
+    },
+    {
+      "code": "DS1003",
+      "kind": "unused-member",
+      "language": "ts",
+      "position": {
+        "path": "web/src/wire/types.gen.ts",
+        "line": 6,
+        "column": 3,
+        "end_line": 6
+      },
+      "symbol": {
+        "ref": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+        "kind": "type-member",
+        "name": "ServerEvent.kind",
+        "size_lines": 1
+      },
+      "reachability_class": "certain",
+      "confidence": "certain",
+      "liveness_relation": "reference-counting",
+      "test_only": false,
+      "generated": false,
+      "component": {
+        "id": "deadset-ts/c-0002",
+        "root": true,
+        "symbol_count": 1,
+        "deletable_lines": 1
+      },
+      "retained_by": [],
+      "configurations": [
+        "web/tsconfig.json"
+      ],
+      "consumers_loaded": [],
+      "fixability": "deletable",
+      "severity": "deny",
+      "message": "type member has no reference in the target",
+      "details": {}
+    }
+  ],
+  "edge_evaluations": [
+    {
+      "edge": "wire/ServerEvent",
+      "side": "used_by",
+      "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+      "state": "live"
+    }
+  ],
+  "stale_suppressions": [],
+  "declared_gaps": [
+    {
+      "fixture": "private-member-unread",
+      "capability": "reflective-lookup",
+      "reason": "The reference pass resolves a string-literal element access to the member it names, so the member is live by that reference and the retained listing names no class for it."
+    }
+  ],
+  "excluded_by_cgo": [],
+  "test_file_rules": [
+    {
+      "rule": "test-file-pattern-1",
+      "matched": 0
+    }
+  ],
+  "totals": {
+    "findings": 2,
+    "by_severity": {
+      "allow": 0,
+      "warn": 0,
+      "deny": 2
+    },
+    "deletable_lines": 4,
+    "suppressions_in_effect": 0,
+    "reasons_recorded": 0,
+    "stale_suppressions": 0,
+    "pending": 0,
+    "omitted": 0
+  }
+}
