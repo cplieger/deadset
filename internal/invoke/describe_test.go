@@ -2,6 +2,7 @@ package invoke_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	spec "github.com/cplieger/deadset-spec/v4"
 	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/rundir"
@@ -386,4 +388,123 @@ func TestDescribeRefusesADocumentItCannotRead(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The describe documents the Contract publishes read as it states: a document
+// recording a conformance pass admitted member for member, one recording no
+// conformance run refused as having no pass, and each refused document refused
+// naming the value its schema refuses, or the member the closed key list does
+// not declare.
+func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("conformance-recorded", func(t *testing.T) {
+		t.Parallel()
+
+		printed := publishedExample(t, "examples/describe/conformance-recorded.json")
+		req := request(t, "deadset-go", describer(t, 0, printed).command)
+		got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), report.SchemaVersions)
+		if err != nil {
+			t.Fatalf("Describe(conformance-recorded.json) = %v, want the analyzer admitted", err)
+		}
+		want := &invoke.Description{
+			Conformance: &report.Conformance{
+				CorpusVersion: "2.0.0", Result: report.ResultPass,
+				Digest: "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66",
+			},
+			Name: "deadset-go", Version: "1.21.0", ContractVersion: "4.0.0",
+			SchemaVersionsAccepted: []string{"6.0.0", "6.1.0"}, Languages: []string{"go"},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Describe(conformance-recorded.json) = %+v, want %+v", got, want)
+		}
+	})
+	t.Run("conformance-not-recorded", func(t *testing.T) {
+		t.Parallel()
+
+		printed := publishedExample(t, "examples/describe/conformance-not-recorded.json")
+		req := request(t, "deadset-ts", describer(t, 0, printed).command)
+		_, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), report.SchemaVersions)
+		handshakeRefusal(t, err, invoke.ErrNoConformancePass)
+	})
+
+	for _, row := range describeNegatives(t) {
+		t.Run(strings.TrimSuffix(row.file, ".json"), func(t *testing.T) {
+			t.Parallel()
+
+			printed := publishedExample(t, "examples/negatives/"+row.file)
+			req := request(t, "deadset-go", describer(t, 0, printed).command)
+			_, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), report.SchemaVersions)
+			handshakeRefusal(t, err, invoke.ErrDescription)
+			if !strings.Contains(err.Error(), row.pointer+": ") {
+				t.Errorf("Describe(%s) = %q, want the message to name the value at %s", row.file, err, row.pointer)
+			}
+		})
+	}
+}
+
+// describeNegative is one refused describe document and the JSON Pointer its
+// refusal names.
+type describeNegative struct {
+	file, pointer string
+}
+
+// describeNegatives is every refused describe document the Contract
+// publishes. A document refused for a member the schema does not declare is
+// refused naming that member.
+func describeNegatives(t *testing.T) []describeNegative {
+	t.Helper()
+
+	var index struct {
+		Negatives []struct {
+			File         string `json:"file"`
+			Schema       string `json:"schema"`
+			Constraint   string `json:"constraint"`
+			InstancePath string `json:"instance_path"`
+		} `json:"negatives"`
+	}
+	if err := json.Unmarshal(publishedExample(t, "examples/negatives/index.json"), &index); err != nil {
+		t.Fatalf("Setup: decode examples/negatives/index.json: %v", err)
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	body, err := spec.Contract.ReadFile("contract/describe.schema.json")
+	if err != nil || json.Unmarshal(body, &schema) != nil {
+		t.Fatalf("Setup: read contract/describe.schema.json: %v", err)
+	}
+	var held []describeNegative
+	for _, row := range index.Negatives {
+		if row.Schema != "contract/describe.schema.json" {
+			continue
+		}
+		pointer := row.InstancePath
+		if row.Constraint == "additionalProperties" {
+			var members map[string]json.RawMessage
+			if err := json.Unmarshal(publishedExample(t, "examples/negatives/"+row.File), &members); err != nil {
+				t.Fatalf("Setup: decode %s: %v", row.File, err)
+			}
+			for name := range members {
+				if _, declared := schema.Properties[name]; !declared {
+					pointer += "/" + name
+				}
+			}
+		}
+		held = append(held, describeNegative{file: row.File, pointer: pointer})
+	}
+	if len(held) == 0 {
+		t.Fatal("Setup: examples/negatives/index.json names no refused describe document")
+	}
+	return held
+}
+
+// publishedExample is one document of the Contract's examples.
+func publishedExample(t *testing.T, name string) []byte {
+	t.Helper()
+
+	body, err := spec.Examples.ReadFile(name)
+	if err != nil {
+		t.Fatalf("Setup: read %s: %v", name, err)
+	}
+	return body
 }

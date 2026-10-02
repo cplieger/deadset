@@ -9,16 +9,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	spec "github.com/cplieger/deadset-spec/v4"
 	"github.com/cplieger/deadset/internal/report"
 )
 
 // mergedCase is one published merge case that produces a merged report: the
-// report, and the analyzer member of every input report it was merged from.
+// report, and every input report it was merged from.
 type mergedCase struct {
-	merged    *report.Report
-	analyzers []report.Analyzer
-	name      string
+	merged *report.Report
+	inputs []*report.Report
+	name   string
 }
 
 // mergedCases is every published merge case that carries an expected merged
@@ -39,7 +39,7 @@ func mergedCases(t *testing.T) []mergedCase {
 			t.Fatalf("Setup: glob the inputs of %s = %v, %v", dir, inputs, err)
 		}
 		for _, input := range inputs {
-			held.analyzers = append(held.analyzers, decodeVector(t, input).Analyzer)
+			held.inputs = append(held.inputs, decodeVector(t, input))
 		}
 		cases = append(cases, held)
 	}

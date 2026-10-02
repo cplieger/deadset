@@ -2,9 +2,15 @@ package render
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
+	"strings"
 	"text/template"
+	"text/template/parse"
 
 	"github.com/cplieger/deadset/internal/report"
 )
@@ -12,31 +18,246 @@ import (
 // templateName is the name an error gives the user's template.
 const templateName = "report"
 
-// Template is a user template, parsed, which renders a merged report.
+// The functions of the template subset. Each is a name the parser admits;
+// the ones text/template's own builtins implement as the subset states are
+// absent from templateFuncs.
+var subsetNames = []string{
+	"and", "or", "not", "len", "index", "eq", "ne", "lt", "le", "gt", "ge", "print", "printf", "println",
+}
+
+// The two functions a parsed template calls that no template can name, because
+// the parser admits subsetNames alone: the one that refuses a range over a
+// value that is not an array, an object or null, and the one a lone nil
+// constant evaluates to.
+const (
+	rangeGuard = "deadsetRange"
+	nilValue   = "deadsetNil"
+)
+
+// templateFuncs is every function the subset gives another meaning than
+// text/template's builtin of that name, and the two functions the parsed tree
+// calls.
+var templateFuncs = template.FuncMap{
+	"len":      length,
+	"index":    index,
+	"eq":       equal,
+	"ne":       notEqual,
+	"lt":       ordered(func(c int) bool { return c < 0 }),
+	"le":       ordered(func(c int) bool { return c <= 0 }),
+	"gt":       ordered(func(c int) bool { return c > 0 }),
+	"ge":       ordered(func(c int) bool { return c >= 0 }),
+	"printf":   printf,
+	rangeGuard: rangeable,
+	nilValue:   func() any { return nil },
+}
+
+// integerConstant is the one number constant the subset admits.
+var integerConstant = regexp.MustCompile(`^[+-]?(0|[1-9]\d*)$`)
+
+// Template is a user template, parsed, which renders a report.
 type Template struct {
 	parsed *template.Template
 }
 
-// ParseTemplate parses text as a text/template over a [report.Report], whose
-// fields are the report's members under their Go names. A field the report
-// does not carry fails the rendering rather than rendering as nothing.
+// ParseTemplate parses text in the template subset of the Contract's template
+// rendering: text/template's action grammar with its fixed delimiters, the
+// subset's functions, and no template definition, character constant, octal
+// escape or number other than a decimal integer. A refusal names the line.
 func ParseTemplate(text string) (*Template, error) {
-	parsed, err := template.New(templateName).Parse(text)
+	funcs := make(map[string]any, len(subsetNames))
+	for _, name := range subsetNames {
+		funcs[name] = struct{}{}
+	}
+	tree, trees := parse.New(templateName), map[string]*parse.Tree{}
+	if _, err := tree.Parse(text, "", "", trees, funcs); err != nil {
+		return nil, fmt.Errorf("parse the template: %w", err)
+	}
+	for name, defined := range trees {
+		if defined != tree {
+			return nil, fmt.Errorf("parse the template: %w", outside(defined, defined.Root, "the template definition "+strconv.Quote(name)))
+		}
+	}
+	if err := subset(tree, tree.Root); err != nil {
+		return nil, fmt.Errorf("parse the template: %w", err)
+	}
+	parsed, err := template.New(templateName).Option("missingkey=error").Funcs(templateFuncs).AddParseTree(templateName, tree)
 	if err != nil {
 		return nil, fmt.Errorf("parse the template: %w", err)
 	}
 	return &Template{parsed: parsed}, nil
 }
 
-// Render writes r through the template. The rendering is built whole before
+// subset refuses a node outside the template subset, and adjusts the two
+// forms whose subset meaning text/template's execution does not give: a
+// range evaluates its value through rangeGuard, and a lone nil constant is
+// the null value.
+func subset(tree *parse.Tree, node parse.Node) error {
+	switch n := node.(type) {
+	case *parse.ListNode:
+		return subsetAll(tree, n.Nodes...)
+	case *parse.ActionNode:
+		return subsetPipe(tree, n.Pipe)
+	case *parse.IfNode:
+		return subsetBranch(tree, &n.BranchNode)
+	case *parse.WithNode:
+		return subsetBranch(tree, &n.BranchNode)
+	case *parse.RangeNode:
+		n.Pipe.Cmds = append(n.Pipe.Cmds, call(tree, n.Pipe.Position(), rangeGuard))
+		return subsetBranch(tree, &n.BranchNode)
+	case *parse.TemplateNode:
+		return outside(tree, n, "a template invocation")
+	case *parse.PipeNode:
+		return subsetPipe(tree, n)
+	case *parse.ChainNode:
+		return subset(tree, n.Node)
+	case *parse.NumberNode:
+		if !integerConstant.MatchString(n.Text) || !n.IsInt {
+			return outside(tree, n, "the number "+n.Text)
+		}
+	case *parse.StringNode:
+		if octalEscape(n.Quoted) {
+			return outside(tree, n, "an octal escape")
+		}
+	}
+	return nil
+}
+
+// subsetAll checks every node of a list in order.
+func subsetAll(tree *parse.Tree, nodes ...parse.Node) error {
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if err := subset(tree, node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// subsetBranch checks an if, a with or a range: its pipeline and both lists.
+func subsetBranch(tree *parse.Tree, n *parse.BranchNode) error {
+	if err := subsetPipe(tree, n.Pipe); err != nil {
+		return err
+	}
+	if n.ElseList == nil {
+		return subset(tree, n.List)
+	}
+	return subsetAll(tree, n.List, n.ElseList)
+}
+
+// subsetPipe checks every argument of every command of a pipeline, and makes
+// a command that is a lone nil constant the null value.
+func subsetPipe(tree *parse.Tree, pipe *parse.PipeNode) error {
+	for i, cmd := range pipe.Cmds {
+		if len(cmd.Args) == 1 && cmd.Args[0].Type() == parse.NodeNil {
+			pipe.Cmds[i] = call(tree, cmd.Position(), nilValue)
+			continue
+		}
+		if err := subsetAll(tree, cmd.Args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// call is a command calling the function name with no argument of its own.
+func call(tree *parse.Tree, at parse.Pos, name string) *parse.CommandNode {
+	identifier := parse.NewIdentifier(name).SetTree(tree).SetPos(at)
+	return &parse.CommandNode{NodeType: parse.NodeCommand, Pos: at, Args: []parse.Node{identifier}}
+}
+
+// outside is the refusal of a form the subset leaves out, naming its line.
+func outside(tree *parse.Tree, node parse.Node, form string) error {
+	location, _ := tree.ErrorContext(node)
+	return fmt.Errorf("%s: %s is outside the template subset", location, form)
+}
+
+// octalEscape reports whether an interpreted string constant, as written,
+// holds an octal escape.
+func octalEscape(quoted string) bool {
+	if !strings.HasPrefix(quoted, `"`) {
+		return false
+	}
+	for i := 0; i < len(quoted)-1; i++ {
+		if quoted[i] != '\\' {
+			continue
+		}
+		if next := quoted[i+1]; next >= '0' && next <= '7' {
+			return true
+		}
+		i++
+	}
+	return false
+}
+
+// Render writes r through the template, which reads the report document r
+// encodes to by its JSON member names. The rendering is built whole before
 // anything is written, so a template that fails writes nothing.
 func (t *Template) Render(w io.Writer, r *report.Report) error {
+	var document bytes.Buffer
+	if err := report.Encode(&document, r); err != nil {
+		return fmt.Errorf("render the template: %w", err)
+	}
+	return t.execute(w, document.Bytes())
+}
+
+// execute writes the rendering of the template over one JSON document.
+func (t *Template) execute(w io.Writer, document []byte) error {
+	data, err := jsonValue(document)
+	if err != nil {
+		return fmt.Errorf("render the template: %w", err)
+	}
 	var rendered bytes.Buffer
-	if err := t.parsed.Execute(&rendered, r); err != nil {
+	if err := t.parsed.Execute(&rendered, data); err != nil {
 		return fmt.Errorf("render the template: %w", err)
 	}
 	if _, err := w.Write(rendered.Bytes()); err != nil {
 		return fmt.Errorf("render: write the template rendering: %w", err)
 	}
 	return nil
+}
+
+// jsonValue is one JSON document as the value a template reads: an object is
+// a map[string]any, an array a []any, a number an int64, and a string, a
+// boolean and null are themselves.
+func jsonValue(document []byte) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(document))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, fmt.Errorf("read the report document: %w", err)
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, errors.New("read the report document: want one JSON value and nothing after it")
+	}
+	return integers(value)
+}
+
+// integers replaces every number of a decoded value by its int64.
+func integers(value any) (any, error) {
+	switch v := value.(type) {
+	case json.Number:
+		n, err := strconv.ParseInt(v.String(), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("read the report document: the number %s is not an integer", v)
+		}
+		return n, nil
+	case []any:
+		for i := range v {
+			var err error
+			if v[i], err = integers(v[i]); err != nil {
+				return nil, err
+			}
+		}
+	case map[string]any:
+		for name, member := range v {
+			replaced, err := integers(member)
+			if err != nil {
+				return nil, err
+			}
+			v[name] = replaced
+		}
+	}
+	return value, nil
 }

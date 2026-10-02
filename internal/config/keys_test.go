@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	spec "github.com/cplieger/deadset-spec/v4"
 )
 
 // schemaKey is one key of the Contract's configuration schema, with the members of

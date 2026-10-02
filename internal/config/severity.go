@@ -18,10 +18,10 @@ var (
 		"DS1301", "DS1302", "DS1303",
 		"DS1501", "DS1502",
 		"DS1601", "DS1605",
-		"DS1701", "DS1702", "DS1703", "DS1704", "DS1705",
+		"DS1701", "DS1702", "DS1703", "DS1704", "DS1705", "DS1706",
 		"DS1801", "DS1802", "DS1803", "DS1805", "DS1807", "DS1809",
 	}
-	fixedCodes = []string{"DS1703", "DS1704"}
+	fixedCodes = []string{"DS1703", "DS1704", "DS1706"}
 )
 
 // severityKey is the spelling a severity key takes: an issue-kind code, or a

@@ -2,14 +2,20 @@ package render
 
 import "github.com/cplieger/deadset/internal/report"
 
-// The SARIF document, one field per property the Contract's mapping emits and
-// in the order it lists them, so two renderings of one report are one byte
-// sequence. A property the mapping never emits has no field.
+// The SARIF document, one field per property the Contract's mapping emits, so
+// two renderings of one report are one byte sequence. A property the mapping
+// never emits has no field.
 
+//nolint:govet // fieldalignment: the field order is the mapping's property order, which the document writes
 type sarifLog struct {
-	Schema  string     `json:"$schema"`
-	Version string     `json:"version"`
-	Runs    []sarifRun `json:"runs"`
+	Schema     string              `json:"$schema"`
+	Version    string              `json:"version"`
+	Runs       []sarifRun          `json:"runs"`
+	Properties *sarifLogProperties `json:"properties,omitempty"`
+}
+
+type sarifLogProperties struct {
+	Totals report.Totals `json:"totals"`
 }
 
 type sarifRun struct {
