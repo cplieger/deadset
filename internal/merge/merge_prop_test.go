@@ -26,8 +26,16 @@ var (
 	drawnFixtures  = []string{"private-member-unread", "unused-exported-consumer"}
 	drawnRules     = []report.TestFileRule{{Rule: "go-test-suffix", Matched: 3}, {Rule: "go-test-suffix", Matched: 4}, {Rule: "ts-test-suffix", Matched: 1}}
 	drawnConsumers = []report.LoadedConsumer{{ID: "example.com/cli", Role: "consumer", Path: "../cli"}, {ID: "example.com/web", Role: "consumer", Path: "../web"}}
-	drawnCgo       = []string{"a_cgo.go", "b_cgo.go"}
-	drawnConfigs   = []report.Configuration{platform("linux-amd64"), platform("linux-amd64", "integration"), platform("darwin-arm64")}
+	drawnAbsent    = []report.UnavailableConsumer{
+		{ID: "example.com/tool", Role: "consumer", Reason: "it declares no path"},
+		{ID: "example.com/tool", Role: "consumer", Reason: "the configuration excludes it"},
+	}
+	drawnCgo     = []string{"a_cgo.go", "b_cgo.go"}
+	drawnConfigs = []report.Configuration{platform("linux-amd64"), platform("linux-amd64-integration", "integration"), platform("darwin-arm64")}
+	drawnDropped = []report.ConfigurationNotBuilt{
+		{Configuration: platform("windows-amd64"), Error: "cgo is not enabled"},
+		{Configuration: platform("windows-amd64"), Error: "no toolchain for windows"},
+	}
 )
 
 // drawFinding draws one finding of a component the named analyzer minted.
@@ -44,7 +52,8 @@ func drawFinding(t *rapid.T, analyzer, label string) report.Finding {
 }
 
 // drawReport draws one analyzer's report: a few records of every kind, the
-// envelope members a merge unions, and the counts it sums.
+// envelope members a merge unions, some worded two ways under one id, and the
+// counts it sums.
 func drawReport(t *rapid.T, analyzer string) *report.Report {
 	language := analyzer[len(analyzer)-2:]
 	r := analyzerReport(analyzer, language)
@@ -73,7 +82,9 @@ func drawReport(t *rapid.T, analyzer string) *report.Report {
 		))
 	}
 	r.Configurations = rapid.SliceOfNDistinct(rapid.SampledFrom(drawnConfigs), 1, 2,
-		func(c report.Configuration) string { return c.ID + strconv.Itoa(len(c.Platform.Tags)) }).Draw(t, analyzer+": the matrix")
+		func(c report.Configuration) string { return c.ID }).Draw(t, analyzer+": the matrix")
+	r.ConfigurationsNotBuilt = rapid.SliceOfN(rapid.SampledFrom(drawnDropped), 0, 1).Draw(t, analyzer+": the dropped configurations")
+	r.Consumers.Unavailable = rapid.SliceOfN(rapid.SampledFrom(drawnAbsent), 0, 1).Draw(t, analyzer+": the unavailable consumers")
 	r.TestFileRules = rapid.SliceOfNDistinct(rapid.SampledFrom(drawnRules), 0, 2,
 		func(rule report.TestFileRule) string { return rule.Rule }).Draw(t, analyzer+": the test file rules")
 	r.Consumers.Loaded = rapid.SliceOfNDistinct(rapid.SampledFrom(drawnConsumers), 0, 2,
@@ -103,11 +114,11 @@ func TestMergePreservesEveryRecordWhateverTheInputOrder(t *testing.T) {
 		shuffled := rapid.Permutation(reports).Draw(t, "the order the merge reads them in")
 		before := encodeRecord(t, reports)
 
-		merged, err := Merge(inputs(reports...), accepted, &self)
+		merged, err := Merge(inputs(reports...), accepted, &caller)
 		if err != nil {
 			t.Fatalf("Merge(the drawn reports) = %v, want a report", err)
 		}
-		reordered, err := Merge(inputs(shuffled...), accepted, &self)
+		reordered, err := Merge(inputs(shuffled...), accepted, &caller)
 		if err != nil {
 			t.Fatalf("Merge(the drawn reports reordered) = %v, want a report", err)
 		}

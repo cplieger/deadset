@@ -227,7 +227,7 @@ func repeatedInObject(dec *json.Decoder, at string) (string, bool) {
 // file or flag that supplied the value.
 var (
 	provenanceKey   = regexp.MustCompile(`^[a-z][a-z_]*(\.[A-Za-z0-9_]+)*$`)
-	provenanceValue = regexp.MustCompile(`^(default|(repository|central|flag): .+)$`)
+	provenanceValue = regexp.MustCompile(`^(default|(repository|central|flag): [^\r\n]+)$`)
 )
 
 // checkProvenance checks a provenance object. Resolution ignores it, so a document

@@ -6,52 +6,63 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"maps"
 	"path"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	spec "github.com/cplieger/deadset-spec/v3"
+	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/internal/verdict"
 )
 
 const vectorsDir = "vectors/merge"
 
-// failureExit is the code of the failure row of contract/exit-codes.json, with
-// which a run ends when the merge returns no report.
-const failureExit = 3
-
-// pendingCases are the published cases whose inputs carry a dead edge
-// evaluation, which this merge carries unresolved.
+// pendingCases are the published cases whose inputs carry a dead or absent
+// edge evaluation, which the resolution step and the stale-edge step decide.
+// This merge carries every evaluation unresolved, so it does not run them.
 var pendingCases = map[string]bool{
-	"edge-absent-on-every-side": true,
-	"pending-pair-dead":         true,
-	"pending-pair-live":         true,
-	"pending-pair-unevaluated":  true,
+	"edge-absent-on-every-side":          true,
+	"pending-member-beside-a-stale-edge": true,
+	"pending-member-on-a-second-edge":    true,
+	"pending-pair-absent":                true,
+	"pending-pair-dead":                  true,
+	"pending-pair-live":                  true,
+	"pending-pair-unevaluated":           true,
 }
 
 // admissionCases are the published cases the admission step refuses, each with
 // the reason its refusal names.
 var admissionCases = map[string]error{
-	"conformance-not-passed":      ErrConformance,
-	"schema-version-out-of-range": ErrSchemaVersion,
+	"configuration-built-and-not-built": ErrEntryState,
+	"configuration-entries-differ":      ErrEntryIdentity,
+	"conformance-not-passed":            ErrConformance,
+	"consumer-entries-differ":           ErrEntryIdentity,
+	"consumer-loaded-and-unavailable":   ErrEntryState,
+	"findings-omitted":                  ErrOmitted,
+	"one-analyzer-name-twice":           ErrAnalyzerName,
+	"one-artifact-run-twice":            ErrAnalyzerName,
+	"schema-version-out-of-range":       ErrSchemaVersion,
+	"targets-differ":                    ErrTarget,
 }
 
 // vectorCase is one case directory of vectors/merge, decoded.
 type vectorCase struct {
 	expected []byte
-	self     report.Analyzer
+	caller   Caller
+	failOn   config.Severity
 	inputs   []Input
 	accepted []string
 	exit     int
 }
 
-// TestMergeReproducesEveryPublishedVector merges every published case that
-// produces a report and compares the encoded report with expected.json byte
-// for byte, and runs every case that produces none to its typed refusal.
+// TestMergeReproducesEveryPublishedVector merges every published case and runs
+// the verdict over the merged report under the caller's failing severity: a
+// case that produces a report matches expected.json byte for byte and its
+// exit code, and a case that produces none ends in its typed refusal.
 func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 	t.Parallel()
 
@@ -59,18 +70,22 @@ func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if pendingCases[name] {
-				t.Skip("the inputs carry a dead edge evaluation, and this merge does not resolve one")
-			}
 			c := readCase(t, name)
-			merged, err := Merge(c.inputs, c.accepted, &c.self)
+			if unresolved := carriesUnresolvedEvaluation(c.inputs); unresolved != pendingCases[name] {
+				t.Fatalf("case %s carries a dead or absent evaluation %t, and pendingCases names it %t",
+					name, unresolved, pendingCases[name])
+			}
+			if pendingCases[name] {
+				t.Skip("the inputs carry a dead or absent edge evaluation, and this merge resolves none")
+			}
+			merged, err := Merge(c.inputs, c.accepted, &c.caller)
 			if c.expected == nil {
 				want, known := admissionCases[name]
 				if !known {
 					t.Fatalf("case %s holds no expected.json and names no refusal this test expects", name)
 				}
-				if c.exit != failureExit {
-					t.Errorf("case %s expects exit %d with no merged report, want %d", name, c.exit, failureExit)
+				if c.exit != verdict.Failure {
+					t.Errorf("case %s expects exit %d with no merged report, want %d", name, c.exit, verdict.Failure)
 				}
 				if merged != nil || !errors.Is(err, want) {
 					t.Errorf("Merge(%s) = %v, %v, want no report and an error wrapping %v", name, merged, err, want)
@@ -80,52 +95,138 @@ func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Merge(%s) = %v, want a report", name, err)
 			}
-			if c.exit == failureExit {
-				t.Errorf("case %s holds expected.json and expects exit %d, which a merged report cannot end in", name, c.exit)
-			}
 			if got := encode(t, merged); !bytes.Equal(got, c.expected) {
 				t.Errorf("Merge(%s) =\n%s\nwant expected.json\n%s", name, got, c.expected)
+			}
+			if got := verdict.Code(merged, c.failOn, verdict.On); got != c.exit {
+				t.Errorf("Code(Merge(%s), %s, On) = %d, want expected_exit %d", name, c.failOn, got, c.exit)
 			}
 		})
 	}
 }
 
+// carriesUnresolvedEvaluation reports whether any input holds an edge
+// evaluation whose state is dead or absent.
+func carriesUnresolvedEvaluation(inputs []Input) bool {
+	for _, in := range inputs {
+		for _, e := range in.Report.EdgeEvaluations {
+			if e.State != report.StateLive {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed pins what each
-// published admission refusal names: both schema versions, or the analyzer
-// whose conformance result is not a pass.
+// published admission refusal names: the analyzers, and what the rule read.
 func TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed(t *testing.T) {
 	t.Parallel()
 
-	t.Run("schema-version-out-of-range", func(t *testing.T) {
-		t.Parallel()
+	cases := []struct {
+		name  string
+		named []string
+		check func(error) bool
+	}{
+		{
+			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "6.0.0"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*AdmissionError](err)
+				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
+					slices.Equal(refused.Accepted, []string{"6.0.0"})
+			},
+		},
+		{
+			name: "conformance-not-passed", named: []string{"deadset-go"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*AdmissionError](err)
+				return ok && refused.Analyzer == "deadset-go" && refused.Result == report.ResultFail
+			},
+		},
+		{
+			name: "findings-omitted", named: []string{"deadset-go", "1"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*AdmissionError](err)
+				return ok && refused.Analyzer == "deadset-go" && refused.Omitted == 1
+			},
+		},
+		{
+			name: "targets-differ", named: []string{"deadset-go", "deadset-ts"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*TargetError](err)
+				return ok && refused.Analyzers == [2]string{"deadset-go", "deadset-ts"} && refused.Targets[0] != refused.Targets[1]
+			},
+		},
+		{
+			name: "configuration-entries-differ", named: []string{"deadset-go", "example-go", "configurations"},
+			check: entryRefusal(ErrEntryIdentity, "configurations", "configurations"),
+		},
+		{
+			name: "consumer-entries-differ", named: []string{"consumers.loaded"},
+			check: entryRefusal(ErrEntryIdentity, "consumers.loaded", "consumers.loaded"),
+		},
+		{
+			name: "configuration-built-and-not-built", named: []string{"configurations", "configurations_not_built"},
+			check: func(err error) bool {
+				return entryRefusal(ErrEntryState, "configurations", "configurations_not_built")(err) ||
+					entryRefusal(ErrEntryState, "configurations_not_built", "configurations")(err)
+			},
+		},
+		{
+			name: "consumer-loaded-and-unavailable", named: []string{"consumers.loaded", "consumers.unavailable"},
+			check: func(err error) bool {
+				return entryRefusal(ErrEntryState, "consumers.loaded", "consumers.unavailable")(err) ||
+					entryRefusal(ErrEntryState, "consumers.unavailable", "consumers.loaded")(err)
+			},
+		},
+		{
+			name: "one-analyzer-name-twice", named: []string{"deadset-go"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*NameError](err)
+				return ok && refused.Name == "deadset-go" && refused.Versions[0] != refused.Versions[1] &&
+					refused.Digests[0] != refused.Digests[1]
+			},
+		},
+		{
+			name: "one-artifact-run-twice", named: []string{"deadset-go"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*NameError](err)
+				return ok && refused.Name == "deadset-go" && refused.Digests[0] == refused.Digests[1]
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		_, err := Merge(readCase(t, "schema-version-out-of-range").inputs, []string{"6.0.0"}, &report.Analyzer{})
-		refused, ok := errors.AsType[*AdmissionError](err)
-		if !ok {
-			t.Fatalf("Merge(schema-version-out-of-range) = %v, want an *AdmissionError", err)
-		}
-		if refused.Analyzer != "deadset-go" || refused.SchemaVersion != "1.0.0" || !slices.Equal(refused.Accepted, []string{"6.0.0"}) {
-			t.Errorf("Merge(schema-version-out-of-range) = %#v, want deadset-go's schema version 1.0.0 against [6.0.0]", refused)
-		}
-		if message := err.Error(); !strings.Contains(message, "1.0.0") || !strings.Contains(message, "6.0.0") {
-			t.Errorf("Merge(schema-version-out-of-range) error %q, want both versions named", message)
-		}
-	})
-	t.Run("conformance-not-passed", func(t *testing.T) {
-		t.Parallel()
+			c := readCase(t, tc.name)
+			_, err := Merge(c.inputs, c.accepted, &c.caller)
+			if !tc.check(err) {
+				t.Fatalf("Merge(%s) = %#v, want the refusal the case states", tc.name, err)
+			}
+			for _, part := range tc.named {
+				if !strings.Contains(err.Error(), part) {
+					t.Errorf("Merge(%s) error %q, want it to name %q", tc.name, err, part)
+				}
+			}
+		})
+	}
+	var named []string
+	for _, tc := range cases {
+		named = append(named, tc.name)
+	}
+	if want := slices.Sorted(maps.Keys(admissionCases)); !slices.Equal(slices.Sorted(slices.Values(named)), want) {
+		t.Errorf("the refusals this test pins are %q, want every admission case %q", named, want)
+	}
+}
 
-		_, err := Merge(readCase(t, "conformance-not-passed").inputs, []string{"6.0.0"}, &report.Analyzer{})
-		refused, ok := errors.AsType[*AdmissionError](err)
-		if !ok {
-			t.Fatalf("Merge(conformance-not-passed) = %v, want an *AdmissionError", err)
-		}
-		if refused.Analyzer != "deadset-go" || refused.Result != report.ResultFail {
-			t.Errorf("Merge(conformance-not-passed) = %#v, want deadset-go refused on its fail result", refused)
-		}
-		if message := err.Error(); !strings.Contains(message, "deadset-go") {
-			t.Errorf("Merge(conformance-not-passed) error %q, want the analyzer named", message)
-		}
-	})
+// entryRefusal is whether an error is an [*EntryError] for reason, naming the
+// two arrays in that order.
+func entryRefusal(reason error, first, second string) func(error) bool {
+	return func(err error) bool {
+		refused, ok := errors.AsType[*EntryError](err)
+		return ok && errors.Is(err, reason) && refused.Arrays == [2]string{first, second} && refused.ID != ""
+	}
 }
 
 // TestMergeVectorComparisonFailsOnAOneFieldChange plants one changed field in
@@ -134,21 +235,24 @@ func TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed(t *testing.T) {
 func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 	t.Parallel()
 
-	plants := map[string]func(*report.Report){
-		"analyzer version":     func(r *report.Report) { r.Analyzer.Version += "-x" },
-		"merged_from digest":   func(r *report.Report) { r.MergedFrom[0].Digest = "sha256:" + strings.Repeat("0", 64) },
-		"target identity":      func(r *report.Report) { r.Target.Identity += "x" },
-		"a configuration's id": func(r *report.Report) { r.Configurations[0].ID += "x" },
-		"a test file rule":     func(r *report.Report) { r.TestFileRules[0].Matched++ },
-		"totals.reasons":       func(r *report.Report) { r.Totals.ReasonsRecorded++ },
-		"totals.deletable":     func(r *report.Report) { r.Totals.DeletableLines++ },
-		"the carried analyzer": func(r *report.Report) {
+	plants := map[string]func(*report.Report) bool{
+		"analyzer version":     func(r *report.Report) bool { r.Analyzer.Version += "-x"; return true },
+		"merged_from digest":   func(r *report.Report) bool { r.MergedFrom[0].Digest = "sha256:" + strings.Repeat("0", 64); return true },
+		"target identity":      func(r *report.Report) bool { r.Target.Identity += "x"; return true },
+		"a configuration's id": func(r *report.Report) bool { r.Configurations[0].ID += "x"; return true },
+		"a test file rule":     func(r *report.Report) bool { r.TestFileRules[0].Matched++; return true },
+		"totals.reasons":       func(r *report.Report) bool { r.Totals.ReasonsRecorded++; return true },
+		"totals.deletable":     func(r *report.Report) bool { r.Totals.DeletableLines++; return true },
+		"the carried analyzer": func(r *report.Report) bool {
 			switch {
 			case len(r.Findings) > 0:
 				r.Findings[0].Analyzer += "x"
 			case len(r.StaleSuppressions) > 0:
 				r.StaleSuppressions[0].Analyzer += "x"
+			default:
+				return false
 			}
+			return true
 		},
 	}
 	for _, name := range caseNames(t) {
@@ -163,45 +267,18 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 			t.Run(name+"_"+strings.ReplaceAll(plant, " ", "_"), func(t *testing.T) {
 				t.Parallel()
 
-				merged, err := Merge(c.inputs, c.accepted, &c.self)
+				merged, err := Merge(c.inputs, c.accepted, &c.caller)
 				if err != nil {
 					t.Fatalf("Merge(%s) = %v, want a report", name, err)
 				}
-				change(merged)
+				if !change(merged) {
+					t.Skipf("case %s carries no record whose %s changes", name, plant)
+				}
 				if got := encode(t, merged); bytes.Equal(got, c.expected) {
 					t.Errorf("Merge(%s) with %s changed encodes to expected.json, want the comparison to fail", name, plant)
 				}
 			})
 		}
-	}
-}
-
-// TestReadCaseTakesTheCallerFactsFromCallerJSON pins the caller.json source:
-// a case whose caller.json carries other facts than its expected.json is read
-// with the facts caller.json names.
-func TestReadCaseTakesTheCallerFactsFromCallerJSON(t *testing.T) {
-	t.Parallel()
-
-	tree := fstest.MapFS{}
-	for _, file := range []string{"accepted.txt", "expected_exit", "expected.json", "inputs/00-go.json"} {
-		name := path.Join(vectorsDir, "one-report", file)
-		tree[name] = &fstest.MapFile{Data: readVector(t, spec.Vectors, name)}
-	}
-	caller := callerFile{
-		Description: "the facts the caller passes",
-		Digests:     map[string]string{"00-go.json": digest("b")},
-		Analyzer:    self,
-	}
-	body, err := json.Marshal(caller)
-	if err != nil {
-		t.Fatalf("Setup: json.Marshal(caller.json) = %v", err)
-	}
-	tree[path.Join(vectorsDir, "one-report", "caller.json")] = &fstest.MapFile{Data: body}
-
-	c := readCaseFrom(t, tree, "one-report")
-	if !reflect.DeepEqual(c.self, self) || c.inputs[0].Digest != digest("b") {
-		t.Errorf("readCaseFrom(one-report with caller.json) = %+v and digest %s, want %+v and %s",
-			c.self, c.inputs[0].Digest, self, digest("b"))
 	}
 }
 
@@ -225,104 +302,82 @@ func caseNames(t *testing.T) []string {
 	return names
 }
 
-// readCase decodes one case: its inputs in file order, the accepted schema
-// versions, the expected exit code, the expected merged report's bytes where
-// the case has one, and the two facts a merge takes from its caller.
+// readCase decodes one case: its inputs in file order, each with the digest
+// caller.json gives it, the accepted schema versions, the caller's facts, the
+// expected exit code, and the expected merged report's bytes where the case has
+// one. The two versions caller.json names are the ones this module writes, so a
+// merging product passing its own versions writes the case's bytes.
 func readCase(t *testing.T, name string) vectorCase {
 	t.Helper()
 
-	return readCaseFrom(t, spec.Vectors, name)
-}
-
-// readCaseFrom is readCase over the vectors tree vectors holds.
-func readCaseFrom(t *testing.T, vectors fs.FS, name string) vectorCase {
-	t.Helper()
-
 	dir := path.Join(vectorsDir, name)
-	c := vectorCase{accepted: lines(t, vectors, path.Join(dir, "accepted.txt"))}
-	exit, err := strconv.Atoi(strings.TrimSpace(string(readVector(t, vectors, path.Join(dir, "expected_exit")))))
+	c := vectorCase{accepted: lines(t, path.Join(dir, "accepted.txt"))}
+	exit, err := strconv.Atoi(strings.TrimSpace(string(readVector(t, path.Join(dir, "expected_exit")))))
 	if err != nil {
 		t.Fatalf("Setup: %s/expected_exit: %v", dir, err)
 	}
 	c.exit = exit
-	if expected, err := fs.ReadFile(vectors, path.Join(dir, "expected.json")); err == nil {
+	if expected, err := fs.ReadFile(spec.Vectors, path.Join(dir, "expected.json")); err == nil {
 		c.expected = expected
 	}
-	files, err := fs.Glob(vectors, path.Join(dir, "inputs", "*.json"))
+
+	var caller callerFile
+	decoder := json.NewDecoder(bytes.NewReader(readVector(t, path.Join(dir, "caller.json"))))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&caller); err != nil {
+		t.Fatalf("Setup: decode %s/caller.json: %v", dir, err)
+	}
+	if caller.SchemaVersion != report.SchemaVersion || caller.ContractVersion != report.ContractVersion {
+		t.Fatalf("Setup: %s/caller.json writes schema %s and contract %s, want this module's %s and %s",
+			dir, caller.SchemaVersion, caller.ContractVersion, report.SchemaVersion, report.ContractVersion)
+	}
+	c.caller = Caller{
+		SchemaVersion:   caller.SchemaVersion,
+		ContractVersion: caller.ContractVersion,
+		Name:            caller.Analyzer.Name,
+		Version:         caller.Analyzer.Version,
+		Conformance:     caller.Analyzer.Conformance,
+	}
+	c.failOn = caller.FailOn
+
+	files, err := fs.Glob(spec.Vectors, path.Join(dir, "inputs", "*.json"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("Setup: %s/inputs holds no report (%v)", dir, err)
 	}
-	reports := make([]*report.Report, len(files))
-	for i, file := range files {
-		decoded, err := report.Decode(readVector(t, vectors, file))
+	if named := slices.Sorted(maps.Keys(caller.Digests)); len(named) != len(files) {
+		t.Fatalf("Setup: %s/caller.json names digests for %q, want one per input of %q", dir, named, files)
+	}
+	for _, file := range files {
+		decoded, err := report.Decode(readVector(t, file))
 		if err != nil {
 			t.Fatalf("Setup: report.Decode(%s) = %v", file, err)
 		}
-		reports[i] = decoded
+		digest := caller.Digests[path.Base(file)]
+		if digest == "" {
+			t.Fatalf("Setup: %s/caller.json names no digest for %s", dir, path.Base(file))
+		}
+		c.inputs = append(c.inputs, Input{Report: decoded, Digest: digest})
 	}
-	self, digests := callerFacts(t, vectors, dir, c.expected, files, reports)
-	for i, decoded := range reports {
-		c.inputs = append(c.inputs, Input{Report: decoded, Digest: digests[i]})
-	}
-	c.self = self
 	return c
 }
 
-// callerFile is a case's caller.json: the merging product's analyzer member,
-// and each input's artifact digest by the input's file name.
+// callerFile is a case's caller.json.
 type callerFile struct {
-	Description string            `json:"description"`
-	Digests     map[string]string `json:"digests"`
-	Analyzer    report.Analyzer   `json:"analyzer"`
+	Digests         map[string]string `json:"digests"`
+	SchemaVersion   string            `json:"schema_version"`
+	ContractVersion string            `json:"contract_version"`
+	FailOn          config.Severity   `json:"fail_on"`
+	Analyzer        struct {
+		Name        string             `json:"name"`
+		Version     string             `json:"version"`
+		Conformance report.Conformance `json:"conformance"`
+	} `json:"analyzer"`
 }
 
-// callerFacts is the merging product's analyzer member and each input's
-// artifact digest, which no input report holds. They come from the case's
-// caller.json where it has one, and otherwise from its expected.json, which
-// states what the caller passed; a case with neither ends in admission, which
-// reads neither.
-func callerFacts(t *testing.T, vectors fs.FS, dir string, expected []byte, files []string, inputs []*report.Report) (report.Analyzer, []string) {
+func readVector(t *testing.T, name string) []byte {
 	t.Helper()
 
-	digests := make([]string, len(inputs))
-	if body, err := fs.ReadFile(vectors, path.Join(dir, "caller.json")); err == nil {
-		var caller callerFile
-		decoder := json.NewDecoder(bytes.NewReader(body))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&caller); err != nil {
-			t.Fatalf("Setup: decode %s/caller.json: %v", dir, err)
-		}
-		for i, file := range files {
-			if digests[i] = caller.Digests[path.Base(file)]; digests[i] == "" {
-				t.Fatalf("Setup: %s/caller.json names no digest for %s", dir, path.Base(file))
-			}
-		}
-		return caller.Analyzer, digests
-	}
-	if expected == nil {
-		return report.Analyzer{}, digests
-	}
-	merged, err := report.Decode(expected)
-	if err != nil {
-		t.Fatalf("Setup: report.Decode(%s/expected.json) = %v", dir, err)
-	}
-	for i, input := range inputs {
-		for _, entry := range merged.MergedFrom {
-			if entry.Name == input.Analyzer.Name && entry.Version == input.Analyzer.Version {
-				digests[i] = entry.Digest
-			}
-		}
-		if digests[i] == "" {
-			t.Fatalf("Setup: %s/expected.json names no merged_from entry for %s %s", dir, input.Analyzer.Name, input.Analyzer.Version)
-		}
-	}
-	return merged.Analyzer, digests
-}
-
-func readVector(t *testing.T, vectors fs.FS, name string) []byte {
-	t.Helper()
-
-	body, err := fs.ReadFile(vectors, name)
+	body, err := fs.ReadFile(spec.Vectors, name)
 	if err != nil {
 		t.Fatalf("Setup: read %s: %v", name, err)
 	}
@@ -330,11 +385,11 @@ func readVector(t *testing.T, vectors fs.FS, name string) []byte {
 }
 
 // lines is every non-empty line of a vector file.
-func lines(t *testing.T, vectors fs.FS, name string) []string {
+func lines(t *testing.T, name string) []string {
 	t.Helper()
 
 	var held []string
-	scanner := bufio.NewScanner(bytes.NewReader(readVector(t, vectors, name)))
+	scanner := bufio.NewScanner(bytes.NewReader(readVector(t, name)))
 	for scanner.Scan() {
 		if line := strings.TrimSpace(scanner.Text()); line != "" {
 			held = append(held, line)

@@ -167,6 +167,11 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 		{name: "exemption-class-spelling", document: `{"exemptions": {"disabled": ["Template_Field"]}}`, at: "exemptions.disabled[0]"},
 		{name: "severity-outside-its-set", document: `{"severity": {"DS1101": "error"}}`, at: "severity.DS1101"},
 		{name: "contract-version-spelling", document: `{"contract_version": "3.0"}`, at: "contract_version"},
+		{name: "provider-member-undeclared", document: `{"providers": {"analyzers": [{"name": "a", "languages": ["go"], "command": "a", "argument": 0}]}}`, at: "providers.analyzers[0].argument"},
+		{name: "provider-name-spelling", document: `{"providers": {"analyzers": [{"name": "Deadset_Go", "languages": ["go"], "command": "a"}]}}`, at: "providers.analyzers[0].name"},
+		{name: "provider-claiming-no-language", document: `{"providers": {"analyzers": [{"name": "a", "languages": [], "command": "a"}]}}`, at: "providers.analyzers[0].languages"},
+		{name: "provider-artifact-half-named", document: `{"providers": {"analyzers": [{"name": "a", "languages": ["go"], "command": "a", "source": "go:example.com/a", "version": "1.0.0"}]}}`, at: "providers.analyzers[0].digest"},
+		{name: "provider-digest-spelling", document: `{"providers": {"analyzers": [{"name": "a", "languages": ["go"], "command": "a", "source": "go:example.com/a", "version": "1.0.0", "digest": "sha256:AB"}]}}`, at: "providers.analyzers[0].digest"},
 		{name: "provenance-value-spelling", document: `{"provenance": {"target.kind": "the repository"}}`, at: "provenance.target.kind"},
 		{name: "document-of-another-type", document: `[]`, at: ""},
 		{name: "second-value", document: `{} {}`, at: ""},
@@ -270,7 +275,10 @@ func TestResolve_passesALanguageSectionThroughUnread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(a ts section its analyzer would refuse) = error %v, want the section passed through", err)
 	}
-	want := map[string]any{"test_files": []any{}, "entry_files": []any{float64(7)}}
+	want := map[string]any{
+		"test_files": []any{}, "entry_files": []any{float64(7)},
+		"injection_registrations": []any{}, "lifecycle_contracts": []any{}, "serializers": []any{},
+	}
 	if got := printed(t, r).Values["ts"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("Resolve(a ts section its analyzer would refuse) ts = %v, want it as written %v", got, want)
 	}

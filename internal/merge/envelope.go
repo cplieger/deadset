@@ -1,7 +1,6 @@
 package merge
 
 import (
-	"cmp"
 	"slices"
 	"strings"
 
@@ -9,38 +8,40 @@ import (
 )
 
 // envelope is the merged report: the ordered working set inside the envelope
-// members derived from the inputs, with self and each input's digest as the
-// caller's facts. Admission has passed, so every input names one target.
-func envelope(inputs []Input, accepted []string, self *report.Analyzer, carried *records) *report.Report {
+// members derived from the inputs, in merged_from's order, with the caller's
+// facts and each input's digest. Admission has passed, so every input names
+// one target, one analyzer name, and one entry under each id across each pair
+// of id-keyed arrays.
+func envelope(ordered []Input, accepted []string, caller *Caller, carried *records) *report.Report {
 	var held gathered
-	for i := range inputs {
-		held.add(&inputs[i])
+	for i := range ordered {
+		held.add(&ordered[i])
 	}
-	analyzer := *self
-	analyzer.Languages = distinct(held.languages, compareStrings)
-	analyzer.SchemaVersionsAccepted = slices.Clone(accepted)
-	sortTotal(held.mergedFrom, compareInputReports)
 	consumers := report.Consumers{
-		Loaded:      distinct(held.loaded, func(a, b *report.LoadedConsumer) int { return strings.Compare(a.ID, b.ID) }),
-		Unavailable: distinct(held.unavailable, func(a, b *report.UnavailableConsumer) int { return strings.Compare(a.ID, b.ID) }),
+		Loaded:      firstPerID(held.loaded, func(c *report.LoadedConsumer) string { return c.ID }),
+		Unavailable: firstPerID(held.unavailable, func(c *report.UnavailableConsumer) string { return c.ID }),
 	}
 	consumers.Declared = len(consumers.Loaded) + len(consumers.Unavailable)
 	return &report.Report{
-		SchemaVersion:   report.SchemaVersion,
-		ContractVersion: report.ContractVersion,
-		Analyzer:        analyzer,
-		MergedFrom:      held.mergedFrom,
-		Target:          inputs[0].Report.Target,
-		Configurations: distinct(held.configurations,
-			func(a, b *report.Configuration) int { return strings.Compare(a.ID, b.ID) }),
-		ConfigurationsNotBuilt: distinct(held.notBuilt,
-			func(a, b *report.ConfigurationNotBuilt) int { return strings.Compare(a.ID, b.ID) }),
-		Consumers:         consumers,
-		Findings:          carried.findings,
-		EdgeEvaluations:   carried.evaluations,
-		StaleSuppressions: carried.stale,
-		DeclaredGaps:      carried.gaps,
-		ExcludedByCgo:     distinct(held.excludedByCgo, compareStrings),
+		SchemaVersion:   caller.SchemaVersion,
+		ContractVersion: caller.ContractVersion,
+		Analyzer: report.Analyzer{
+			Name:                   caller.Name,
+			Version:                caller.Version,
+			Languages:              distinct(held.languages, compareStrings),
+			SchemaVersionsAccepted: slices.Clone(accepted),
+			Conformance:            caller.Conformance,
+		},
+		MergedFrom:             held.mergedFrom,
+		Target:                 ordered[0].Report.Target,
+		Configurations:         firstPerID(held.configurations, func(c *report.Configuration) string { return c.ID }),
+		ConfigurationsNotBuilt: firstPerID(held.notBuilt, func(c *report.ConfigurationNotBuilt) string { return c.ID }),
+		Consumers:              consumers,
+		Findings:               carried.findings,
+		EdgeEvaluations:        carried.evaluations,
+		StaleSuppressions:      carried.stale,
+		DeclaredGaps:           carried.gaps,
+		ExcludedByCgo:          distinct(held.excludedByCgo, compareStrings),
 		TestFileRules: distinct(held.testFileRules,
 			func(a, b *report.TestFileRule) int { return strings.Compare(a.Rule, b.Rule) }),
 		Totals: totals(carried, &held),
@@ -48,7 +49,7 @@ func envelope(inputs []Input, accepted []string, self *report.Analyzer, carried 
 }
 
 // gathered is every envelope member of every input that the merged envelope
-// unions, and the counts it sums.
+// unions, in merged_from's order, and the counts it sums.
 type gathered struct {
 	languages      []string
 	mergedFrom     []report.InputReport
@@ -59,10 +60,8 @@ type gathered struct {
 	excludedByCgo  []string
 	testFileRules  []report.TestFileRule
 
-	inEffect          int
-	reasons           int
-	omitted           int
-	omittedBySeverity report.BySeverity
+	inEffect int
+	reasons  int
 }
 
 func (g *gathered) add(in *Input) {
@@ -81,33 +80,37 @@ func (g *gathered) add(in *Input) {
 	g.testFileRules = append(g.testFileRules, r.TestFileRules...)
 	g.inEffect += r.Totals.SuppressionsInEffect
 	g.reasons += r.Totals.ReasonsRecorded
-	if r.Totals.Omitted > 0 {
-		g.omitted += r.Totals.Omitted
-		listed := severities(r.Findings)
-		g.omittedBySeverity.Allow += max(r.Totals.BySeverity.Allow-listed.Allow, 0)
-		g.omittedBySeverity.Warn += max(r.Totals.BySeverity.Warn-listed.Warn, 0)
-		g.omittedBySeverity.Deny += max(r.Totals.BySeverity.Deny-listed.Deny, 0)
+}
+
+// firstPerID is one entry per id, ordered by id: of the entries under one id,
+// the one entries holds first. entries is in merged_from's order, so an entry
+// two reports word differently is the first report's.
+func firstPerID[T any](entries []T, id func(*T) string) []T {
+	kept := make([]T, 0, len(entries))
+	seen := make(map[string]bool, len(entries))
+	for i := range entries {
+		if key := id(&entries[i]); !seen[key] {
+			seen[key] = true
+			kept = append(kept, entries[i])
+		}
 	}
+	slices.SortStableFunc(kept, func(a, b T) int { return strings.Compare(id(&a), id(&b)) })
+	return kept
 }
 
 // totals are the merged report's counts, recomputed over the merged arrays
-// except the suppression counts and the findings an input's cap omitted, which
-// no merged array holds and which sum over the inputs. An omitted finding keeps
-// its severity, so a capped input cannot hide a failing finding from the
-// verdict.
+// except the suppression counts, which no merged array holds and which sum
+// over the inputs. No input omitted a finding, so the merged report omits
+// none.
 func totals(carried *records, held *gathered) report.Totals {
 	counted := report.Totals{
-		Findings:             len(carried.findings) + held.omitted,
+		Findings:             len(carried.findings),
 		BySeverity:           severities(carried.findings),
 		DeletableLines:       deletableLines(carried.findings),
 		SuppressionsInEffect: held.inEffect,
 		ReasonsRecorded:      held.reasons,
 		StaleSuppressions:    len(carried.stale),
-		Omitted:              held.omitted,
 	}
-	counted.BySeverity.Allow += held.omittedBySeverity.Allow
-	counted.BySeverity.Warn += held.omittedBySeverity.Warn
-	counted.BySeverity.Deny += held.omittedBySeverity.Deny
 	for i := range carried.evaluations {
 		if carried.evaluations[i].State == report.StateDead {
 			counted.Pending++
@@ -131,9 +134,9 @@ func severities(findings []report.Finding) report.BySeverity {
 	return counted
 }
 
-// deletableLines sums the deletable lines of every component a finding roots,
-// counting a component two findings root once. The component a finding names
-// first in canonical order supplies the count.
+// deletableLines sums the deletable lines of every component a root finding
+// names, counting a component two root findings name once. The component a
+// root finding names first in canonical order supplies the count.
 func deletableLines(findings []report.Finding) int {
 	counted := map[string]bool{}
 	lines := 0
@@ -149,7 +152,3 @@ func deletableLines(findings []report.Finding) int {
 }
 
 func compareStrings(a, b *string) int { return strings.Compare(*a, *b) }
-
-func compareInputReports(a, b *report.InputReport) int {
-	return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Version, b.Version))
-}

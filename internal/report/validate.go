@@ -19,7 +19,7 @@ var (
 	edgePattern       = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$`)
 	oneLinePattern    = regexp.MustCompile(`^[^\r\n]+$`)
 	messagePattern    = regexp.MustCompile(`^[^\r\n]*[^.\r\n]$`)
-	nonBlankPattern   = regexp.MustCompile(`\S`)
+	nonBlankPattern   = regexp.MustCompile(`[^ \t\r\n]`)
 	componentPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*/c-\d+$`)
 	gapSymbolPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 	capabilityPattern = regexp.MustCompile(`^(DS\d{4}|[a-z][a-z0-9]*(-[a-z0-9]+)*)$`)

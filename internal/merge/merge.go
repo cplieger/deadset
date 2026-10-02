@@ -4,7 +4,11 @@
 // order return the same report.
 package merge
 
-import "github.com/cplieger/deadset/internal/report"
+import (
+	"slices"
+
+	"github.com/cplieger/deadset/internal/report"
+)
 
 // Input is one analyzer report a merge reads, with the digest of the analyzer
 // artifact that wrote it.
@@ -17,22 +21,35 @@ type Input struct {
 	Digest string
 }
 
+// Caller is what the product running a merge knows about itself that no input
+// report carries: the versions the merged report is written to, and the name,
+// version and conformance block of its analyzer member.
+type Caller struct {
+	SchemaVersion   string
+	ContractVersion string
+	Name            string
+	Version         string
+	Conformance     report.Conformance
+}
+
 // Merge admits every input against the accepted schema versions, carries every
 // record of every input under the name of its analyzer, and orders the merged
-// arrays by the canonical key. The merged report names a copy of self, with the
-// inputs' languages and accepted in place of self's own. Merge modifies none of
-// its arguments.
+// arrays by the canonical key. The merged report's versions and analyzer member
+// are the caller's, with the inputs' languages and accepted beside them. Merge
+// modifies none of its arguments.
 //
-// It returns [ErrNoInput], an [*AdmissionError] per refused input (joined when
-// there are several) or a [*TargetError], and then no report.
-func Merge(inputs []Input, accepted []string, self *report.Analyzer) (*report.Report, error) {
+// It returns no report with [ErrNoInput] or an admission refusal, an
+// [*AdmissionError] per refused input or one error for the first two that cannot merge.
+func Merge(inputs []Input, accepted []string, caller *Caller) (*report.Report, error) {
 	if len(inputs) == 0 {
 		return nil, ErrNoInput
 	}
-	if err := admit(inputs, accepted); err != nil {
+	ordered := slices.Clone(inputs)
+	slices.SortFunc(ordered, compareInputs)
+	if err := admit(ordered, accepted); err != nil {
 		return nil, err
 	}
-	carried := union(inputs)
+	carried := union(ordered)
 	carried.order()
-	return envelope(inputs, accepted, self, carried), nil
+	return envelope(ordered, accepted, caller, carried), nil
 }
