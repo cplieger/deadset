@@ -1,0 +1,7 @@
+analyzer deadset-go 1.1.0
+analyzer example-go 1.0.0
+internal/store/legacy.go:9:6 DS1002 unused-unexported deny example-go
+internal/store/store.go:19:6 DS1001 unused-exported deny deadset-go
+internal/store/store.go:19:6 DS1001 unused-exported deny example-go
+internal/store/store.go:41:6 DS1002 unused-unexported deny deadset-go
+4 findings, 0 stale, 0 omitted

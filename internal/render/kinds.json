@@ -1,0 +1,532 @@
+{
+  "description": "The issue-kind vocabulary. Every code is the prefix followed by four digits, assigned to at most one kind for the life of the space: a retired code stays retired and is listed here so re-use is checkable. `default_enabled` and `default_severity` are what a configuration overrides unless `fixed` is true; `max_class` caps the confidence a finding of the kind may carry; `fixability` says what a mechanical edit may do with the finding; `precondition` is a condition the analyzer checks before it reports; `derived_from` names the kinds a derived kind is computed from, the finding being reported once under the most specific code; `overlap` names, per language, the external linters or rules that report the same kind, with `[\"none known\"]` and `[\"not applicable\"]` as its two sentinel values. A retired row carries the code and the name of the kind that once held it.",
+  "prefix": "DS",
+  "languages": ["go", "ts"],
+  "severities": ["allow", "warn", "deny"],
+  "reachability_classes": ["certain", "probable", "possible"],
+  "fixabilities": ["deletable", "narrowable", "manual", "none"],
+  "ranges": [
+    {
+      "start": "DS1000",
+      "end": "DS1099",
+      "family": "unused-declarations",
+      "retired": false,
+      "description": "Declarations nothing references, and the test-only and deprecated variants of them."
+    },
+    {
+      "start": "DS1100",
+      "end": "DS1199",
+      "family": "visibility-narrowing",
+      "retired": false,
+      "description": "Symbols that are alive but more visible than their references require."
+    },
+    {
+      "start": "DS1200",
+      "end": "DS1299",
+      "family": "interfaces",
+      "retired": false,
+      "description": "Interfaces and interface members nothing uses through the interface."
+    },
+    {
+      "start": "DS1300",
+      "end": "DS1399",
+      "family": "reads-and-writes",
+      "retired": false,
+      "description": "State that carries no information: write-only symbols, enumerated members nothing names, type parameters nothing uses."
+    },
+    {
+      "start": "DS1400",
+      "end": "DS1499",
+      "family": "redundant-surface",
+      "retired": true,
+      "description": "The range is retired and holds no live kind."
+    },
+    {
+      "start": "DS1500",
+      "end": "DS1599",
+      "family": "non-code-artifacts",
+      "retired": false,
+      "description": "Source files nothing builds or imports."
+    },
+    {
+      "start": "DS1600",
+      "end": "DS1699",
+      "family": "dependencies-and-module-machinery",
+      "retired": false,
+      "description": "Declared dependencies and module-file directives that are exactly a no-op."
+    },
+    {
+      "start": "DS1700",
+      "end": "DS1799",
+      "family": "self-check",
+      "retired": false,
+      "description": "Suppressions, configured roots and declared edges that no longer match anything; the run checks its own inputs."
+    },
+    {
+      "start": "DS1800",
+      "end": "DS1899",
+      "family": "intra-function",
+      "retired": false,
+      "description": "Dead code inside a function body. The six kinds form one issue group with one enable switch, enabled by default: a severity key naming the range prefix addresses every kind in it at once. Each row names the external linter or rule in each language that reports the same kind, so a repository already running one silences whichever side it prefers."
+    }
+  ],
+  "kinds": [
+    {
+      "code": "DS1001",
+      "name": "unused-exported",
+      "languages": ["go", "ts"],
+      "rule": "An exported symbol with no reference in the target and no reference from any loaded consumer. A symbol referenced only from its own declaration site counts as unreferenced.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1002",
+      "name": "unused-unexported",
+      "languages": ["go", "ts"],
+      "rule": "An unexported symbol with no reference in the target. A symbol referenced only from its own declaration site counts as unreferenced.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1003",
+      "name": "unused-member",
+      "languages": ["go", "ts"],
+      "rule": "A struct field, class member or type member with no reference, a private member included. A member referenced only from its own declaration site counts as unreferenced.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1004",
+      "name": "test-only-use",
+      "languages": ["go", "ts"],
+      "rule": "A symbol with zero production references and at least one test reference: an unused-exported or unused-unexported candidate whose test reference count is not zero, reported once under this code. A reference from a consumer's test files is a test reference unless the configuration counts consumer tests as production.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "derived_from": ["DS1001", "DS1002"]
+    },
+    {
+      "code": "DS1005",
+      "name": "test-of-dead-code",
+      "languages": ["go", "ts"],
+      "rule": "A test symbol whose set of referenced target symbols is non-empty and every member of that set is reported dead. A test that references at least one live target symbol is never reported, no notion of a test's subject and no name matching enters the rule, and the message states the rule. The test joins the dead component of the symbols it references.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1006",
+      "name": "deprecated-unused",
+      "languages": ["go", "ts"],
+      "rule": "A symbol carrying a deprecation marker and no production reference: an unused-exported, unused-unexported or unused-member candidate whose symbol is deprecated, reported once under this code. Go identifies the marker by the convention the standard tools recognize, TypeScript by the documentation tag its tools recognize.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "derived_from": ["DS1001", "DS1002", "DS1003"]
+    },
+    {
+      "code": "DS1101",
+      "name": "unnecessary-export",
+      "languages": ["go", "ts"],
+      "rule": "An exported symbol whose every reference is inside the symbol's own package or module, reported as a candidate for unexporting. The subject is a package-level declaration or a method, and three subjects are excluded: an interface method, whose exportedness is the contract of the interface that declares it; a struct field, which an encoder reads by name; and a method that satisfies an interface some symbol uses as a type, which cannot be unexported without its type ceasing to satisfy that interface. The finding names the narrower visibility the references support. A declared cross-language edge counts as an out-of-package reference; where the edge's other side is unknown to the analyzer the finding is emitted pending.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "narrowable",
+      "fixed": false,
+      "precondition": "Closed world only. Reported always for a main package and an internal/ directory tree, and for a published package only when the configuration declares the consumer set complete and every declared consumer loads. A library with no consumer loaded and no complete consumer set declared gets this finding on its internal/ tree and its main packages and never on its published API."
+    },
+    {
+      "code": "DS1102",
+      "name": "unnecessary-exposure",
+      "languages": ["go"],
+      "rule": "An exported symbol of a non-internal package whose every reference is inside the target module, reported as a candidate for relocation behind an internal boundary. The subject is a package-level declaration or a method, and three subjects are excluded: an interface method, whose exportedness is the contract of the interface that declares it; a struct field, which an encoder reads by name; and a method that satisfies an interface some symbol uses as a type, which cannot be unexported without its type ceasing to satisfy that interface. The finding names the narrower visibility the references support. A declared cross-language edge counts as an out-of-package reference; where the edge's other side is unknown to the analyzer the finding is emitted pending.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "narrowable",
+      "fixed": false,
+      "precondition": "Closed world only. Reported always for a main package and an internal/ directory tree, and for a published package only when the configuration declares the consumer set complete and every declared consumer loads. A library with no consumer loaded and no complete consumer set declared gets this finding on its internal/ tree and its main packages and never on its published API."
+    },
+    {
+      "code": "DS1103",
+      "name": "unreachable-export",
+      "languages": ["go", "ts"],
+      "rule": "An unused exported symbol in a package or file no external code can import: an unused-exported candidate whose enclosing package or file is unimportable from outside, reported once under this code at the certain class, because unimportability is a property of the package graph rather than of the consumer set.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "derived_from": ["DS1001"]
+    },
+    {
+      "code": "DS1104",
+      "name": "redundant-export-keyword",
+      "languages": ["ts"],
+      "rule": "An exported declaration used only inside its own file, reported as a candidate for removing the export keyword. The finding names the narrower visibility the references support.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "narrowable",
+      "fixed": false,
+      "precondition": "Closed world only. Reported in a file that is not an entry file and that either belongs to a project whose consumer set the configuration declares complete or is reached by no manifest export. A declared cross-language edge counts as a reference from outside the file; where the edge's other side is unknown to the analyzer the finding is emitted pending."
+    },
+    {
+      "code": "DS1201",
+      "name": "unused-interface",
+      "languages": ["go", "ts"],
+      "rule": "An interface no symbol uses as a type, counting uses from every loaded module. The finding names the concrete implementations and their positions, and the interface's members join its dead component rather than being reported as independent unused declarations.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1203",
+      "name": "uncalled-interface-method",
+      "languages": ["go", "ts"],
+      "rule": "An interface method that no call site invokes or selects through the interface, whatever the number of implementations. The finding names the concrete implementations and their positions.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "manual",
+      "fixed": false,
+      "precondition": "Exempt: every method of an interface that declares an unexported method, the sum-type shape whose method set exists to restrict the implementors; and every marker method, an interface method whose every implementation carries an empty body."
+    },
+    {
+      "code": "DS1204",
+      "name": "unused-satisfaction-assertion",
+      "languages": ["go"],
+      "rule": "A compile-time satisfaction assertion whose interface no symbol uses as a type.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1301",
+      "name": "write-only-symbol",
+      "languages": ["go", "ts"],
+      "rule": "A package-level or module-level variable, struct field, class member or collection that production code writes and never reads. In production mode a read from a test file counts as no read. A comparison of struct values reads every field of the type: in Go, a value of a struct type used as an operand of `==` or `!=`, as a map key, or as a `switch` tag or `case` expression is a read of every field of that type, transitively through the fields of every struct type it holds, recorded at the comparison, because equality reads every field and a field that decides equality carries information. In TypeScript a comparison of two object references reads no member, because `===` compares identity and never a member. The finding names each write position, so the deletion set is visible.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1302",
+      "name": "unused-enum-member",
+      "languages": ["go", "ts"],
+      "rule": "An enumerated member that no symbol names, at the reachability class derived for the member and with no confidence ceiling below it. Every member of a type that carries a string, text or binary conversion method, or that a conversion from an integer or a wire value produces, is retained by the enum-group exemption first, so a member reached only by value is never a candidate.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1303",
+      "name": "unused-type-parameter",
+      "languages": ["go", "ts"],
+      "rule": "A type parameter of a function or method that no part of the declaration's signature and no part of the declaration's body names, at the certain class. The deletion is local to the declaration and the explicit instantiations the reference set already lists.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "precondition": "Function and method type parameters only. A type parameter of a type declaration is never reported, because a phantom type parameter such as `type ID[T any] int` makes two instantiations distinct types while naming the parameter nowhere, so deleting it changes the program."
+    },
+    {
+      "code": "DS1501",
+      "name": "file-never-built",
+      "languages": ["go", "ts"],
+      "rule": "A source file no configuration in the build matrix builds. On the Go side the finding names the build constraint that excluded the file. A file whose build constraint is the ignore tag is never reported: the toolchain applies no build constraint to a file named on its own command line, so that tag is the toolchain's convention for a file built by hand. A file any other custom tag excludes is reported under a matrix the configuration declares complete, because completeness is the maintainer's assertion that the listed configurations are every one the target builds, and a configuration the maintainer builds by hand belongs in that list.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "precondition": "Reported only when the configuration declares the build matrix complete, and never for a file the toolchain ignored solely because it imports \"C\" under a build with cgo disabled; such a file is recorded as excluded by cgo rather than as never built."
+    },
+    {
+      "code": "DS1502",
+      "name": "file-never-imported",
+      "languages": ["go", "ts"],
+      "rule": "A source file that no import reaches, that no root names, and in which no declared cross-language edge names a declaration. An edge's side names a declaration as a root names one, so a file holding a declaration an edge names is evaluated with the edge rather than reported: whether that declaration is dead is the edge evaluation's to say, and the merge resolves it against the paired side.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false
+    },
+    {
+      "code": "DS1601",
+      "name": "unused-dependency",
+      "languages": ["go", "ts"],
+      "rule": "A directly declared dependency that no import in the target needs. On the Go side, a direct require whose module provides no package any target package or test variant imports. On the TypeScript side, a manifest dependency, development dependency or peer dependency the project's import closure does not need. A deletion finding whose fix would remove the last use of a dependency names that dependency.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "manual",
+      "fixed": false,
+      "precondition": "On the Go side the rule is the semantics of `go mod tidy -diff` exactly: a requirement marked indirect is never reported, because it exists to pin a transitive version and removing it changes the build list."
+    },
+    {
+      "code": "DS1605",
+      "name": "unused-module-directive",
+      "languages": ["go"],
+      "rule": "A replace directive whose target module is absent from the build list, the one case in which the directive is exactly a no-op.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "precondition": "Only a replace whose target is absent from the build list. No other module-file directive is reported: not an exclude directive, because not selected is a counterfactual about a resolution that did not happen; not a workspace use entry and not a tool directive, because each is an external entry point whose invocation lives outside anything the analysis reads."
+    },
+    {
+      "code": "DS1701",
+      "name": "suppression-without-reason",
+      "languages": ["go", "ts"],
+      "rule": "A suppression that carries no reason, in any of the three documents: an inline directive, an ignore-file entry or a baseline row. For the ignore file and the baseline, an entry or a row whose reason field is absent, empty or whitespace only is refused and reported rather than matched.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "none",
+      "fixed": false
+    },
+    {
+      "code": "DS1702",
+      "name": "unscoped-ignore-entry",
+      "languages": ["go", "ts"],
+      "rule": "An ignore-file entry or a baseline row that names a symbol and no file path. The entry is reported rather than matched, so a bare name cannot mask a match anywhere else in the project; the inline directive is scoped by its position and cannot be unscoped.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "none",
+      "fixed": false
+    },
+    {
+      "code": "DS1703",
+      "name": "stale-suppression",
+      "languages": ["go", "ts"],
+      "rule": "A suppression that matches no current finding, at either mechanism and in the baseline alike. The run exits with the findings code when at least one is reported. The kind is fixed on at deny: no flag, no severity setting and no per-mechanism exception reduces it below a finding, and a configuration naming this code under a severity key is an unimplemented key.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "none",
+      "fixed": true
+    },
+    {
+      "code": "DS1704",
+      "name": "unmatched-root",
+      "languages": ["go", "ts"],
+      "rule": "A configured root that matches no symbol, or a configured root pattern that matches no symbol. A root set nobody checks silently changes every result, so a stale one is a finding. The kind is fixed on at deny: no flag, no severity setting and no exception reduces it below a finding, and a configuration naming this code under a severity key is an unimplemented key.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "none",
+      "fixed": true
+    },
+    {
+      "code": "DS1705",
+      "name": "stale-cross-language-edge",
+      "languages": ["go", "ts"],
+      "rule": "A declared cross-language edge with a side that at least one analyzer evaluated and every evaluation of that side reports absent, so no analyzer that ran enumerates that side's symbol. Emitted by the merge, once per edge, never by an analyzer, so a stale edge is visible rather than silently inert. A dead side paired with an absent side drops its pending finding, and the edge is the reported defect: a misspelled reference must not turn a live pairing into a deletion.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "none",
+      "fixed": false
+    },
+    {
+      "code": "DS1801",
+      "name": "unused-parameter",
+      "languages": ["go", "ts"],
+      "rule": "A parameter with no reference inside its function body, on a function whose signature is free to change.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "manual",
+      "fixed": false,
+      "precondition": "The signature must be free, defined as follows: the function is not a method retained by interface satisfaction, is not used as a value, is not a go:linkname or cgo target, and is not a stub whose body is empty or only panics. A parameter its body never names is dead whatever the callers, so a published declaration of a library is reported too, with the fixability the vocabulary gives the kind: the signature change is a breaking change.",
+      "overlap": {
+        "go": ["revive unused-parameter", "gopls unusedparams", "unparam"],
+        "ts": ["tsc --noUnusedParameters", "@typescript-eslint/no-unused-vars"]
+      }
+    },
+    {
+      "code": "DS1802",
+      "name": "unused-receiver",
+      "languages": ["go"],
+      "rule": "A named method receiver with no reference inside the method body, on a method whose signature is free to change. Go permits a method with no receiver name, so the fix deletes an identifier and changes no signature.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "precondition": "The same free-signature rule as unused-parameter, applied to the receiver.",
+      "overlap": {
+        "go": ["revive unused-receiver"],
+        "ts": ["not applicable"]
+      }
+    },
+    {
+      "code": "DS1803",
+      "name": "unused-result",
+      "languages": ["go", "ts"],
+      "rule": "A result value that no call site of the function uses, on a function whose signature is free to change.",
+      "default_enabled": true,
+      "default_severity": "warn",
+      "max_class": "certain",
+      "fixability": "manual",
+      "fixed": false,
+      "precondition": "The same free-signature rule as unused-parameter, plus a closed-world condition: every call site of the function must be in the loaded graph, because an unknown caller may consume the result, so the kind reports only for a function whose callers are all visible.",
+      "overlap": {
+        "go": ["unparam"],
+        "ts": ["none known"]
+      }
+    },
+    {
+      "code": "DS1805",
+      "name": "unreachable-statement",
+      "languages": ["go", "ts"],
+      "rule": "A statement that control flow cannot reach, at the precision the language's compiler applies to the same construct.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "overlap": {
+        "go": ["go vet unreachable"],
+        "ts": ["tsc allowUnreachableCode", "eslint no-unreachable"]
+      }
+    },
+    {
+      "code": "DS1807",
+      "name": "dead-store",
+      "languages": ["go", "ts"],
+      "rule": "A write to a local variable with no read before the next write to it or the end of its scope, computed on the same read-and-write classification the write-only-symbol kind uses. The finding names the write position.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "overlap": {
+        "go": ["ineffassign", "wastedassign", "staticcheck SA4006"],
+        "ts": ["eslint no-useless-assignment"]
+      }
+    },
+    {
+      "code": "DS1809",
+      "name": "unreachable-case",
+      "languages": ["go", "ts"],
+      "rule": "A switch case whose type or value an earlier case in the same switch already covers.",
+      "default_enabled": true,
+      "default_severity": "deny",
+      "max_class": "certain",
+      "fixability": "deletable",
+      "fixed": false,
+      "overlap": {
+        "go": ["staticcheck SA4020"],
+        "ts": ["none known"]
+      }
+    }
+  ],
+  "retired": [
+    {
+      "code": "DS1202",
+      "name": "single-implementation-interface"
+    },
+    {
+      "code": "DS1401",
+      "name": "alias-only-declaration"
+    },
+    {
+      "code": "DS1402",
+      "name": "forwarding-only-symbol"
+    },
+    {
+      "code": "DS1503",
+      "name": "duplicate-export"
+    },
+    {
+      "code": "DS1504",
+      "name": "import-cycle"
+    },
+    {
+      "code": "DS1505",
+      "name": "orphan-test-data"
+    },
+    {
+      "code": "DS1506",
+      "name": "unread-embed-pattern"
+    },
+    {
+      "code": "DS1507",
+      "name": "unused-message-key"
+    },
+    {
+      "code": "DS1602",
+      "name": "undeclared-dependency"
+    },
+    {
+      "code": "DS1603",
+      "name": "test-only-dependency"
+    },
+    {
+      "code": "DS1604",
+      "name": "unresolved-import"
+    },
+    {
+      "code": "DS1606",
+      "name": "unused-tool-directive"
+    },
+    {
+      "code": "DS1607",
+      "name": "unused-workspace-entry"
+    },
+    {
+      "code": "DS1608",
+      "name": "unused-binary"
+    },
+    {
+      "code": "DS1804",
+      "name": "constant-result"
+    },
+    {
+      "code": "DS1806",
+      "name": "discarded-pure-result"
+    },
+    {
+      "code": "DS1808",
+      "name": "write-to-copy"
+    },
+    {
+      "code": "DS1810",
+      "name": "empty-branch"
+    },
+    {
+      "code": "DS1811",
+      "name": "redundant-conversion"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+analyzer deadset-ts 1.0.0
+web/src/labels.ts:4:3 DS1003 unused-member deny deadset-ts
+1 findings, 0 stale, 0 omitted

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,9 +10,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/cplieger/deadset/internal/merge"
 	"github.com/cplieger/deadset/internal/present"
 	"github.com/cplieger/deadset/internal/providers"
+	"github.com/cplieger/deadset/internal/render"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/rundir"
 	"github.com/cplieger/deadset/internal/summary"
@@ -31,11 +33,15 @@ import (
 
 func init() { register("analyze", runAnalyze) }
 
-const analyzeUsage = "usage: deadset analyze [--target=DIR] [--central=FILE] [--run-dir=DIR] [--exit-code=on|off] " +
-	"[--languages=LIST] [--min-confidence=CLASS] [--formats=LIST] [--fail-on=SEVERITY]"
+const analyzeUsage = "usage: deadset analyze [--target=DIR] [--central=FILE] [--run-dir=DIR] [--template=FILE] " +
+	"[--exit-code=on|off] [--languages=LIST] [--min-confidence=CLASS] [--formats=LIST] [--fail-on=SEVERITY]"
 
 // name is the analyzer name a merged report this command writes carries.
 const name = "deadset"
+
+// templateFlag names the flag that names the template the template format
+// renders.
+const templateFlag = "template"
 
 // The two values --exit-code takes.
 const (
@@ -43,13 +49,21 @@ const (
 	exitCodeOff = "off"
 )
 
-// renderings is every format this command renders, each mapped to what it
-// writes to stdout. The json format writes nothing there: its rendering is
-// the merged report in the run directory, which every run writes.
+// renderings is every format rendered on stdout, each mapped to what writes
+// it there.
 var renderings = map[config.Format]func(io.Writer, *report.Report, config.Severity) error{
 	config.FormatText:   func(w io.Writer, r *report.Report, _ config.Severity) error { return summary.Text(w, r) },
-	config.FormatJSON:   nil,
 	config.FormatGitHub: summary.Annotations,
+}
+
+// documents is every format rendered as a file beside the merged report in
+// the run directory, each mapped to the suffix its file carries. Like the
+// merged report, which is the json format's rendering, each is a file rather
+// than a stream: a document a crash cut short on a stream is not one a reader
+// can tell from a complete one, and an upload step names a file.
+var documents = map[config.Format]string{
+	config.FormatSARIF:    ".sarif",
+	config.FormatTemplate: ".tmpl",
 }
 
 // analysis is one analyze invocation: what its flags asked for, and where it
@@ -60,7 +74,11 @@ type analysis struct {
 	// set is the parsed flag set, which the setting flags are read from.
 	set *flag.FlagSet
 
-	target, central, runDir string
+	// template is the parsed template --template names, nil where it names
+	// none.
+	template *render.Template
+
+	target, central, runDir, templatePath string
 
 	exitCode verdict.Switch
 }
@@ -77,6 +95,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	a.set.StringVar(&a.central, "central", "", centralUsage)
 	a.set.StringVar(&a.runDir, "run-dir", "",
 		"the run directory, which must not exist; empty makes one under the temporary directory")
+	a.set.StringVar(&a.templatePath, templateFlag, "", "the file holding the template the template format renders")
 	exitCode := a.set.String("exit-code", exitCodeOn,
 		"whether the exit code carries the verdict of the run: "+exitCodeOn+" or "+exitCodeOff)
 	config.RegisterFlags(a.set)
@@ -129,7 +148,7 @@ func (a *analysis) run(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	reporters := &resolved.Config.Reporters
-	if refused := rendered(reporters.Formats); refused != nil {
+	if refused := a.readTemplate(reporters.Formats); refused != nil {
 		return 0, refused
 	}
 	inScope, err := detect.Languages(root, detect.Options{Languages: resolved.Config.Languages})
@@ -153,7 +172,7 @@ func (a *analysis) run(ctx context.Context) (int, error) {
 	for i := range runs {
 		runs[i].request.Diagnostics = a.stderr
 	}
-	merged, err := analyzeAll(ctx, runs)
+	merged, inputs, err := analyzeAll(ctx, runs)
 	if err != nil {
 		return 0, err
 	}
@@ -162,38 +181,34 @@ func (a *analysis) run(ctx context.Context) (int, error) {
 		Sort:        reporters.Sort,
 		MaxFindings: reporters.MaxFindings,
 	})
-	if err := dir.WriteMerged(merged); err != nil {
-		return 0, err
-	}
-	if err := a.print(merged, reporters); err != nil {
+	if err := a.publish(dir, root, merged, inputs, reporters); err != nil {
 		return 0, err
 	}
 	return a.verdict(merged, reporters.FailOn), nil
 }
 
-// rendered refuses a format this command renders nothing for, before any
-// analyzer runs.
-func rendered(formats []config.Format) error {
-	for _, format := range formats {
-		if _, held := renderings[format]; !held {
-			named := slices.Sorted(maps.Keys(renderings))
-			return &config.Error{
-				Key: "reporters.formats",
-				Message: fmt.Sprintf("reporters.formats names %q, which this build does not render: it renders %s",
-					format, strings.Join(spelled(named), ", ")),
+// readTemplate reads and parses the template --template names, before any
+// analyzer runs. The template format with no template, and a template that
+// does not parse, are invocations the run refuses.
+func (a *analysis) readTemplate(formats []config.Format) error {
+	if a.templatePath == "" {
+		if slices.Contains(formats, config.FormatTemplate) {
+			return &verdict.InvocationError{
+				Err:  errors.New("the template format renders the template this flag names, and none was named"),
+				Flag: templateFlag,
 			}
 		}
+		return nil
+	}
+	text, err := os.ReadFile(a.templatePath)
+	if err != nil {
+		return &verdict.InvocationError{Err: err, Flag: templateFlag}
+	}
+	a.template, err = render.ParseTemplate(string(text))
+	if err != nil {
+		return &verdict.InvocationError{Err: err, Flag: templateFlag}
 	}
 	return nil
-}
-
-// spelled is each format's name.
-func spelled(formats []config.Format) []string {
-	names := make([]string, len(formats))
-	for i, format := range formats {
-		names[i] = string(format)
-	}
-	return names
 }
 
 // runDirectory creates the run directory --run-dir names, or one of its own
@@ -254,8 +269,10 @@ func prepare(dir *rundir.Dir, root string, resolved *config.Resolved,
 
 // analyzeAll runs the handshake with every analyzer and then every analysis,
 // and merges the reports. No analysis runs unless every analyzer was admitted,
-// and every refusal of one step is named.
-func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, error) {
+// no report merges unless each names the analyzer of its provider entry, and
+// every refusal of one step is named. It returns the merged report and the
+// analyzer member of every report it read.
+func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, []report.Analyzer, error) {
 	accepted := []string{report.SchemaVersion}
 	digests := make([]string, len(runs))
 	var refused []error
@@ -271,7 +288,7 @@ func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, error)
 		digests[i] = digest
 	}
 	if len(refused) > 0 {
-		return nil, errors.Join(refused...)
+		return nil, nil, errors.Join(refused...)
 	}
 
 	requests := make([]invoke.Request, len(runs))
@@ -280,23 +297,33 @@ func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, error)
 	}
 	reports, err := invoke.Run(ctx, requests)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	inputs := make([]merge.Input, len(reports))
+	analyzers := make([]report.Analyzer, len(reports))
 	for i := range reports {
+		if named := reports[i].Analyzer.Name; named != runs[i].request.Analyzer {
+			refused = append(refused, fmt.Errorf("analyzer %s, report %s: the report names the analyzer %q, not its provider entry %q",
+				runs[i].request.Analyzer, runs[i].request.Report, named, runs[i].request.Analyzer))
+		}
 		inputs[i] = merge.Input{Report: reports[i], Digest: digests[i]}
+		analyzers[i] = reports[i].Analyzer
+	}
+	if len(refused) > 0 {
+		return nil, nil, errors.Join(refused...)
 	}
 	conformance, err := merge.Conformance()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return merge.Merge(inputs, accepted, &merge.Caller{
+	merged, err := merge.Merge(inputs, accepted, &merge.Caller{
 		SchemaVersion:   report.SchemaVersion,
 		ContractVersion: report.ContractVersion,
 		Name:            name,
 		Version:         version(),
 		Conformance:     conformance,
 	})
+	return merged, analyzers, err
 }
 
 // artifactDigest is the digest of the analyzer artifact at path, spelled as a
@@ -314,19 +341,84 @@ func artifactDigest(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
+// publish writes the merged report r and every rendering of it the formats
+// name that is a file beside it into dir, then prints the rest.
+func (a *analysis) publish(dir *rundir.Dir, root string, r *report.Report,
+	inputs []report.Analyzer, reporters *config.Reporters,
+) error {
+	if err := dir.WriteMerged(r); err != nil {
+		return err
+	}
+	written, err := a.writeDocuments(dir, root, r, inputs, reporters.Formats)
+	if err != nil {
+		return err
+	}
+	return a.print(r, reporters, written)
+}
+
+// writeDocuments writes into dir every rendering the formats name that is a
+// file beside the merged report, in their order, and returns each file's line
+// of the output: the format and the path. The SARIF rendering hashes the
+// source lines its results name, which it reads below the target root, the
+// directory every path of the report is relative to.
+func (a *analysis) writeDocuments(dir *rundir.Dir, root string, r *report.Report,
+	inputs []report.Analyzer, formats []config.Format,
+) ([]string, error) {
+	var written []string
+	for _, format := range formats {
+		suffix, held := documents[format]
+		if !held {
+			continue
+		}
+		var document bytes.Buffer
+		var err error
+		if format == config.FormatSARIF {
+			err = sarifOf(&document, root, r, inputs)
+		} else {
+			err = a.template.Render(&document, r)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := dir.WriteRendering(suffix, document.Bytes()); err != nil {
+			return nil, err
+		}
+		written = append(written, string(format)+" "+dir.Rendering(suffix))
+	}
+	return written, nil
+}
+
+// sarifOf writes the SARIF rendering of r, reading every source file inside
+// root and nowhere else.
+func sarifOf(w io.Writer, root string, r *report.Report, inputs []report.Analyzer) error {
+	files, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = files.Close() }()
+	return render.SARIF(w, r, &render.Sources{
+		Read:      func(path string) ([]byte, error) { return files.ReadFile(filepath.FromSlash(path)) },
+		Analyzers: inputs,
+	})
+}
+
 // print writes to stdout every rendering the formats name, in their order,
-// then the summary, and the remediation when a finding fails the run.
-func (a *analysis) print(r *report.Report, reporters *config.Reporters) error {
+// then the summary, a line naming each rendering written beside the merged
+// report, and the remediation when a finding fails the run.
+func (a *analysis) print(r *report.Report, reporters *config.Reporters, written []string) error {
 	var out strings.Builder
 	for _, format := range reporters.Formats {
-		if render := renderings[format]; render != nil {
-			if err := render(&out, r, reporters.FailOn); err != nil {
+		if write := renderings[format]; write != nil {
+			if err := write(&out, r, reporters.FailOn); err != nil {
 				return err
 			}
 		}
 	}
 	if err := summary.Write(&out, r); err != nil {
 		return err
+	}
+	for _, line := range written {
+		fmt.Fprintln(&out, line)
 	}
 	if verdict.Failing(&r.Totals.BySeverity, reporters.FailOn) {
 		if err := summary.Remediation(&out); err != nil {

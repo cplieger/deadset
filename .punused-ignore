@@ -36,10 +36,8 @@ method (*CommandError).Error is unused
 # Each field holds one member of the report or finding schema. A decode fills
 # it and an encode writes it through reflection, so a report read and written
 # again keeps the member, and no Go code names the field while nothing judges
-# its value: the finding's test and generated flags, a symbol's container,
-# visibility and object path, and the symbol a suppression entry names.
-field TestOnly is unused
-field Generated is unused
+# its value: a symbol's container, visibility and object path, and the symbol
+# a suppression entry names.
 field Parent is unused
 field Exported is unused
 field Objectpath is unused
