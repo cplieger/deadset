@@ -1,6 +1,6 @@
 {
   "description": "The merge's result over the published merge vectors of the corpus version named: a case passes when the merge writes its expected report byte for byte with its expected exit code, or refuses it with the refusal and the exit code it states. result is fail when any case fails.",
-  "corpus_version": "1.9.0",
+  "corpus_version": "2.0.0",
   "result": "pass",
   "cases": [
     {
@@ -101,6 +101,10 @@
     },
     {
       "case": "two-analyzers-one-language",
+      "result": "pass"
+    },
+    {
+      "case": "two-edge-join",
       "result": "pass"
     },
     {

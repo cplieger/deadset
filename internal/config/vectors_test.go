@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	spec "github.com/cplieger/deadset-spec/v4"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/verdict"
 )
@@ -24,6 +24,7 @@ var publishedCases = []string{
 	"array-spanning-lines",
 	"duplicated-key",
 	"integer-written-with-a-fraction",
+	"member-written-as-null",
 	"missing-target-kind",
 	"provenance-on-input",
 	"provider-name-duplicated",

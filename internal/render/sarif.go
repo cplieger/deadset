@@ -26,7 +26,7 @@ const (
 	sarifVersion     = "2.1.0"
 	sarifColumnKind  = "utf16CodeUnits"
 	sarifURIBaseID   = "%SRCROOT%"
-	sarifRootComment = "The target root, the directory the analyzer was run on."
+	sarifRootComment = "The target root."
 	automationPrefix = "deadset/"
 	mergeAutomation  = "deadset/merge/"
 )
@@ -41,83 +41,112 @@ const (
 	maxRelatedLocations = 100
 )
 
-// ErrNotMerged reports a report that names no input report, which the merged
-// rendering has no run for.
-var ErrNotMerged = errors.New("render: the report is not a merged report")
+// ErrUnplaced reports a merged record whose analyzer member names no report
+// the merged report was merged from, which no run of the log holds.
+var ErrUnplaced = errors.New("render: a record names an analyzer the merged report was not merged from")
 
-// Sources is what the SARIF rendering reads beside the merged report.
+// Sources is what the SARIF rendering reads beside the report.
 type Sources struct {
 	// Read returns the content of the file at a target-relative path, which
 	// the line fingerprint of every result hashes.
 	Read func(path string) ([]byte, error)
 
-	// Analyzers is the analyzer member of every report the merge read. A
-	// merged report names each input's name and version but not the languages
-	// its run is categorized and its rules selected by.
-	Analyzers []report.Analyzer
+	// Inputs is every report a merged report was merged from. A merged report
+	// names each input's name and version but not the languages its run is
+	// categorized and its rules selected by, nor the totals its run carries.
+	Inputs []*report.Report
 }
 
-// SARIF writes r, a merged report, as one SARIF 2.1.0 log: one run per report
-// r was merged from, in the order r names them, holding the findings and then
-// the stale suppressions that report carried, and one run under r's own
-// analyzer for the findings the merge emitted itself. A suppressed finding has
-// no record in r and so no result. A file Read cannot return, or a line it
-// does not hold, fails the rendering, because a fingerprint computed from other
-// bytes opens a second alert for the same finding.
+// SARIF writes r as one SARIF 2.1.0 log. An analyzer's own report is one run.
+// A merged report is one run per report it was merged from, in bytewise order
+// of name, holding the findings and then the stale suppressions that report
+// carried, then one run under r's own analyzer for the records that name no
+// analyzer, and the log carries r's totals. A record no run holds, a file Read
+// cannot return, and a line the file does not hold each fail the rendering, the
+// last two because a fingerprint computed from other bytes opens a second alert
+// for the same finding.
 func SARIF(w io.Writer, r *report.Report, src *Sources) error {
-	if len(r.MergedFrom) == 0 {
-		return ErrNotMerged
-	}
 	hashes := &lineHashCache{read: src.Read, held: make(map[string][]string)}
-	runs := make([]sarifRun, 0, len(r.MergedFrom)+1)
-	carried := make(map[string]bool, len(r.MergedFrom))
-	for _, from := range r.MergedFrom {
-		analyzer := slices.IndexFunc(src.Analyzers, func(a report.Analyzer) bool {
-			return a.Name == from.Name && a.Version == from.Version
-		})
-		if analyzer < 0 {
-			return fmt.Errorf("render: no input report is %s %s, which the merged report names", from.Name, from.Version)
-		}
-		languages := slices.Sorted(slices.Values(src.Analyzers[analyzer].Languages))
-		run, err := newRun(from.Name, from.Version, automationPrefix+strings.Join(languages, "+")+"/", languages, r)
-		if err != nil {
-			return err
-		}
-		if err := run.add(r, from.Name, hashes); err != nil {
-			return err
-		}
-		runs = append(runs, run.sarifRun)
-		carried[from.Name] = true
-	}
-	if slices.ContainsFunc(r.Findings, func(f report.Finding) bool { return f.Analyzer == "" }) {
-		run, err := newRun(r.Analyzer.Name, r.Analyzer.Version, mergeAutomation, nil, r)
+	if len(r.MergedFrom) == 0 {
+		run, err := newRun(r.Analyzer.Name, r.Analyzer.Version, automationOf(r.Analyzer.Languages), r.Analyzer.Languages, &r.Totals)
 		if err != nil {
 			return err
 		}
 		if err := run.add(r, "", hashes); err != nil {
 			return err
 		}
-		runs = append(runs, run.sarifRun)
-		carried[""] = true
+		return encode(w, &sarifLog{Schema: sarifSchema, Version: sarifVersion, Runs: []sarifRun{run.sarifRun}})
 	}
-	if err := everyRecordRendered(r, carried); err != nil {
+	runs, err := mergedRuns(r, src.Inputs, hashes)
+	if err != nil {
 		return err
 	}
-	return encode(w, &sarifLog{Schema: sarifSchema, Version: sarifVersion, Runs: runs})
+	return encode(w, &sarifLog{
+		Schema: sarifSchema, Version: sarifVersion, Runs: runs,
+		Properties: &sarifLogProperties{Totals: r.Totals},
+	})
 }
 
-// everyRecordRendered refuses a record that names an analyzer the merged
-// report was not merged from, which no run holds.
-func everyRecordRendered(r *report.Report, carried map[string]bool) error {
+// mergedRuns is the runs of a merged report: one per report it was merged
+// from, by name, each with that input's languages and totals, then the
+// merge's own when a record names no analyzer.
+func mergedRuns(r *report.Report, inputs []*report.Report, hashes *lineHashCache) ([]sarifRun, error) {
+	if err := everyRecordPlaced(r); err != nil {
+		return nil, err
+	}
+	from := slices.SortedFunc(slices.Values(r.MergedFrom), func(a, b report.InputReport) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	runs := make([]sarifRun, 0, len(from)+1)
+	for i := range from {
+		at := slices.IndexFunc(inputs, func(input *report.Report) bool { return input.Analyzer.Name == from[i].Name })
+		if at < 0 {
+			return nil, fmt.Errorf("render: no input report is %s, which the merged report names", from[i].Name)
+		}
+		input := inputs[at]
+		run, err := newRun(from[i].Name, from[i].Version, automationOf(input.Analyzer.Languages), input.Analyzer.Languages, &input.Totals)
+		if err != nil {
+			return nil, err
+		}
+		if err := run.add(r, from[i].Name, hashes); err != nil {
+			return nil, err
+		}
+		runs = append(runs, run.sarifRun)
+	}
+	if slices.ContainsFunc(r.Findings, func(f report.Finding) bool { return f.Analyzer == "" }) ||
+		slices.ContainsFunc(r.StaleSuppressions, func(s report.StaleSuppression) bool { return s.Analyzer == "" }) {
+		run, err := newRun(r.Analyzer.Name, r.Analyzer.Version, mergeAutomation, nil, &r.Totals)
+		if err != nil {
+			return nil, err
+		}
+		if err := run.add(r, "", hashes); err != nil {
+			return nil, err
+		}
+		runs = append(runs, run.sarifRun)
+	}
+	return runs, nil
+}
+
+// automationOf is the automation identifier of a run over languages: their
+// names in bytewise order, joined by a plus sign.
+func automationOf(languages []string) string {
+	return automationPrefix + strings.Join(slices.Sorted(slices.Values(languages)), "+") + "/"
+}
+
+// everyRecordPlaced refuses a record whose analyzer member names no report
+// the merged report was merged from.
+func everyRecordPlaced(r *report.Report) error {
+	placed := func(analyzer string) bool {
+		return analyzer == "" || slices.ContainsFunc(r.MergedFrom, func(m report.InputReport) bool { return m.Name == analyzer })
+	}
 	for i := range r.Findings {
-		if !carried[r.Findings[i].Analyzer] {
-			return fmt.Errorf("render: a finding names the analyzer %q, which the merged report was not merged from", r.Findings[i].Analyzer)
+		if !placed(r.Findings[i].Analyzer) {
+			return fmt.Errorf("%w: a finding names %q", ErrUnplaced, r.Findings[i].Analyzer)
 		}
 	}
 	for i := range r.StaleSuppressions {
-		if !carried[r.StaleSuppressions[i].Analyzer] {
-			return fmt.Errorf("render: a stale suppression names the analyzer %q, which the merged report was not merged from",
-				r.StaleSuppressions[i].Analyzer)
+		if !placed(r.StaleSuppressions[i].Analyzer) {
+			return fmt.Errorf("%w: a stale suppression names %q", ErrUnplaced, r.StaleSuppressions[i].Analyzer)
 		}
 	}
 	return nil
@@ -145,8 +174,9 @@ type run struct {
 }
 
 // newRun is an empty run under the named driver, with the rules of languages
-// (every live kind when languages is nil) and r's totals.
-func newRun(name, version, automation string, languages []string, r *report.Report) (*run, error) {
+// (every live kind when languages is nil) and the totals of the report the
+// driver wrote.
+func newRun(name, version, automation string, languages []string, totals *report.Totals) (*run, error) {
 	rules, err := rulesFor(languages)
 	if err != nil {
 		return nil, err
@@ -164,7 +194,7 @@ func newRun(name, version, automation string, languages []string, r *report.Repo
 			sarifURIBaseID: {Description: sarifMessage{Text: sarifRootComment}},
 		},
 		Results:    []sarifResult{},
-		Properties: sarifRunProperties{Totals: r.Totals},
+		Properties: sarifRunProperties{Totals: *totals},
 	}, nil
 }
 

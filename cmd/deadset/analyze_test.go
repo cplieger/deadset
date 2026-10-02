@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	spec "github.com/cplieger/deadset-spec/v4"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
 )
@@ -355,7 +355,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				f := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				template := filepath.Join(t.TempDir(), "report.tmpl")
-				writeFile(t, template, []byte("{{range .Findings}}"))
+				writeFile(t, template, []byte("{{range .findings}}"))
 				return target, runDir, []string{"--formats=template", "--template=" + template}
 			},
 			code:  verdict.Usage,
@@ -577,7 +577,7 @@ func TestAnalyzeWritesTheSARIFAndTemplateRenderingsBesideTheMergedReport(t *test
 	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 	sourceFiles(t, target)
 	template := filepath.Join(t.TempDir(), "report.tmpl")
-	writeFile(t, template, []byte("{{range .Findings}}{{.Code}} {{.Position.Path}}:{{.Position.Line}}\n{{end}}"))
+	writeFile(t, template, []byte("{{range .findings}}{{.code}} {{.position.path}}:{{.position.line}}\n{{end}}"))
 
 	got := analyze(t, target, runDir, "--formats=sarif,text,template", "--template="+template)
 	if got.code != verdict.Findings {

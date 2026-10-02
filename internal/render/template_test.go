@@ -6,13 +6,15 @@ import (
 	"testing"
 )
 
-// testTemplate renders the members a template is most often written over:
-// the analyzers merged, every finding and stale suppression in report order,
-// and the totals.
-const testTemplate = `{{range .MergedFrom}}analyzer {{.Name}} {{.Version}}
-{{end}}{{range .Findings}}{{.Position.Path}}:{{.Position.Line}}:{{.Position.Column}} {{.Code}} {{.Kind}} {{.Severity}} {{or .Analyzer "merge"}}
-{{end}}{{range .StaleSuppressions}}{{.Position.Path}}:{{.Position.Line}}:{{.Position.Column}} {{.Code}} {{.Analyzer}}
-{{end}}{{.Totals.Findings}} findings, {{.Totals.StaleSuppressions}} stale, {{.Totals.Omitted}} omitted
+// testTemplate renders the members a template is most often written over, by
+// their JSON member names: the analyzers merged, every finding and stale
+// suppression in report order with the analyzer that carried it, a record the
+// merge emitted naming the merge, and the totals.
+const testTemplate = `{{range .merged_from}}analyzer {{.name}} {{.version}}
+{{end}}{{range .findings}}{{$by := "merge"}}{{range $member, $value := .}}{{if eq $member "analyzer"}}{{$by = $value}}{{end}}{{end -}}
+{{.position.path}}:{{.position.line}}:{{.position.column}} {{.code}} {{.kind}} {{.severity}} {{$by}}
+{{end}}{{range .stale_suppressions}}{{.position.path}}:{{.position.line}}:{{.position.column}} {{.code}} {{.analyzer}}
+{{end}}{{.totals.findings}} findings, {{.totals.stale_suppressions}} stale, {{.totals.omitted}} omitted
 `
 
 // The template rendering of every published merged report is its committed
@@ -44,16 +46,103 @@ func TestTemplateOfEveryMergedVector(t *testing.T) {
 func TestTemplateRefusals(t *testing.T) {
 	t.Parallel()
 
-	if _, err := ParseTemplate("{{range .Findings}}"); err == nil || !strings.Contains(err.Error(), "parse the template") {
-		t.Errorf(`ParseTemplate("{{range .Findings}}") = %v, want a parse refusal`, err)
+	if _, err := ParseTemplate("{{range .findings}}"); err == nil || !strings.Contains(err.Error(), "parse the template") {
+		t.Errorf(`ParseTemplate("{{range .findings}}") = %v, want a parse refusal`, err)
 	}
-	parsed, err := ParseTemplate("before {{.Totals.NoSuchCount}}")
+	parsed, err := ParseTemplate("before {{.totals.no_such_count}}")
 	if err != nil {
 		t.Fatalf("Setup: ParseTemplate = %v", err)
 	}
 	c := mergedCases(t)[0]
 	var out bytes.Buffer
-	if err := parsed.Render(&out, c.merged); err == nil || !strings.Contains(err.Error(), "NoSuchCount") || out.Len() != 0 {
-		t.Errorf("Render(.Totals.NoSuchCount) = %v and wrote %q, want a refusal naming the field and nothing written", err, out.String())
+	if err := parsed.Render(&out, c.merged); err == nil || !strings.Contains(err.Error(), "no_such_count") || out.Len() != 0 {
+		t.Errorf("Render(.totals.no_such_count) = %v and wrote %q, want a refusal naming the member and nothing written", err, out.String())
+	}
+}
+
+// Every number form but a decimal integer, a block and a function outside the
+// subset are refused at parse, naming the template's line.
+func TestParseTemplateRefusesTheFormsOutsideTheSubset(t *testing.T) {
+	t.Parallel()
+
+	for name, text := range map[string]string{
+		"leading-zero":  "{{print 01}}",
+		"base-prefix":   "\n{{print 0x1f}}",
+		"underscore":    "{{print 1_000}}",
+		"exponent":      "{{print 1e2}}",
+		"imaginary":     "{{print 1i}}",
+		"block":         `{{block "x" .}}y{{end}}`,
+		"define-itself": `{{define "report"}}y{{end}}`,
+		"slice":         "{{slice .findings 0}}",
+		"call":          "{{call .findings}}",
+		"octal-in-else": `{{if .findings}}{{else}}{{print "\0"}}{{end}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			parsed, err := ParseTemplate(text)
+			if err == nil {
+				t.Fatalf("ParseTemplate(%q) = %v, want a refusal", text, parsed)
+			}
+			if !strings.Contains(err.Error(), "report:") {
+				t.Errorf("ParseTemplate(%q) = %v, want the refusal to name the template and its line", text, err)
+			}
+		})
+	}
+}
+
+// A range over a value other than an array, an object or null fails the
+// rendering, and a lone nil constant prints as null does.
+func TestTemplateRangeAndNil(t *testing.T) {
+	t.Parallel()
+
+	document := []byte(`{"count": 3, "name": "x", "none": null}`)
+	for _, c := range []struct {
+		text, want string
+		fails      bool
+	}{
+		{text: "{{range .count}}x{{end}}", fails: true},
+		{text: "{{range .name}}x{{end}}", fails: true},
+		{text: "{{range $i, $v := .count}}x{{end}}", fails: true},
+		{text: "{{range .none}}x{{else}}empty{{end}}", want: "empty"},
+		{text: "{{nil}}|{{.none}}|{{if nil}}t{{else}}f{{end}}", want: "<no value>|<no value>|f"},
+	} {
+		t.Run(c.text, func(t *testing.T) {
+			t.Parallel()
+
+			parsed, err := ParseTemplate(c.text)
+			if err != nil {
+				t.Fatalf("Setup: ParseTemplate(%q) = %v", c.text, err)
+			}
+			var out bytes.Buffer
+			err = parsed.execute(&out, document)
+			switch {
+			case c.fails && (err == nil || out.Len() != 0):
+				t.Errorf("render(%q) = %v and wrote %q, want a failure and nothing written", c.text, err, out.String())
+			case !c.fails && (err != nil || out.String() != c.want):
+				t.Errorf("render(%q) = %q, %v, want %q", c.text, out.String(), err, c.want)
+			}
+		})
+	}
+}
+
+// eq and ne compare two booleans, and an ordering of two booleans fails.
+func TestTemplateComparesBooleansForEqualityOnly(t *testing.T) {
+	t.Parallel()
+
+	parsed, err := ParseTemplate("{{eq true true}} {{eq .on false}} {{ne .on false}}")
+	if err != nil {
+		t.Fatalf("Setup: ParseTemplate = %v", err)
+	}
+	var out bytes.Buffer
+	if err := parsed.execute(&out, []byte(`{"on": true}`)); err != nil || out.String() != "true false true" {
+		t.Errorf("render(eq and ne of booleans) = %q, %v, want %q", out.String(), err, "true false true")
+	}
+	ordering, err := ParseTemplate("{{lt false true}}")
+	if err != nil {
+		t.Fatalf("Setup: ParseTemplate = %v", err)
+	}
+	if err := ordering.execute(&bytes.Buffer{}, []byte(`{}`)); err == nil {
+		t.Errorf("render(lt of two booleans) = nil, want a failure")
 	}
 }

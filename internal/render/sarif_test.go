@@ -20,7 +20,7 @@ func renderSARIF(t *testing.T, c *mergedCase) []byte {
 	t.Helper()
 
 	var out bytes.Buffer
-	if err := SARIF(&out, c.merged, &Sources{Read: synthesizedSource, Analyzers: c.analyzers}); err != nil {
+	if err := SARIF(&out, c.merged, &Sources{Read: synthesizedSource, Inputs: c.inputs}); err != nil {
 		t.Fatalf("SARIF(%s) = %v", c.name, err)
 	}
 	return out.Bytes()
@@ -54,9 +54,12 @@ func TestSARIFOfMergedVectors(t *testing.T) {
 // emits, decoded independently of the rendering's own types.
 type (
 	checkedLog struct {
-		Schema  string       `json:"$schema"`
-		Version string       `json:"version"`
-		Runs    []checkedRun `json:"runs"`
+		Schema     string       `json:"$schema"`
+		Version    string       `json:"version"`
+		Runs       []checkedRun `json:"runs"`
+		Properties struct {
+			Totals *report.Totals `json:"totals"`
+		} `json:"properties"`
 	}
 	checkedRun struct {
 		Tool struct {
@@ -108,26 +111,35 @@ var (
 )
 
 // conforms names the first way log departs from the structure the Contract's
-// mapping pins for r: one run per input report in r's order and one for the
-// merge's own findings, each with its driver, its ordered and described rules,
-// its category, column unit, base and r's totals, and one result per record
-// its analyzer carried.
-func conforms(log *checkedLog, r *report.Report) error {
+// mapping pins for r, merged from inputs: r's totals on the log, one run per
+// input report in bytewise order of name and one for the records naming no
+// analyzer, each with its driver, its ordered and described rules, its
+// category, column unit, base and the totals of the report its driver wrote,
+// and one result per record its analyzer carried.
+func conforms(log *checkedLog, r *report.Report, inputs []*report.Report) error {
 	if log.Schema != sarifSchema || log.Version != "2.1.0" {
 		return fmt.Errorf("the log names %q version %q", log.Schema, log.Version)
 	}
-	var carriers []string
-	for _, from := range r.MergedFrom {
-		carriers = append(carriers, from.Name)
+	if log.Properties.Totals == nil || *log.Properties.Totals != r.Totals {
+		return fmt.Errorf("the log's totals are %+v, want the merged report's %+v", log.Properties.Totals, r.Totals)
 	}
-	if slices.ContainsFunc(r.Findings, func(f report.Finding) bool { return f.Analyzer == "" }) {
-		carriers = append(carriers, "")
+	carriers := make(map[string]*report.Totals)
+	var order []string
+	for _, input := range inputs {
+		carriers[input.Analyzer.Name] = &input.Totals
+		order = append(order, input.Analyzer.Name)
 	}
-	if len(log.Runs) != len(carriers) {
-		return fmt.Errorf("the log holds %d runs, want one per carrier %q", len(log.Runs), carriers)
+	slices.Sort(order)
+	if slices.ContainsFunc(r.Findings, func(f report.Finding) bool { return f.Analyzer == "" }) ||
+		slices.ContainsFunc(r.StaleSuppressions, func(s report.StaleSuppression) bool { return s.Analyzer == "" }) {
+		carriers[""] = &r.Totals
+		order = append(order, "")
 	}
-	for i, carrier := range carriers {
-		if err := runConforms(&log.Runs[i], r, carrier); err != nil {
+	if len(log.Runs) != len(order) {
+		return fmt.Errorf("the log holds %d runs, want one per carrier %q", len(log.Runs), order)
+	}
+	for i, carrier := range order {
+		if err := runConforms(&log.Runs[i], r, carrier, carriers[carrier]); err != nil {
 			return fmt.Errorf("run %d: %w", i, err)
 		}
 	}
@@ -135,8 +147,9 @@ func conforms(log *checkedLog, r *report.Report) error {
 }
 
 // runConforms names the first way one run departs from the run of the
-// records carrier carried, the merge's own where carrier is empty.
-func runConforms(run *checkedRun, r *report.Report, carrier string) error {
+// records carrier carried, the merge's own where carrier is empty, whose
+// report's totals are totals.
+func runConforms(run *checkedRun, r *report.Report, carrier string, totals *report.Totals) error {
 	driver := &run.Tool.Driver
 	wantName, automationOK := carrier, languageID.MatchString(run.AutomationDetails["id"])
 	if carrier == "" {
@@ -152,8 +165,8 @@ func runConforms(run *checkedRun, r *report.Report, carrier string) error {
 		return fmt.Errorf("the column kind is %q", run.ColumnKind)
 	case len(run.OriginalURIBaseIDs) != 1 || !declared || base["uri"] != nil || base["description"] == nil:
 		return fmt.Errorf("the bases are %v, want %%SRCROOT%% alone, described and with no uri", run.OriginalURIBaseIDs)
-	case run.Properties.Totals == nil || *run.Properties.Totals != r.Totals:
-		return fmt.Errorf("the totals are %+v, want the report's %+v", run.Properties.Totals, r.Totals)
+	case run.Properties.Totals == nil || *run.Properties.Totals != *totals:
+		return fmt.Errorf("the totals are %+v, want those of the report its driver wrote, %+v", run.Properties.Totals, *totals)
 	case run.Invocations != nil:
 		return errors.New("the run carries invocations")
 	}
@@ -246,7 +259,7 @@ func TestSARIFHasTheMappingsStructure(t *testing.T) {
 			if err := json.Unmarshal(renderSARIF(t, &c), &log); err != nil {
 				t.Fatalf("decode SARIF(%s): %v", c.name, err)
 			}
-			if err := conforms(&log, c.merged); err != nil {
+			if err := conforms(&log, c.merged, c.inputs); err != nil {
 				t.Errorf("SARIF(%s) departs from the mapping: %v", c.name, err)
 			}
 		})
@@ -320,8 +333,7 @@ func TestRelativeReference(t *testing.T) {
 }
 
 // A rendering refuses what it cannot fingerprint or place: a file it cannot
-// read, a line the file does not hold, an input report it was not given, and
-// a report that was not merged.
+// read, a line the file does not hold, and an input report it was not given.
 func TestSARIFRefusals(t *testing.T) {
 	t.Parallel()
 
@@ -336,7 +348,6 @@ func TestSARIFRefusals(t *testing.T) {
 	}
 	short := func(string) ([]byte, error) { return []byte("one line\n"), nil }
 	absent := func(string) ([]byte, error) { return nil, fs.ErrNotExist }
-	analyzer := c.merged.Analyzer
 	for _, refusal := range []struct {
 		name   string
 		r      *report.Report
@@ -344,10 +355,9 @@ func TestSARIFRefusals(t *testing.T) {
 		target error
 		names  string
 	}{
-		{name: "unreadable", r: c.merged, src: Sources{Read: absent, Analyzers: c.analyzers}, target: fs.ErrNotExist, names: "line fingerprint"},
-		{name: "short-file", r: c.merged, src: Sources{Read: short, Analyzers: c.analyzers}, names: "holds 2 lines"},
+		{name: "unreadable", r: c.merged, src: Sources{Read: absent, Inputs: c.inputs}, target: fs.ErrNotExist, names: "line fingerprint"},
+		{name: "short-file", r: c.merged, src: Sources{Read: short, Inputs: c.inputs}, names: "holds 2 lines"},
 		{name: "no-input", r: c.merged, src: Sources{Read: synthesizedSource}, names: "no input report is deadset-go"},
-		{name: "not-merged", r: &report.Report{Analyzer: analyzer}, src: Sources{Read: synthesizedSource}, target: ErrNotMerged},
 	} {
 		t.Run(refusal.name, func(t *testing.T) {
 			t.Parallel()
@@ -358,5 +368,33 @@ func TestSARIFRefusals(t *testing.T) {
 				t.Errorf("SARIF(%s) = %v, want a refusal naming %q", refusal.name, err, refusal.names)
 			}
 		})
+	}
+}
+
+// A merged record that names no analyzer belongs to the merge's own run, a
+// stale suppression as well as a finding.
+func TestSARIFPlacesAStaleSuppressionNamingNoAnalyzerInTheMergesRun(t *testing.T) {
+	t.Parallel()
+
+	var c mergedCase
+	for _, held := range mergedCases(t) {
+		if held.name == "stale-suppression-carried" {
+			c = held
+		}
+	}
+	if c.merged == nil || len(c.merged.StaleSuppressions) != 1 || len(c.merged.Findings) != 0 {
+		t.Fatal("Setup: the stale-suppression-carried case holds no lone stale suppression")
+	}
+	c.merged.StaleSuppressions[0].Analyzer = ""
+
+	var log checkedLog
+	if err := json.Unmarshal(renderSARIF(t, &c), &log); err != nil {
+		t.Fatalf("decode SARIF(%s): %v", c.name, err)
+	}
+	last := log.Runs[len(log.Runs)-1]
+	if len(log.Runs) != len(c.merged.MergedFrom)+1 || last.Tool.Driver.Name != c.merged.Analyzer.Name ||
+		len(last.Results) != 1 || last.Results[0].RuleID != "DS1703" {
+		t.Errorf("SARIF(a stale suppression naming no analyzer) holds %d runs, the last %q with %d results, "+
+			"want the merge's own run after the inputs' holding the DS1703 result", len(log.Runs), last.Tool.Driver.Name, len(last.Results))
 	}
 }

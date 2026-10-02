@@ -1,19 +1,20 @@
 {
-  "schema_version": "6.0.0",
-  "contract_version": "3.2.0",
+  "schema_version": "6.1.0",
+  "contract_version": "4.0.0",
   "analyzer": {
     "name": "deadset-ts",
-    "version": "3.12.0",
+    "version": "3.13.0",
     "languages": [
       "ts"
     ],
     "schema_versions_accepted": [
-      "6.0.0"
+      "6.0.0",
+      "6.1.0"
     ],
     "conformance": {
-      "corpus_version": "1.9.0",
+      "corpus_version": "2.0.0",
       "result": "pass",
-      "digest": "sha256:3e9e40876551faa2c196311bf06d47d220ab5127a9fb8921969aae552c42e824"
+      "digest": "sha256:1274315595d7b944d22eb0126081e24cf293c9fe53a236f4d263c714644f32ee"
     }
   },
   "target": {
@@ -33,45 +34,7 @@
     "loaded": [],
     "unavailable": []
   },
-  "findings": [
-    {
-      "code": "DS1001",
-      "kind": "unused-exported",
-      "language": "ts",
-      "position": {
-        "path": "web/src/app.ts",
-        "line": 4,
-        "column": 17,
-        "end_line": 6
-      },
-      "symbol": {
-        "ref": "ts://@example/web/src/app.ts#describe",
-        "kind": "function",
-        "name": "describe",
-        "size_lines": 3
-      },
-      "reachability_class": "certain",
-      "confidence": "certain",
-      "liveness_relation": "reference-counting",
-      "test_only": false,
-      "generated": false,
-      "component": {
-        "id": "deadset-ts/c-0001",
-        "root": true,
-        "symbol_count": 1,
-        "deletable_lines": 3
-      },
-      "retained_by": [],
-      "configurations": [
-        "web/tsconfig.json"
-      ],
-      "consumers_loaded": [],
-      "fixability": "deletable",
-      "severity": "deny",
-      "message": "exported function has no reference in the target and none from any loaded consumer",
-      "details": {}
-    }
-  ],
+  "findings": [],
   "edge_evaluations": [
     {
       "edge": "wire/ServerEvent.Kind",
@@ -96,13 +59,13 @@
     }
   ],
   "totals": {
-    "findings": 1,
+    "findings": 0,
     "by_severity": {
       "allow": 0,
       "warn": 0,
-      "deny": 1
+      "deny": 0
     },
-    "deletable_lines": 3,
+    "deletable_lines": 0,
     "suppressions_in_effect": 0,
     "reasons_recorded": 0,
     "stale_suppressions": 0,

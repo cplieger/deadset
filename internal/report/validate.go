@@ -58,7 +58,7 @@ var (
 var (
 	relationFreeKinds = []string{
 		"parameter", "receiver", "result", "statement", "case", "store",
-		"file", "dependency", "module-directive", "suppression", "root", "edge",
+		"file", "dependency", "module-directive", "suppression", "root", "configured-declaration", "edge",
 	}
 	relationFreeCodes = []string{"DS1101", "DS1102", "DS1104", "DS1204", "DS1301"}
 )

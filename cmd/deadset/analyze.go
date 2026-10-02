@@ -439,20 +439,20 @@ func prepare(dir *rundir.Dir, resolved *config.Resolved, analyzers []providers.A
 // analyzeAll runs the handshake with every analyzer and then every analysis,
 // and merges the reports. No analysis runs unless every analyzer was admitted,
 // no report merges unless each names the analyzer of its provider entry, and
-// every refusal of one step is named. It returns the merged report and the
-// analyzer member of every report it read.
-func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, []report.Analyzer, error) {
-	accepted := []string{report.SchemaVersion}
+// every refusal of one step is named. It returns the merged report and every
+// report it read.
+func analyzeAll(ctx context.Context, runs []analyzerRun) (merged *report.Report, reports []*report.Report, err error) {
+	accepted := report.SchemaVersions
 	digests := make([]string, len(runs))
 	var refused []error
 	for i := range runs {
 		run := &runs[i]
-		digest, err := artifactDigest(run.request.Command)
-		if err == nil {
-			_, err = invoke.Describe(ctx, &run.request, run.entry, accepted)
+		digest, handshakeErr := artifactDigest(run.request.Command)
+		if handshakeErr == nil {
+			_, handshakeErr = invoke.Describe(ctx, &run.request, run.entry, accepted)
 		}
-		if err != nil {
-			refused = append(refused, err)
+		if handshakeErr != nil {
+			refused = append(refused, handshakeErr)
 		}
 		digests[i] = digest
 	}
@@ -464,19 +464,17 @@ func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, []repo
 	for i := range runs {
 		requests[i] = runs[i].request
 	}
-	reports, err := invoke.Run(ctx, requests)
+	reports, err = invoke.Run(ctx, requests)
 	if err != nil {
 		return nil, nil, err
 	}
 	inputs := make([]merge.Input, len(reports))
-	analyzers := make([]report.Analyzer, len(reports))
 	for i := range reports {
 		if named := reports[i].Analyzer.Name; named != runs[i].request.Analyzer {
 			refused = append(refused, fmt.Errorf("analyzer %s, report %s: the report names the analyzer %q, not its provider entry %q",
 				runs[i].request.Analyzer, runs[i].request.Report, named, runs[i].request.Analyzer))
 		}
 		inputs[i] = merge.Input{Report: reports[i], Digest: digests[i]}
-		analyzers[i] = reports[i].Analyzer
 	}
 	if len(refused) > 0 {
 		return nil, nil, errors.Join(refused...)
@@ -485,14 +483,14 @@ func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, []repo
 	if err != nil {
 		return nil, nil, err
 	}
-	merged, err := merge.Merge(inputs, accepted, &merge.Caller{
+	merged, err = merge.Merge(inputs, accepted, &merge.Caller{
 		SchemaVersion:   report.SchemaVersion,
 		ContractVersion: report.ContractVersion,
 		Name:            name,
 		Version:         version(),
 		Conformance:     conformance,
 	})
-	return merged, analyzers, err
+	return merged, reports, err
 }
 
 // artifactDigest is the digest of the analyzer artifact at path, spelled as a
@@ -513,7 +511,7 @@ func artifactDigest(path string) (string, error) {
 // publish writes the merged report r and every rendering of it the formats
 // name that is a file beside it into dir, then prints the rest.
 func (a *analysis) publish(dir *rundir.Dir, root string, r *report.Report,
-	inputs []report.Analyzer, reporters *config.Reporters,
+	inputs []*report.Report, reporters *config.Reporters,
 ) error {
 	if err := dir.WriteMerged(r); err != nil {
 		return err
@@ -531,7 +529,7 @@ func (a *analysis) publish(dir *rundir.Dir, root string, r *report.Report,
 // source lines its results name, which it reads below the target root, the
 // directory every path of the report is relative to.
 func (a *analysis) writeDocuments(dir *rundir.Dir, root string, r *report.Report,
-	inputs []report.Analyzer, formats []config.Format,
+	inputs []*report.Report, formats []config.Format,
 ) ([]string, error) {
 	var written []string
 	for _, format := range formats {
@@ -559,15 +557,15 @@ func (a *analysis) writeDocuments(dir *rundir.Dir, root string, r *report.Report
 
 // sarifOf writes the SARIF rendering of r, reading every source file inside
 // root and nowhere else.
-func sarifOf(w io.Writer, root string, r *report.Report, inputs []report.Analyzer) error {
+func sarifOf(w io.Writer, root string, r *report.Report, inputs []*report.Report) error {
 	files, err := os.OpenRoot(root)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = files.Close() }()
 	return render.SARIF(w, r, &render.Sources{
-		Read:      func(path string) ([]byte, error) { return files.ReadFile(filepath.FromSlash(path)) },
-		Analyzers: inputs,
+		Read:   func(path string) ([]byte, error) { return files.ReadFile(filepath.FromSlash(path)) },
+		Inputs: inputs,
 	})
 }
 

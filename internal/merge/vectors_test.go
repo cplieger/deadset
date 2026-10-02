@@ -1,7 +1,6 @@
 package merge
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -14,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	spec "github.com/cplieger/deadset-spec/v4"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
@@ -113,11 +112,11 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		check func(error) bool
 	}{
 		{
-			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "6.0.0"},
+			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "6.0.0, 6.1.0"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*AdmissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
-					slices.Equal(refused.Accepted, []string{"6.0.0"})
+					slices.Equal(refused.Accepted, []string{"6.0.0", "6.1.0"})
 			},
 		},
 		{
@@ -295,13 +294,14 @@ func caseNames(t *testing.T) []string {
 // readCase decodes one case: its inputs in file order, each with the digest
 // caller.json gives it, the accepted schema versions, the caller's facts, the
 // expected exit code, and the expected merged report's bytes where the case has
-// one. The two versions caller.json names are the ones this module writes, so a
-// merging product passing its own versions writes the case's bytes.
+// one. caller.json names this module's contract version and a schema version it
+// accepts, so a merging product passing its own versions writes the case's
+// bytes.
 func readCase(t *testing.T, name string) vectorCase {
 	t.Helper()
 
 	dir := path.Join(vectorsDir, name)
-	c := vectorCase{accepted: lines(t, path.Join(dir, "accepted.txt"))}
+	c := vectorCase{accepted: acceptedVersions(t, path.Join(dir, "accepted.txt"))}
 	exit, err := strconv.Atoi(strings.TrimSpace(string(readVector(t, path.Join(dir, "expected_exit")))))
 	if err != nil {
 		t.Fatalf("Setup: %s/expected_exit: %v", dir, err)
@@ -317,9 +317,9 @@ func readCase(t *testing.T, name string) vectorCase {
 	if err := decoder.Decode(&caller); err != nil {
 		t.Fatalf("Setup: decode %s/caller.json: %v", dir, err)
 	}
-	if caller.SchemaVersion != report.SchemaVersion || caller.ContractVersion != report.ContractVersion {
-		t.Fatalf("Setup: %s/caller.json writes schema %s and contract %s, want this module's %s and %s",
-			dir, caller.SchemaVersion, caller.ContractVersion, report.SchemaVersion, report.ContractVersion)
+	if !slices.Contains(report.SchemaVersions, caller.SchemaVersion) || caller.ContractVersion != report.ContractVersion {
+		t.Fatalf("Setup: %s/caller.json writes schema %s and contract %s, want one of this module's %q and %s",
+			dir, caller.SchemaVersion, caller.ContractVersion, report.SchemaVersions, report.ContractVersion)
 	}
 	c.caller = Caller{
 		SchemaVersion:   caller.SchemaVersion,
@@ -374,18 +374,20 @@ func readVector(t *testing.T, name string) []byte {
 	return body
 }
 
-// lines is every non-empty line of a vector file.
-func lines(t *testing.T, name string) []string {
+// acceptedVersions is the schema versions an accepted.txt names, in its
+// order: one line, the versions separated by single spaces.
+func acceptedVersions(t *testing.T, name string) []string {
 	t.Helper()
 
-	var held []string
-	scanner := bufio.NewScanner(bytes.NewReader(readVector(t, name)))
-	for scanner.Scan() {
-		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			held = append(held, line)
-		}
+	line, found := strings.CutSuffix(string(readVector(t, name)), "\n")
+	if !found || line == "" || strings.Contains(line, "\n") {
+		t.Fatalf("Setup: %s holds %q, want one line ending in a line feed", name, line)
 	}
-	return held
+	versions := strings.Split(line, " ")
+	if slices.Contains(versions, "") {
+		t.Fatalf("Setup: %s names %q, want versions separated by single spaces", name, versions)
+	}
+	return versions
 }
 
 // encode is a merged report in the encoding expected.json is written in.

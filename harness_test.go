@@ -293,7 +293,7 @@ func TestHarnessMerge(t *testing.T) {
 				{Report: readReport(t, variant, goAnalyzer), Digest: recordedDigest},
 				{Report: readReport(t, variant, tsAnalyzer), Digest: recordedDigest},
 			}
-			merged, err := merge.Merge(inputs, []string{report.SchemaVersion}, caller)
+			merged, err := merge.Merge(inputs, report.SchemaVersions, caller)
 			if err != nil {
 				t.Fatalf("merge.Merge(%s's reports) = %v, want a merged report", variant.Archive, err)
 			}

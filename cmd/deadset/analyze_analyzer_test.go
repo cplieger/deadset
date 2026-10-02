@@ -299,7 +299,7 @@ func TestAnalyzeRendersTheGoAnalyzersFindingAsTheGoAnalyzerDoes(t *testing.T) {
 
 	target, runDir := goModule(t, "package main\n\nfunc main() {}\n\nfunc unused() {}\n")
 	template := filepath.Join(t.TempDir(), "report.tmpl")
-	writeFile(t, template, []byte("{{range .Findings}}{{.Code}} {{.Analyzer}} {{.Position.Path}}:{{.Position.Line}}\n{{end}}"))
+	writeFile(t, template, []byte("{{range .findings}}{{.code}} {{.analyzer}} {{.position.path}}:{{.position.line}}\n{{end}}"))
 	got := analyze(t, target, runDir, "--formats=sarif,template", "--template="+template)
 	if got.code != verdict.Findings {
 		t.Fatalf("analyze = %d, want %d\nstdout: %s\nstderr: %s", got.code, verdict.Findings, got.stdout, got.stderr)
