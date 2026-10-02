@@ -2,7 +2,6 @@ package invoke_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,11 +33,11 @@ func goAnalyzerOnPath(t *testing.T) string {
 }
 
 // goRun lays out a run of command over a Go module whose one file holds
-// source: the module under target/, its scope document, and a run directory
-// holding what the Go analyzer's entry printed when it described itself and
-// the configuration it reads, split from a target configuration that names
-// renderings and a maximum finding count. The analyzer runs from the
-// directory holding all three.
+// source: the module under target/ and a run directory holding the scope
+// document naming it, what the Go analyzer's entry printed in the handshake,
+// and the configuration it reads, split from a target configuration that
+// names renderings and a maximum finding count. The analyzer runs from the
+// directory holding both.
 func goRun(t *testing.T, command, source string) (invoke.Request, rundir.Entry) {
 	t.Helper()
 
@@ -53,17 +52,6 @@ func goRun(t *testing.T, command, source string) (invoke.Request, rundir.Entry) 
 			t.Fatalf("Setup: write %s: %v", name, err)
 		}
 	}
-	scope, err := json.Marshal(map[string]any{
-		"target": map[string]string{"id": "example.com/app", "role": "target", "path": target},
-	})
-	if err != nil {
-		t.Fatalf("Setup: encode the scope document: %v", err)
-	}
-	scopePath := filepath.Join(base, "scope.json")
-	if err := os.WriteFile(scopePath, scope, 0o600); err != nil {
-		t.Fatalf("Setup: write %s: %v", scopePath, err)
-	}
-
 	resolved, err := config.Resolve(&config.Inputs{
 		ContractVersion: report.ContractVersion,
 		Repository: config.Document{
@@ -82,25 +70,54 @@ func goRun(t *testing.T, command, source string) (invoke.Request, rundir.Entry) 
 	if err != nil {
 		t.Fatalf("Setup: Entry(%s): %v", goAnalyzer, err)
 	}
-	described, err := exec.CommandContext(t.Context(), command, "describe").Output()
-	if err != nil {
-		t.Fatalf("Setup: %s describe: %v", goAnalyzer, err)
+	scope := rundir.Scope{Root: base, Target: rundir.Module{ID: "example.com/app", Path: "target"}}
+	if err := dir.WriteScope(&scope); err != nil {
+		t.Fatalf("Setup: write the scope document: %v", err)
 	}
-	if err := entry.WriteDescribe(described); err != nil {
-		t.Fatalf("Setup: keep what %s described: %v", goAnalyzer, err)
+	req := invoke.Request{
+		Analyzer: goAnalyzer,
+		Command:  command,
+		Dir:      base,
+		Scope:    dir.Scope(),
+		Config:   entry.Config(),
+		Report:   entry.Report(),
+	}
+	if _, err := invoke.Describe(t.Context(), &req, entry, []string{report.SchemaVersion}); err != nil {
+		t.Fatalf("Setup: the handshake with %s: %v", goAnalyzer, err)
 	}
 	if err := entry.WriteConfig(resolved, "go"); err != nil {
 		t.Fatalf("Setup: write the configuration of %s: %v", goAnalyzer, err)
 	}
+	return req, entry
+}
 
-	return invoke.Request{
-		Analyzer: goAnalyzer,
-		Command:  command,
-		Dir:      base,
-		Scope:    scopePath,
-		Config:   entry.Config(),
-		Report:   entry.Report(),
-	}, entry
+// TestDescribeAdmitsTheGoAnalyzer runs the handshake with the Go analyzer and
+// reads what its describe verb prints with the closed-key read: its name, the
+// Go language, the report schema version this run accepts, and a conformance
+// pass.
+func TestDescribeAdmitsTheGoAnalyzer(t *testing.T) {
+	t.Parallel()
+
+	req := request(t, goAnalyzer, goAnalyzerOnPath(t))
+	dir, err := rundir.Create(filepath.Join(t.TempDir(), "run"))
+	if err != nil {
+		t.Fatalf("Setup: create the run directory: %v", err)
+	}
+	entry, err := dir.Entry(goAnalyzer)
+	if err != nil {
+		t.Fatalf("Setup: Entry(%s): %v", goAnalyzer, err)
+	}
+
+	got, err := invoke.Describe(t.Context(), &req, entry, []string{report.SchemaVersion})
+	if err != nil {
+		t.Fatalf("Describe(%s) = %v, want it admitted", goAnalyzer, err)
+	}
+	if got.Name != goAnalyzer || !slices.Equal(got.Languages, []string{"go"}) {
+		t.Errorf("Describe(%s) = %+v, want the name %s and the language go", goAnalyzer, got, goAnalyzer)
+	}
+	if !slices.Contains(got.SchemaVersionsAccepted, report.SchemaVersion) || got.Conformance.Result != report.ResultPass {
+		t.Errorf("Describe(%s) = %+v, want schema version %s read and a conformance pass", goAnalyzer, got, report.SchemaVersion)
+	}
 }
 
 // TestAnalyzeReadsTheReportARealAnalyzerWrites runs the Go analyzer over a
@@ -158,7 +175,9 @@ func TestAnalyzeReadsTheReportARealAnalyzerWrites(t *testing.T) {
 	}
 	// The split withholds the formats, so the analyzer renders the Contract's
 	// default, text, and nothing the target configures.
-	evidence := []string{"config.deadset-go.json", "describe.deadset-go.json", "report.deadset-go.json", "report.deadset-go.json.txt"}
+	evidence := []string{
+		"config.deadset-go.json", "describe.deadset-go.json", "report.deadset-go.json", "report.deadset-go.json.txt", "scope.json",
+	}
 	if !slices.Equal(held, evidence) {
 		t.Errorf("after Analyze(), the run directory holds %q, want %q", held, evidence)
 	}
