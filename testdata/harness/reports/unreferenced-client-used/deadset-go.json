@@ -1,0 +1,107 @@
+{
+  "schema_version": "6.0.0",
+  "contract_version": "3.2.0",
+  "analyzer": {
+    "name": "deadset-go",
+    "version": "1.20.2",
+    "languages": [
+      "go"
+    ],
+    "schema_versions_accepted": [
+      "6.0.0"
+    ],
+    "conformance": {
+      "corpus_version": "1.9.0",
+      "result": "pass",
+      "digest": "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66"
+    }
+  },
+  "target": {
+    "kind": "application",
+    "root": "target",
+    "identity": "example.com/server"
+  },
+  "configurations": [
+    {
+      "id": "linux-amd64",
+      "os": "linux",
+      "arch": "amd64",
+      "tags": []
+    }
+  ],
+  "configurations_not_built": [],
+  "consumers": {
+    "declared": 0,
+    "loaded": [],
+    "unavailable": []
+  },
+  "findings": [],
+  "edge_evaluations": [
+    {
+      "edge": "wire/ServerEvent",
+      "side": "provides",
+      "symbol": "go://example.com/server/internal/wire#ServerEvent",
+      "state": "dead",
+      "finding": {
+        "code": "DS1103",
+        "kind": "unreachable-export",
+        "language": "go",
+        "position": {
+          "path": "internal/wire/event.go",
+          "line": 6,
+          "column": 6,
+          "end_line": 11
+        },
+        "symbol": {
+          "ref": "go://example.com/server/internal/wire#ServerEvent",
+          "kind": "type",
+          "name": "ServerEvent",
+          "size_lines": 6
+        },
+        "reachability_class": "certain",
+        "confidence": "certain",
+        "liveness_relation": "reference-counting",
+        "test_only": false,
+        "generated": false,
+        "component": {
+          "id": "deadset-go/c-1",
+          "root": true,
+          "symbol_count": 3,
+          "deletable_lines": 6
+        },
+        "retained_by": [],
+        "configurations": [
+          "linux-amd64"
+        ],
+        "consumers_loaded": [],
+        "fixability": "deletable",
+        "severity": "deny",
+        "message": "exported type has no reference in the target, and nothing outside can import the package that declares it",
+        "details": {}
+      }
+    }
+  ],
+  "stale_suppressions": [],
+  "declared_gaps": [],
+  "excluded_by_cgo": [],
+  "test_file_rules": [
+    {
+      "rule": "go-test-suffix",
+      "matched": 0
+    }
+  ],
+  "totals": {
+    "findings": 0,
+    "by_severity": {
+      "allow": 0,
+      "warn": 0,
+      "deny": 0
+    },
+    "deletable_lines": 0,
+    "suppressions_in_effect": 0,
+    "reasons_recorded": 0,
+    "stale_suppressions": 0,
+    "pending": 1,
+    "omitted": 0
+  }
+}

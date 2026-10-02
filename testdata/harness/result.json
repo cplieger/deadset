@@ -1,5 +1,5 @@
 {
-  "description": "The recorded outcome of the cross-language edge harness. Each variant is the target tree its txtar archive holds, and every archive declares one edge pairing the Go type go://example.com/server/internal/wire#ServerEvent with the TypeScript interface ts://@example/web/src/wire/types.gen.ts#ServerEvent. criterion is what the merged report of the variant says: a finding for every symbol in reported, no finding for a symbol in not_reported, and, where shared_component is true, every reported symbol in one component. go, ts and merged each record one run over the variant: the exit code, the pending count, the findings and the edge evaluations by code and symbol, and the version of the analyzer that ran. A half is null where no run of it is recorded.",
+  "description": "The recorded outcome of the cross-language edge harness. Each variant is the target tree its txtar archive holds, and every archive declares one edge pairing a Go declaration with the TypeScript declaration generated from it, a type with a type or a field with a property. reports/ holds, per variant, the report each analyzer wrote over the tree, run with a scope document naming the target by its Go module path, the one identity both reports of the tree carry. criterion is what the merged report of the variant says: a finding for every symbol in reported, no finding for a symbol in not_reported, and, where shared_component is true, every reported symbol in one component; each symbol is a side of the edge or a member of one. go and ts each record one analyzer run over the variant: the version of the analyzer that ran, the exit code, the pending count, the findings by code, symbol and component, and the edge evaluations by edge, side, symbol, state and the code of the finding a dead evaluation carries. merged records the merge of the two recorded reports in the same shape, with the exit code its verdict gives. criterion_held is whether the merged report meets the criterion and holds no pending finding while the Go run alone exits with the pending code. violations, present only when criterion_held is false, names every way it fell short.",
   "variants": [
     {
       "archive": "unreferenced-client-used.txtar",
@@ -13,7 +13,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.18.0",
+        "version": "1.20.2",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -27,8 +27,47 @@
           }
         ]
       },
-      "ts": null,
-      "merged": null
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "live"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "live"
+          }
+        ]
+      },
+      "criterion_held": true
     },
     {
       "archive": "unreferenced-client-unused.txtar",
@@ -42,7 +81,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.18.0",
+        "version": "1.20.2",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -56,8 +95,51 @@
           }
         ]
       },
-      "ts": null,
-      "merged": null
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "dead",
+            "code": "DS1201"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1103",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "component": "deadset-go/c-1"
+          },
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          },
+          {
+            "code": "DS1201",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "component": "deadset-go/c-1"
+          }
+        ],
+        "evaluations": []
+      },
+      "criterion_held": true
     },
     {
       "archive": "package-local-client-used.txtar",
@@ -71,7 +153,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.18.0",
+        "version": "1.20.2",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -85,8 +167,47 @@
           }
         ]
       },
-      "ts": null,
-      "merged": null
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "live"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "live"
+          }
+        ]
+      },
+      "criterion_held": true
     },
     {
       "archive": "package-local-client-unused.txtar",
@@ -100,7 +221,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.18.0",
+        "version": "1.20.2",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -114,8 +235,274 @@
           }
         ]
       },
-      "ts": null,
-      "merged": null
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "dead",
+            "code": "DS1201"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1101",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "component": "deadset-go/c-1"
+          },
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          },
+          {
+            "code": "DS1201",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "component": "deadset-go/c-1"
+          }
+        ],
+        "evaluations": []
+      },
+      "criterion_held": true
+    },
+    {
+      "archive": "write-only-field-client-used.txtar",
+      "criterion": {
+        "reported": [],
+        "not_reported": [
+          "go://example.com/server/internal/wire#ServerEvent.Kind",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind"
+        ],
+        "shared_component": false
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.20.2",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent.Kind",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent.Kind",
+            "state": "dead",
+            "code": "DS1301"
+          }
+        ]
+      },
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent.Kind",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+            "state": "live"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent.Kind",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+            "state": "live"
+          }
+        ]
+      },
+      "criterion_held": true
+    },
+    {
+      "archive": "write-only-field-client-unused.txtar",
+      "criterion": {
+        "reported": [
+          "go://example.com/server/internal/wire#ServerEvent.Kind",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind"
+        ],
+        "not_reported": [],
+        "shared_component": true
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.20.2",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent.Kind",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent.Kind",
+            "state": "dead",
+            "code": "DS1301"
+          }
+        ]
+      },
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 4,
+        "pending": 1,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent.Kind",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+            "state": "dead",
+            "code": "DS1003"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1301",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent.Kind",
+            "component": "deadset-go/c-1"
+          },
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          },
+          {
+            "code": "DS1003",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+            "component": "deadset-go/c-1"
+          }
+        ],
+        "evaluations": []
+      },
+      "criterion_held": true
+    },
+    {
+      "archive": "json-relayed-client-used.txtar",
+      "criterion": {
+        "reported": [
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind"
+        ],
+        "not_reported": [
+          "go://example.com/server/internal/wire#ServerEvent",
+          "go://example.com/server/internal/wire#ServerEvent.Kind",
+          "go://example.com/server/internal/wire#ServerEvent.Seq",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+          "ts://@example/web/src/wire/types.gen.ts#ServerEvent.seq"
+        ],
+        "shared_component": false
+      },
+      "go": {
+        "analyzer": "deadset-go",
+        "version": "1.20.2",
+        "exit": 4,
+        "pending": 1,
+        "findings": [],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "provides",
+            "symbol": "go://example.com/server/internal/wire#ServerEvent",
+            "state": "dead",
+            "code": "DS1101"
+          }
+        ]
+      },
+      "ts": {
+        "analyzer": "deadset-ts",
+        "version": "3.12.0",
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          },
+          {
+            "code": "DS1003",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+            "component": "deadset-ts/c-0002"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "live"
+          }
+        ]
+      },
+      "merged": {
+        "exit": 1,
+        "pending": 0,
+        "findings": [
+          {
+            "code": "DS1001",
+            "symbol": "ts://@example/web/src/app.ts#describe",
+            "component": "deadset-ts/c-0001"
+          },
+          {
+            "code": "DS1003",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind",
+            "component": "deadset-ts/c-0002"
+          }
+        ],
+        "evaluations": [
+          {
+            "edge": "wire/ServerEvent",
+            "side": "used_by",
+            "symbol": "ts://@example/web/src/wire/types.gen.ts#ServerEvent",
+            "state": "live"
+          }
+        ]
+      },
+      "criterion_held": true
     }
   ]
 }
