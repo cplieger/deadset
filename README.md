@@ -51,7 +51,7 @@ The document is the scope document [deadset-spec](https://github.com/cplieger/de
 - The analyzers run in the deepest directory holding the target and every consumer, so the merged report's `target.root` and each consumer's path under `consumers.loaded` are relative to that directory.
 - The run directory keeps the declared scope as `scope.json`. An analyzer handed only some of the consumers reads its own, `scope.<name>.json`.
 
-With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`; a Go workspace's other modules are consumers only when the scope document declares them.
+A target or consumer holding both Go and TypeScript is named in every report by its Go module path, so the merge reads the two analyzers' reports as one module; the scope document may leave its `id` out. With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`; a Go workspace's other modules are consumers only when the scope document declares them.
 
 `deadset` never clones, fetches or checks out a consumer. Whatever runs it puts every consumer on the filesystem first: a CI workflow checks each one out before the step that runs `deadset`, and a container is given a scope document naming the paths mounted into it.
 

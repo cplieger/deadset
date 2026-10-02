@@ -20,6 +20,7 @@ import (
 
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/detect"
+	"github.com/cplieger/deadset/internal/gomod"
 	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/merge"
 	"github.com/cplieger/deadset/internal/present"
@@ -299,18 +300,27 @@ func plan(declared *scope.Document, analyzers []providers.Analyzer, inScope []st
 		}
 		return relative
 	}
-	whole := rundir.Scope{Root: root, Target: rundir.Module{ID: declared.Target.ID, Path: inside(declared.Target.Path)}}
+	target, err := published(declared.Target, inScope)
+	if err != nil {
+		return rundir.Scope{}, nil, err
+	}
+	whole := rundir.Scope{Root: root, Target: rundir.Module{ID: target, Path: inside(declared.Target.Path)}}
 	if declared.Workspace != "" {
 		whole.Workspace = inside(declared.Workspace)
 	}
 	held := make([][]string, len(declared.Consumers))
 	for i, consumer := range declared.Consumers {
-		whole.Consumers = append(whole.Consumers, rundir.Module{ID: consumer.ID, Path: inside(consumer.Path)})
 		languages, err := consumerLanguages(consumer.Path)
 		if err != nil {
 			return rundir.Scope{}, nil, err
 		}
 		held[i] = languages
+		loaded := slices.DeleteFunc(slices.Clone(languages), func(language string) bool { return !slices.Contains(inScope, language) })
+		id, err := published(consumer, loaded)
+		if err != nil {
+			return rundir.Scope{}, nil, err
+		}
+		whole.Consumers = append(whole.Consumers, rundir.Module{ID: id, Path: inside(consumer.Path)})
 	}
 
 	routes, claimed := routeConsumers(whole.Consumers, held, analyzers, inScope)
@@ -325,6 +335,24 @@ func plan(declared *scope.Document, analyzers []providers.Analyzer, inScope []st
 		return rundir.Scope{}, nil, &verdict.InvocationError{Err: errors.Join(unclaimed...), Flag: scopeFlag}
 	}
 	return whole, routes, nil
+}
+
+// published is the name module is written under in the run's scope document,
+// given the languages of the run it is loaded in. Where it is loaded in more
+// than one language, the declared document names none and a go.mod governs it,
+// that is the module path of its Go module: the Contract's name for a module
+// whose language has a module path, and the one the Go analyzer reports it by,
+// so every report of it names it alike and the merge admits them. Otherwise it
+// keeps the declared name, or none, and its analyzer's load names it.
+func published(module scope.Module, languages []string) (string, error) {
+	if module.ID != "" || len(languages) < 2 {
+		return module.ID, nil
+	}
+	path, found, err := gomod.Path(module.Path)
+	if err != nil || !found {
+		return "", err
+	}
+	return path, nil
 }
 
 // routeConsumers is one route per analyzer, handing it every consumer whose
