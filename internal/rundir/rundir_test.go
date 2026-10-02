@@ -160,6 +160,33 @@ func TestCreateRefusesAnExistingDirectory(t *testing.T) {
 	}
 }
 
+// TestCreateTempMakesAnEmptyDirectoryOfItsOwn pins that two runs given no
+// directory each get a fresh, empty one, at the path the run names.
+func TestCreateTempMakesAnEmptyDirectoryOfItsOwn(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+
+	first, err := rundir.CreateTemp()
+	if err != nil {
+		t.Fatalf("CreateTemp() = %v", err)
+	}
+	second, err := rundir.CreateTemp()
+	if err != nil {
+		t.Fatalf("CreateTemp() a second time = %v", err)
+	}
+	if first.Path() == second.Path() {
+		t.Errorf("CreateTemp() twice = %s both times, want two directories", first.Path())
+	}
+	for _, dir := range []*rundir.Dir{first, second} {
+		held, err := os.ReadDir(dir.Path())
+		if err != nil || len(held) != 0 {
+			t.Errorf("ReadDir(%s) = %v, %v, want an empty directory", dir.Path(), held, err)
+		}
+		if got := filepath.Dir(dir.Scope()); got != dir.Path() {
+			t.Errorf("the scope document of %s is in %s, want the run directory", dir.Path(), got)
+		}
+	}
+}
+
 // TestWriteConfigWritesTheSplitForTheEntrysLanguages pins the configuration an
 // entry's analyzer reads to the split of the resolved configuration for the
 // languages the entry claims, byte for byte.

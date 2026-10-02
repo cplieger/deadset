@@ -1,7 +1,8 @@
 // Package summary renders what a run prints about its merged report beside the
-// report itself: the analyzers the merge read, one summary line over every
-// language the run covered, and one workflow annotation per finding and per
-// stale suppression.
+// report itself: one text line per finding and per stale suppression, the
+// analyzers the merge read, one summary line over every language the run
+// covered, the remediation of a failing finding, and one workflow annotation
+// per finding and per stale suppression.
 package summary
 
 import (

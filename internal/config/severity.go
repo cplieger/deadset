@@ -77,6 +77,24 @@ func checkSeverity(value json.RawMessage) *rejection {
 	return nil
 }
 
+// Severity returns the severity the resolved configuration sets for the issue
+// kind code: its key for the code, then its key for the code's family. It
+// reports false when the configuration names neither, which leaves the kind at
+// its default.
+func (r *Resolved) Severity(code string) (Severity, bool) {
+	keys := []string{code}
+	if len(code) > familyKeyLength {
+		keys = append(keys, code[:familyKeyLength])
+	}
+	for _, key := range keys {
+		var set Severity
+		if value, named := r.severity[key]; named && decoded(value, &set) {
+			return set, true
+		}
+	}
+	return "", false
+}
+
 // codesNamed returns the codes one severity key names: the code itself, or every
 // code of the family its two-digit prefix names.
 func codesNamed(key string) []string {

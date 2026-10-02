@@ -113,6 +113,16 @@ func totals(carried *records, held *gathered) report.Totals {
 	}
 }
 
+// Recount sets the counts of r's totals that its findings decide, the finding
+// count, the count per severity and the deletable lines, as the merge computes
+// them over the findings r holds. A caller that changes the merged findings
+// recounts before it bounds them.
+func Recount(r *report.Report) {
+	r.Totals.Findings = len(r.Findings)
+	r.Totals.BySeverity = severities(r.Findings)
+	r.Totals.DeletableLines = deletableLines(r.Findings)
+}
+
 func severities(findings []report.Finding) report.BySeverity {
 	var counted report.BySeverity
 	for i := range findings {

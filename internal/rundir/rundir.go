@@ -46,6 +46,19 @@ func Create(path string) (*Dir, error) {
 	return &Dir{path: path}, nil
 }
 
+// CreateTemp makes a run directory of a name no other directory holds, under
+// the directory [os.TempDir] names.
+func CreateTemp() (*Dir, error) {
+	path, err := os.MkdirTemp("", "deadset-run-")
+	if err != nil {
+		return nil, fmt.Errorf("rundir: create the run directory: %w", err)
+	}
+	return &Dir{path: path}, nil
+}
+
+// Path is the path of the run directory.
+func (d *Dir) Path() string { return d.path }
+
 // Scope is the path of the scope document the analyzers of the run read.
 func (d *Dir) Scope() string { return filepath.Join(d.path, scopeFile) }
 

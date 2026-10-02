@@ -371,6 +371,8 @@ func TestForError(t *testing.T) {
 	}{
 		{name: "configuration_refusal", err: refusal, want: verdict.Usage},
 		{name: "wrapped_configuration_refusal", err: fmt.Errorf("resolve: %w", refusal), want: verdict.Usage},
+		{name: "invocation_refusal", err: &verdict.InvocationError{Err: fs.ErrNotExist, Flag: "central"}, want: verdict.Usage},
+		{name: "wrapped_invocation_refusal", err: fmt.Errorf("read: %w", &verdict.InvocationError{Err: errors.New("x")}), want: verdict.Usage},
 		{name: "no_language_in_scope", err: noLanguage, want: verdict.Usage},
 		{name: "filter_outside_the_target", err: outside, want: verdict.Usage},
 		{name: "truncated_report", err: truncated, want: verdict.Failure},
