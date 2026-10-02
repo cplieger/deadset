@@ -99,7 +99,7 @@ func configSchema(t *testing.T) schemaKey {
 func TestKeyList_matchesTheContractSchema(t *testing.T) {
 	t.Parallel()
 
-	const version = "3.0.0"
+	const version = "3.2.0"
 	keys := keyList(version)
 	compareSection(t, &keys, configSchema(t), "", false)
 }
@@ -319,7 +319,23 @@ func TestPatterns_agreeWithTheSchema(t *testing.T) {
 		{
 			name: "provenance-value", ours: provenanceValue,
 			schema:  schemaString(t, "properties", "provenance", "patternProperties", onlyPatternProperty(t, "provenance"), "pattern"),
-			samples: []string{"default", "repository: deadset.json", "flag: --fail-on", "central:x", "defaults", "repository: ", "env: x"},
+			samples: []string{"default", "repository: deadset.json", "flag: --fail-on", "central:x", "defaults", "repository: ", "env: x", "central: a\rb", "flag: a\nb"},
+		},
+		{
+			name: "analyzer-name", ours: analyzerName, schema: providerPattern(t, 0, "name"),
+			samples: []string{"deadset-go", "deadset", "example2-go", "Deadset", "-go", "go-", "a--b", "9go", "a_b", "a-9"},
+		},
+		{
+			name: "artifact-source", ours: artifactSource, schema: providerPattern(t, 1, "source"),
+			samples: []string{"go:example.com/x/cmd/x", "npm:@example/x", "npm:", "pip:x", "go:a b", "go:a\tb", "go:a\u00a0b", "GO:x"},
+		},
+		{
+			name: "artifact-version", ours: artifactVersion, schema: providerPattern(t, 1, "version"),
+			samples: []string{"1.4.0", "1.4.0-rc.1", "1.4.0+build.5", "v1.4.0", "1.4", "1.4.0-", "1.4.0\n"},
+		},
+		{
+			name: "artifact-digest", ours: artifactChecksum, schema: providerPattern(t, 1, "digest"),
+			samples: []string{"sha256:" + strings.Repeat("4", 64), "sha256:" + strings.Repeat("A", 64), "sha256:" + strings.Repeat("4", 63), "sha512:" + strings.Repeat("4", 64)},
 		},
 		{
 			name: "contract-version", ours: semanticVersion, schema: schemaString(t, "properties", "contract_version", "pattern"),
@@ -355,4 +371,13 @@ func TestPatterns_agreeWithTheSchema(t *testing.T) {
 			}
 		})
 	}
+}
+
+// providerPattern returns the pattern the schema declares for member of the provider
+// entry shape at index of the entry's oneOf.
+func providerPattern(t *testing.T, shape int, member string) string {
+	t.Helper()
+
+	return schemaString(t, "properties", "providers", "properties", "analyzers", "items", "oneOf", shape,
+		"properties", member, "pattern")
 }

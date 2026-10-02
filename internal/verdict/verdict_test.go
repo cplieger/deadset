@@ -86,7 +86,8 @@ func TestTheExitCodesAreTheContractsTable(t *testing.T) {
 }
 
 // TestCodeOfEveryMergedVectorIsItsPublishedExitCode pins the verdict over every
-// merged report the vectors publish to the exit code the case declares.
+// merged report the vectors publish, under the failing severity its caller
+// gives, to the exit code the case declares.
 func TestCodeOfEveryMergedVectorIsItsPublishedExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -108,9 +109,20 @@ func TestCodeOfEveryMergedVectorIsItsPublishedExitCode(t *testing.T) {
 				t.Fatalf("Setup: %s/expected_exit holds %q, not an exit code", dir, body)
 			}
 
+			caller, err := spec.Vectors.ReadFile(path.Join(dir, "caller.json"))
+			if err != nil {
+				t.Fatalf("Setup: read %s/caller.json: %v", dir, err)
+			}
+			var facts struct {
+				FailOn config.Severity `json:"fail_on"`
+			}
+			if err := json.Unmarshal(caller, &facts); err != nil {
+				t.Fatalf("Setup: decode %s/caller.json: %v", dir, err)
+			}
+
 			r := vector(t, path.Join(path.Base(dir), "expected.json"))
-			if got := verdict.Code(r, config.Deny, verdict.On); got != want {
-				t.Errorf("Code(%s, deny, On) = %d, want %d", expected, got, want)
+			if got := verdict.Code(r, facts.FailOn, verdict.On); got != want {
+				t.Errorf("Code(%s, %s, On) = %d, want %d", expected, facts.FailOn, got, want)
 			}
 		})
 	}

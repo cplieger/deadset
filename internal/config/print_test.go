@@ -73,6 +73,9 @@ func TestSplit_handsEachAnalyzerItsOwnSections(t *testing.T) {
 			if entries, _ := analysis["configurations"].([]any); len(entries) != 2 {
 				t.Errorf("Split(%v) analysis.configurations = %v, want both entries of the matrix", c.languages, analysis["configurations"])
 			}
+			if _, held := got.Values["providers"]; held {
+				t.Errorf("Split(%v) holds the providers section, which the orchestrator alone reads\n%s", c.languages, document)
+			}
 			if got.Provenance["target.kind"] != "repository: deadset.json" {
 				t.Errorf("Split(%v) provenance of target.kind = %q, want the repository configuration", c.languages, got.Provenance["target.kind"])
 			}

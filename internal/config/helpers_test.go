@@ -9,7 +9,7 @@ import (
 )
 
 // testContractVersion is the Contract version the tests resolve under.
-const testContractVersion = "3.0.0"
+const testContractVersion = "3.2.0"
 
 // fromRepository returns the inputs of a run whose one source is a repository
 // configuration holding document.

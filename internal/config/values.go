@@ -255,6 +255,78 @@ func configuration(value json.RawMessage) *rejection {
 	}
 }
 
+// The members a provider entry names: an installed analyzer names its name, the
+// languages it claims and its command, and an acquirable one names, beside those, the
+// artifact acquisition fetches.
+var (
+	providerMembers    = []string{"name", languagesKey, "command", "source", "version", "digest"}
+	acquisitionMembers = []string{"source", "version", "digest"}
+)
+
+// languagesKey names the languages in scope in the analysis section and the
+// languages a provider entry claims.
+const languagesKey = "languages"
+
+// The spellings the key list declares for a provider entry's analyzer name, its
+// source, its version and the digest of its artifact.
+var (
+	analyzerName     = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+	artifactSource   = regexp.MustCompile(`^(go|npm):[^ \t\r\n]+$`)
+	artifactVersion  = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
+	artifactChecksum = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
+
+// providerList accepts the provider list: an array of entries, each in one of the
+// two shapes, no two of them naming one analyzer. A repeated name is refused at the
+// later entry, because a run keys every file it writes for an analyzer by the name.
+func providerList(value json.RawMessage) *rejection {
+	var entries []json.RawMessage
+	if !decoded(value, &entries) {
+		return reject("want an array")
+	}
+	named := make(map[string]bool, len(entries))
+	for index, entry := range entries {
+		at := "[" + strconv.Itoa(index) + "]"
+		name, rejected := provider(entry)
+		if rejected != nil {
+			return rejected.under(at)
+		}
+		if named[name] {
+			return reject("repeats the analyzer name %q of an earlier entry", name).under(at + ".name")
+		}
+		named[name] = true
+	}
+	return nil
+}
+
+// provider accepts one provider entry and returns the analyzer name it gives. An
+// entry naming any member of the artifact is an acquirable analyzer and must name
+// all three.
+func provider(value json.RawMessage) (string, *rejection) {
+	entry, rejected := members(value, providerMembers)
+	if rejected != nil {
+		return "", rejected
+	}
+	rejected = first(
+		required(entry, "name", matches(analyzerName, "lowercase words joined by single hyphens")),
+		required(entry, languagesKey, list(1, oneOf("go", "ts"))),
+		required(entry, "command", nonEmpty),
+	)
+	acquirable := slices.ContainsFunc(acquisitionMembers, func(name string) bool { _, held := entry[name]; return held })
+	if rejected == nil && acquirable {
+		rejected = first(
+			required(entry, "source", matches(artifactSource, "go: or npm: followed by the package")),
+			required(entry, "version", matches(artifactVersion, "a semantic version with no leading v")),
+			required(entry, "digest", matches(artifactChecksum, "sha256: followed by 64 lowercase hexadecimal digits")),
+		)
+	}
+	if rejected != nil {
+		return "", rejected
+	}
+	name, _ := text(entry["name"]) // the name check above accepted a string
+	return name, nil
+}
+
 // spell lists a closed set as a refusal names it.
 func spell[T ~string](values []T) string {
 	quoted := make([]string, len(values))

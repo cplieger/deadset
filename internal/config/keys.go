@@ -75,7 +75,7 @@ func keyList(contractVersion string) node {
 		}},
 		{name: "analysis", kind: section, owner: everyProduct, children: []node{
 			{
-				name: "languages", kind: setting, owner: orchestrator,
+				name: languagesKey, kind: setting, owner: orchestrator,
 				fallback: raw(`[]`), check: list(0, oneOf("go", "ts")),
 			},
 			{
@@ -129,10 +129,20 @@ func keyList(contractVersion string) node {
 			{name: "max_findings", kind: setting, owner: everyProduct, fallback: raw(`0`), check: count},
 			{name: "fail_on", kind: setting, owner: everyProduct, fallback: raw(`"deny"`), check: oneOf(Allow, Warn, Deny)},
 		}},
+		{name: "providers", kind: section, owner: orchestrator, children: []node{
+			{
+				name: "analyzers", kind: setting, owner: orchestrator, check: providerList,
+				fallback: raw(`[{"name":"deadset-go","languages":["go"],"command":"deadset-go"},` +
+					`{"name":"deadset-ts","languages":["ts"],"command":"deadset-ts"}]`),
+			},
+		}},
 		{name: "go", kind: section, owner: languageAnalyzer},
 		{name: "ts", kind: section, owner: languageAnalyzer, children: []node{
 			{name: "test_files", kind: passThrough, owner: languageAnalyzer, fallback: raw(`["**/*.test.{ts,tsx,mts,cts}"]`)},
 			{name: "entry_files", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
+			{name: "injection_registrations", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
+			{name: "lifecycle_contracts", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
+			{name: "serializers", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 		}},
 		{name: provenanceSection, kind: annotations, owner: everyProduct},
 	}}

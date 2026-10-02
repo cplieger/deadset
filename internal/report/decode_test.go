@@ -42,7 +42,8 @@ func TestDecodeReadsEveryExampleReportBack(t *testing.T) {
 // TestDecodeReadsEveryMergeVectorBackByteForByte decodes every report a merge
 // vector holds, its inputs and its expected merged report alike, and encodes
 // it again, which must give the file's own bytes: the vectors are written in
-// the encoding a merged report is compared in.
+// the encoding a merged report is compared in, except that an input may hold
+// U+2028 and U+2029 unescaped, which the encoding writes as escapes.
 func TestDecodeReadsEveryMergeVectorBackByteForByte(t *testing.T) {
 	t.Parallel()
 
@@ -61,8 +62,10 @@ func TestDecodeReadsEveryMergeVectorBackByteForByte(t *testing.T) {
 			if err := Encode(&encoded, decoded); err != nil {
 				t.Fatalf("Encode(Decode(%s)) = %v", name, err)
 			}
-			if !bytes.Equal(encoded.Bytes(), body) {
-				t.Errorf("Encode(Decode(%s)) =\n%s\nwant the file's bytes\n%s", name, encoded.Bytes(), body)
+			want := strings.NewReplacer("\u2028", `\u2028`, "\u2029", `\u2029`).Replace(string(body))
+			if encoded.String() != want {
+				t.Errorf("Encode(Decode(%s)) =\n%s\nwant the file's bytes, its line and paragraph separators escaped\n%s",
+					name, encoded.Bytes(), want)
 			}
 		})
 	}
