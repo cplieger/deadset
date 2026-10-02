@@ -1,0 +1,364 @@
+package invoke_test
+
+import (
+	"bytes"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/cplieger/deadset/internal/invoke"
+	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/internal/rundir"
+	"github.com/cplieger/deadset/internal/verdict"
+)
+
+// accepted is the report schema range the handshake tests admit under.
+var accepted = []string{report.SchemaVersion}
+
+// digest is a conformance digest of the shape the Contract states.
+var digest = "sha256:" + strings.Repeat("0a", 32)
+
+// The members of a describe document the Go analyzer could print, one to an
+// index, so a case replaces or drops one by its position.
+const (
+	memberName = iota
+	memberVersion
+	memberContractVersion
+	memberSchemaVersions
+	memberLanguages
+	memberConformance
+)
+
+// describedMembers is every member of a describe document admitted under
+// accepted, as JSON text.
+func describedMembers() []string {
+	return []string{
+		`"name": "deadset-go"`,
+		`"version": "1.20.0"`,
+		`"contract_version": "3.2.0"`,
+		`"schema_versions_accepted": ["` + report.SchemaVersion + `"]`,
+		`"languages": ["go"]`,
+		`"conformance": {"corpus_version": "1.9.0", "result": "pass", "digest": "` + digest + `"}`,
+	}
+}
+
+// replaced is members with the member at i replaced by member, or dropped when
+// member is empty.
+func replaced(members []string, i int, member string) []string {
+	out := slices.Clone(members)
+	if member == "" {
+		return slices.Delete(out, i, i+1)
+	}
+	out[i] = member
+	return out
+}
+
+// document is the describe document holding members, in order.
+func document(members []string) []byte {
+	return []byte("{\n  " + strings.Join(members, ",\n  ") + "\n}\n")
+}
+
+// describer writes a fake analyzer whose describe verb prints printed to
+// stdout, a line to stderr, and exits with exit.
+func describer(t *testing.T, exit int, printed []byte) fake {
+	t.Helper()
+
+	dir := t.TempDir()
+	written := filepath.Join(dir, "described.json")
+	if err := os.WriteFile(written, printed, 0o600); err != nil {
+		t.Fatalf("Setup: write %s: %v", written, err)
+	}
+	return script(t, dir, "cat '"+written+"'\necho 'a diagnostic' >&2\nexit "+strconv.Itoa(exit)+"\n")
+}
+
+// kept is the files of the provider entry named name in a fresh run directory.
+func kept(t *testing.T, name string) rundir.Entry {
+	t.Helper()
+
+	dir, err := rundir.Create(filepath.Join(t.TempDir(), "run"))
+	if err != nil {
+		t.Fatalf("Setup: create the run directory: %v", err)
+	}
+	entry, err := dir.Entry(name)
+	if err != nil {
+		t.Fatalf("Setup: Entry(%q): %v", name, err)
+	}
+	return entry
+}
+
+// handshakeRefusal is the *invoke.HandshakeError err carries, after checking
+// that err satisfies errors.Is(err, want) and that the verdict ends the run
+// with the failure code.
+func handshakeRefusal(t *testing.T, err, want error) *invoke.HandshakeError {
+	t.Helper()
+
+	refused, ok := errors.AsType[*invoke.HandshakeError](err)
+	if !ok {
+		t.Fatalf("Describe() = %v, want an *invoke.HandshakeError", err)
+	}
+	if !errors.Is(err, want) {
+		t.Errorf("Describe() = %v, want an error satisfying errors.Is(err, %v)", err, want)
+	}
+	if code := verdict.ForError(err); code != verdict.Failure {
+		t.Errorf("verdict.ForError(%v) = %d, want %d", err, code, verdict.Failure)
+	}
+	return refused
+}
+
+// TestDescribeAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion pins the admitted
+// handshake: the describe verb run alone in the request's directory, the
+// description read member for member, the printed document kept byte for byte
+// at the entry's describe file without the analyzer's stderr, which goes to
+// the diagnostics, and an analyzer admitted when one of several versions it
+// reads is accepted.
+func TestDescribeAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		versions string
+		want     []string
+	}{
+		{name: "one-version", versions: `["` + report.SchemaVersion + `"]`, want: []string{report.SchemaVersion}},
+		{name: "one-of-several", versions: `["5.0.0", "` + report.SchemaVersion + `"]`, want: []string{"5.0.0", report.SchemaVersion}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			printed := document(replaced(describedMembers(), memberSchemaVersions, `"schema_versions_accepted": `+c.versions))
+			analyzer := describer(t, 0, printed)
+			req := request(t, "deadset-go", analyzer.command)
+			var diagnostics bytes.Buffer
+			req.Diagnostics = &diagnostics
+			entry := kept(t, req.Analyzer)
+
+			got, err := invoke.Describe(t.Context(), &req, entry, accepted)
+			if err != nil {
+				t.Fatalf("Describe(an analyzer with a pass reading %s) = %v, want it admitted", c.versions, err)
+			}
+			want := &invoke.Description{
+				Conformance:            &report.Conformance{CorpusVersion: "1.9.0", Result: report.ResultPass, Digest: digest},
+				Name:                   "deadset-go",
+				Version:                "1.20.0",
+				ContractVersion:        "3.2.0",
+				SchemaVersionsAccepted: c.want,
+				Languages:              []string{"go"},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Describe() = %+v, want %+v", got, want)
+			}
+
+			if keptBytes, err := os.ReadFile(entry.Describe()); err != nil || !bytes.Equal(keptBytes, printed) {
+				t.Errorf("Describe() kept %q at %s (%v), want the bytes the analyzer printed, %q", keptBytes, entry.Describe(), err, printed)
+			}
+			if diagnostics.String() != "a diagnostic\n" {
+				t.Errorf("Describe() copied %q to the diagnostics, want the analyzer's stderr, %q", diagnostics.String(), "a diagnostic\n")
+			}
+			if args, _ := os.ReadFile(analyzer.args); string(args) != "describe\n" {
+				t.Errorf("Describe() ran the analyzer with %q, want the describe verb alone", args)
+			}
+			if ranIn, _ := os.ReadFile(analyzer.dir); strings.TrimSuffix(string(ranIn), "\n") != req.Dir {
+				t.Errorf("Describe() ran the analyzer in %q, want %q", ranIn, req.Dir)
+			}
+		})
+	}
+}
+
+// TestDescribeRefusesACommandThatResolvesToNoExecutable pins step 1 of the
+// handshake: an entry whose command names no file, a file that cannot be
+// executed, or a name PATH does not hold ends the run with the failure code
+// naming the entry and its command, and nothing is run or kept.
+func TestDescribeRefusesACommandThatResolvesToNoExecutable(t *testing.T) {
+	t.Parallel()
+
+	notExecutable := filepath.Join(t.TempDir(), "analyzer")
+	if err := os.WriteFile(notExecutable, []byte("#!/bin/sh\nexit 0\n"), 0o600); err != nil {
+		t.Fatalf("Setup: write %s: %v", notExecutable, err)
+	}
+	for name, command := range map[string]string{
+		"absent-path":    filepath.Join(t.TempDir(), "absent"),
+		"not-executable": notExecutable,
+		"absent-name":    "deadset-analyzer-no-path-holds",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			req := request(t, "deadset-third-party", command)
+			entry := kept(t, req.Analyzer)
+			got, err := invoke.Describe(t.Context(), &req, entry, accepted)
+			if got != nil {
+				t.Errorf("Describe(command %s) = %+v, want no description", command, got)
+			}
+			refused := handshakeRefusal(t, err, invoke.ErrNoCommand)
+			if refused.Exit != -1 {
+				t.Errorf("Describe(command %s) refused with exit %d, want -1", command, refused.Exit)
+			}
+			for _, named := range []string{"deadset-third-party", command} {
+				if !strings.Contains(err.Error(), named) {
+					t.Errorf("Describe(command %s) = %q, want the message to name %q", command, err, named)
+				}
+			}
+			if _, err := os.Stat(entry.Describe()); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("after Describe(command %s), Stat(%s) = %v, want nothing kept", command, entry.Describe(), err)
+			}
+		})
+	}
+}
+
+// TestDescribeRefusesAnAnalyzerWithNoConformancePass pins that an analyzer
+// recording a failing result, or no conformance record at all, ends the run
+// with the failure code naming the entry and, where it records one, the
+// result and the corpus version.
+func TestDescribeRefusesAnAnalyzerWithNoConformancePass(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		member string
+		named  []string
+	}{
+		{
+			name:   "failing",
+			member: `"conformance": {"corpus_version": "1.9.0", "result": "fail", "digest": "` + digest + `"}`,
+			named:  []string{"deadset-go", `"fail"`, "1.9.0"},
+		},
+		{name: "absent", member: "", named: []string{"deadset-go", "no conformance record"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := request(t, "deadset-go", describer(t, 0, document(replaced(describedMembers(), memberConformance, c.member))).command)
+			got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), accepted)
+			if got != nil {
+				t.Errorf("Describe(a %s conformance record) = %+v, want no description", c.name, got)
+			}
+			handshakeRefusal(t, err, invoke.ErrNoConformancePass)
+			for _, named := range c.named {
+				if !strings.Contains(err.Error(), named) {
+					t.Errorf("Describe(a %s conformance record) = %q, want the message to name %q", c.name, err, named)
+				}
+			}
+		})
+	}
+}
+
+// TestDescribeRefusesASchemaVersionOutsideTheRange pins that an analyzer
+// reading no version the run accepts ends the run with the failure code,
+// naming the entry, the versions the analyzer reads and the range the run
+// accepts.
+func TestDescribeRefusesASchemaVersionOutsideTheRange(t *testing.T) {
+	t.Parallel()
+
+	printed := document(replaced(describedMembers(), memberSchemaVersions, `"schema_versions_accepted": ["5.0.0", "7.0.0"]`))
+	req := request(t, "deadset-go", describer(t, 0, printed).command)
+	got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), accepted)
+	if got != nil {
+		t.Errorf("Describe(an analyzer reading 5.0.0 and 7.0.0) = %+v, want no description", got)
+	}
+	handshakeRefusal(t, err, invoke.ErrSchemaVersion)
+	for _, named := range []string{"deadset-go", "5.0.0, 7.0.0", report.SchemaVersion} {
+		if !strings.Contains(err.Error(), named) {
+			t.Errorf("Describe(an analyzer reading 5.0.0 and 7.0.0) = %q, want the message to name %q", err, named)
+		}
+	}
+}
+
+// TestDescribeRefusesADescribeThatDoesNotExitClean pins that a describe verb
+// exiting other than 0 ends the run with the failure code, its own usage code
+// included, whatever it printed, and that what it printed is still kept.
+func TestDescribeRefusesADescribeThatDoesNotExitClean(t *testing.T) {
+	t.Parallel()
+
+	printed := document(describedMembers())
+	for _, exit := range []int{1, 2, 3} {
+		t.Run(strconv.Itoa(exit), func(t *testing.T) {
+			t.Parallel()
+
+			req := request(t, "deadset-go", describer(t, exit, printed).command)
+			entry := kept(t, req.Analyzer)
+			got, err := invoke.Describe(t.Context(), &req, entry, accepted)
+			if got != nil {
+				t.Errorf("Describe(a describe exiting %d) = %+v, want no description", exit, got)
+			}
+			if refused := handshakeRefusal(t, err, invoke.ErrDescribeExited); refused.Exit != exit {
+				t.Errorf("Describe(a describe exiting %d) refused with exit %d, want %d", exit, refused.Exit, exit)
+			}
+			if keptBytes, _ := os.ReadFile(entry.Describe()); !bytes.Equal(keptBytes, printed) {
+				t.Errorf("Describe(a describe exiting %d) kept %q, want the bytes it printed", exit, keptBytes)
+			}
+		})
+	}
+}
+
+// TestDescribeRefusesADocumentItCannotRead pins the closed-key read of a
+// describe document: each refusal names the JSON Pointer of the value at
+// fault and ends the run with the failure code.
+func TestDescribeRefusesADocumentItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	valid := describedMembers()
+	conformance := func(members string) []string {
+		return replaced(valid, memberConformance, `"conformance": {`+members+`}`)
+	}
+	cases := []struct {
+		name    string
+		pointer string
+		reason  string
+		printed []byte
+	}{
+		{name: "undeclared", printed: document(append(slices.Clone(valid), `"schema_version": "6.0.0"`)), pointer: "/schema_version", reason: "declares no such member"},
+		{name: "case-variant", printed: document(replaced(valid, memberName, `"Name": "deadset-go"`)), pointer: "/Name", reason: "declares no such member"},
+		{name: "named-twice", printed: document(append(slices.Clone(valid), `"version": "1.21.0"`)), pointer: "/version", reason: "named twice"},
+		{name: "required-absent", printed: document(replaced(valid, memberContractVersion, "")), pointer: "/contract_version", reason: "required member is absent"},
+		{name: "null-string", printed: document(replaced(valid, memberName, `"name": null`)), pointer: "/name", reason: "want a string"},
+		{name: "null-array", printed: document(replaced(valid, memberLanguages, `"languages": null`)), pointer: "/languages", reason: "want an array"},
+		{name: "null-object", printed: document(replaced(valid, memberConformance, `"conformance": null`)), pointer: "/conformance", reason: "want an object"},
+		{name: "null-element", printed: document(replaced(valid, memberSchemaVersions, `"schema_versions_accepted": ["6.0.0", null]`)), pointer: "/schema_versions_accepted/1", reason: "want a string"},
+		{name: "not-a-string", printed: document(replaced(valid, memberVersion, `"version": 1`)), pointer: "/version", reason: "want a string"},
+		{name: "not-an-array", printed: document(replaced(valid, memberLanguages, `"languages": "go"`)), pointer: "/languages", reason: "want an array"},
+		{name: "empty-string", printed: document(replaced(valid, memberName, `"name": ""`)), pointer: "/name", reason: "want a non-empty string"},
+		{name: "empty-array", printed: document(replaced(valid, memberLanguages, `"languages": []`)), pointer: "/languages", reason: "want at least one element"},
+		{
+			name:    "conformance-undeclared",
+			printed: document(conformance(`"corpus_version": "1.9.0", "result": "pass", "digest": "` + digest + `", "fixtures": 21`)),
+			pointer: "/conformance/fixtures",
+			reason:  "declares no such member",
+		},
+		{
+			name:    "conformance-digest-absent",
+			printed: document(conformance(`"corpus_version": "1.9.0", "result": "pass"`)),
+			pointer: "/conformance/digest",
+			reason:  "required member is absent",
+		},
+		{name: "not-an-object", printed: []byte(`["deadset-go"]`), reason: "want an object"},
+		{name: "trailing", printed: append(document(valid), "{}\n"...), reason: "nothing after it"},
+		{name: "truncated", printed: document(valid)[:40], reason: "describe printed no document"},
+		{name: "empty", printed: nil, reason: "want an object"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := request(t, "deadset-go", describer(t, 0, c.printed).command)
+			got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), accepted)
+			if got != nil {
+				t.Errorf("Describe(a %s document) = %+v, want no description", c.name, got)
+			}
+			handshakeRefusal(t, err, invoke.ErrDescription)
+			if c.pointer != "" && !strings.Contains(err.Error(), c.pointer+": ") {
+				t.Errorf("Describe(a %s document) = %q, want the message to name the value at %s", c.name, err, c.pointer)
+			}
+			if !strings.Contains(err.Error(), c.reason) {
+				t.Errorf("Describe(a %s document) = %q, want the message to say %q", c.name, err, c.reason)
+			}
+		})
+	}
+}

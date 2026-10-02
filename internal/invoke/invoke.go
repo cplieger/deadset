@@ -1,14 +1,17 @@
-// Package invoke runs an analyzer's analyze verb as a separate process and
-// reads the report the analyzer writes to the file the invocation names. No
-// analyzer is linked into this program as a library.
+// Package invoke runs an analyzer as a separate process: [Describe] runs its
+// describe verb and admits or refuses the analyzer from what it prints, and
+// [Analyze] runs its analyze verb and reads the report the analyzer writes to
+// the file the invocation names. No analyzer is linked into this program as a
+// library.
 //
 // The read is fail-closed. The exit code is read before the report is opened,
 // and only a code that is a verdict about a complete report lets the report be
 // read at all. An absent report, a report that does not decode, and a
 // cancelled run each leave the run with no report from that analyzer, and
-// [Run] then returns no report from any analyzer. Every refusal is an [*Error]
-// naming the provider entry and the report path; the exit code the run returns
-// for one is the caller's to decide.
+// [Run] then returns no report from any analyzer. Every refusal of a read is
+// an [*Error] naming the provider entry and the report path, and every refusal
+// of a handshake a [*HandshakeError] naming the provider entry and its command;
+// the exit code the run returns for one is the caller's to decide.
 package invoke
 
 import (
@@ -106,7 +109,12 @@ func Analyze(ctx context.Context, req *Request) (*report.Report, error) {
 		return nil, refuse(-1, cmp.Or(err, ErrReportExists))
 	}
 
-	exit, err := run(ctx, req)
+	cmd := command(ctx, req, req.Command, "analyze",
+		"--scope="+req.Scope, "--config="+req.Config, "--report="+req.Report)
+	diagnostics, copied := diagnosticsOf(req.Diagnostics)
+	cmd.Stdout = diagnostics
+	cmd.Stderr = diagnostics
+	exit, err := wait(ctx, cmd, copied)
 	switch {
 	case err != nil:
 		return nil, refuse(exit, err)
@@ -150,28 +158,34 @@ func Run(ctx context.Context, requests []Request) ([]*report.Report, error) {
 	return reports, nil
 }
 
-// run runs the analyzer and returns its exit code. A cancelled ctx interrupts
-// the analyzer and, when it has not exited within interruptGrace, kills it;
-// the run then fails with the cancellation's cause whatever the analyzer
-// returned. A failure to copy what the analyzer printed to Diagnostics fails
-// the run whatever the exit code.
-func run(ctx context.Context, req *Request) (int, error) {
-	cmd := exec.CommandContext(ctx, req.Command, "analyze", //nolint:gosec // G204: running the analyzer a provider entry names is this function's job
-		"--scope="+req.Scope, "--config="+req.Config, "--report="+req.Report)
+// command is the analyzer at path run with args in the directory req names. A
+// cancelled ctx interrupts the analyzer and, when it has not exited within
+// interruptGrace, kills it.
+func command(ctx context.Context, req *Request, path string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = req.Dir
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
 	cmd.WaitDelay = interruptGrace
+	return cmd
+}
 
-	// A file, or no writer at all, reaches the analyzer with no pipe between,
-	// so only another writer has a copy that can fail.
-	cmd.Stdout = req.Diagnostics
-	var copied *recorder
-	if _, isFile := req.Diagnostics.(*os.File); req.Diagnostics != nil && !isFile {
-		copied = &recorder{w: req.Diagnostics}
-		cmd.Stdout = copied
+// diagnosticsOf is the writer an analyzer's diagnostics are copied to, and
+// the recorder of that copy's first error. A file, or no writer at all,
+// reaches the analyzer with no pipe between, so only another writer has a
+// copy that can fail and a recorder.
+func diagnosticsOf(w io.Writer) (io.Writer, *recorder) {
+	if _, isFile := w.(*os.File); w == nil || isFile {
+		return w, nil
 	}
-	cmd.Stderr = cmd.Stdout
+	copied := &recorder{w: w}
+	return copied, copied
+}
 
+// wait runs cmd and returns its exit code. A cancelled ctx fails the run with
+// the cancellation's cause whatever the analyzer returned, and a failure to
+// copy what the analyzer printed, which copied records, fails it whatever the
+// exit code.
+func wait(ctx context.Context, cmd *exec.Cmd, copied *recorder) (int, error) {
 	err := cmd.Run()
 	state := cmd.ProcessState
 	switch {

@@ -78,12 +78,15 @@ func listed(t *testing.T, path string) []string {
 // TestARunKeepsEveryFileKeyedByEntryName writes what a run writes for two
 // entries claiming one language, and the run directory holds one describe, one
 // configuration and one report per entry, each named for the entry, beside the
-// merged report, with nothing else and the scope document's place free.
+// scope document and the merged report, with nothing else.
 func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 	t.Parallel()
 
 	dir, path := created(t)
 	r := resolved(t, mixedTarget)
+	if err := dir.WriteScope(&rundir.Scope{Root: path, Target: rundir.Module{Path: "."}}); err != nil {
+		t.Fatalf("WriteScope() = %v", err)
+	}
 	for _, name := range []string{"deadset-go", "deadset-go-next"} {
 		e := entry(t, dir, name)
 		if err := e.WriteDescribe([]byte(`{"name":"deadset-go"}`)); err != nil {
@@ -109,7 +112,7 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 		"config.deadset-go-next.json", "config.deadset-go.json",
 		"describe.deadset-go-next.json", "describe.deadset-go.json",
 		"report.deadset-go-next.json", "report.deadset-go.json",
-		"report.json",
+		"report.json", "scope.json",
 	}
 	if got := listed(t, path); !slices.Equal(got, want) {
 		t.Errorf("the run directory holds %q, want %q", got, want)
@@ -232,6 +235,13 @@ func TestEveryFileIsWrittenOnce(t *testing.T) {
 			name:  "merged",
 			write: func(d *rundir.Dir, _ rundir.Entry) error { return d.WriteMerged(merged) },
 			path:  func(d *rundir.Dir, _ rundir.Entry) string { return d.Merged() },
+		},
+		{
+			name: "scope",
+			write: func(d *rundir.Dir, _ rundir.Entry) error {
+				return d.WriteScope(&rundir.Scope{Root: "/src/run", Target: rundir.Module{Path: "."}})
+			},
+			path: func(d *rundir.Dir, _ rundir.Entry) string { return d.Scope() },
 		},
 	}
 	for _, w := range writes {

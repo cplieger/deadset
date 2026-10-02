@@ -26,9 +26,9 @@ method (*TargetError).Unwrap is unused
 method (*EntryError).Unwrap is unused
 method (*NameError).Unwrap is unused
 method (*UnresolvedError).Unwrap is unused
+method (*HandshakeError).Unwrap is unused
 method (*CommandError).Unwrap is unused
 method (*Error).Error is used in test only
-method (*Error).Error is unused
 method (*CommandError).Error is unused
 
 # --- Members of the report document that only encoding/json reads.
@@ -53,11 +53,10 @@ field Symbol is unused
 function Languages is used in test only
 function Run is used in test only
 function Create is used in test only
-method (*Dir).Scope is used in test only
+method (*Dir).WriteScope is used in test only
 method (*Dir).WriteMerged is used in test only
 method (*Dir).Entry is used in test only
 method (Entry).Report is used in test only
-method (Entry).WriteDescribe is used in test only
 method (Entry).WriteConfig is used in test only
 
 # --- The verdict and the summary, which the analyze verb calls, and no verb calls yet.
@@ -75,6 +74,7 @@ function Annotations is used in test only
 # pinned by its package's suite over the Contract's merge vectors.
 function Merge is used in test only
 function Select is used in test only
+function Describe is used in test only
 
 # --- The schema version the analyze verb hands the merge as a caller fact, and
 # no verb calls the merge yet.
