@@ -1,9 +1,10 @@
 // Package rundir lays out the run directory: the evidence for every exit code
 // the orchestrator returns. Per provider entry it holds what the analyzer
-// described itself as, the configuration it was handed and the report it
-// wrote, each keyed by the entry's name because two entries may claim one
-// language; beside them it holds the scope document, the merged report and
-// the renderings of the merged report that are files of their own.
+// described itself as, the configuration it was handed, the report it wrote
+// and any scope document of its own, each keyed by the entry's name because
+// two entries may claim one language; beside them it holds the run's scope
+// document, the merged report and the renderings of the merged report that
+// are files of their own.
 //
 // A run directory belongs to one run. [Create] refuses a directory that
 // already exists and every write refuses a file that already exists, so no
@@ -104,6 +105,11 @@ func (d *Dir) Entry(name string) (Entry, error) {
 // Describe is the path of what the entry's analyzer printed when it described
 // itself.
 func (e Entry) Describe() string { return e.file("describe") }
+
+// Scope is the path of the scope document the entry's analyzer reads when the
+// run's own does not name its consumers: those of a run whose declared
+// consumers the entry's languages claim only some of.
+func (e Entry) Scope() string { return e.file("scope") }
 
 // Config is the path of the configuration the entry's analyzer reads.
 func (e Entry) Config() string { return e.file("config") }

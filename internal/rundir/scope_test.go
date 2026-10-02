@@ -252,6 +252,45 @@ func TestWriteScopeWritesTheDocumentTheSchemaStates(t *testing.T) {
 	}
 }
 
+// TestAnEntrysScopeIsTheDocumentTheRunsWouldBe pins that the scope document an
+// entry reads on its own is the one the run's scope document would be for the
+// same scope, byte for byte, written beside it under the entry's name.
+func TestAnEntrysScopeIsTheDocumentTheRunsWouldBe(t *testing.T) {
+	t.Parallel()
+
+	scope := rundir.Scope{
+		Root:      root,
+		Workspace: "go.work",
+		Target:    rundir.Module{ID: "example.com/app", Path: "app"},
+		Consumers: []rundir.Module{{Path: "consumers/one"}},
+	}
+	dir, path := created(t)
+	e, err := dir.Entry("deadset-go")
+	if err != nil {
+		t.Fatalf("Setup: Entry(deadset-go): %v", err)
+	}
+	if err := dir.WriteScope(&scope); err != nil {
+		t.Fatalf("WriteScope(%+v) = %v", scope, err)
+	}
+	if err := e.WriteScope(&scope); err != nil {
+		t.Fatalf("Entry(deadset-go).WriteScope(%+v) = %v", scope, err)
+	}
+	if want := path + "/scope.deadset-go.json"; e.Scope() != want {
+		t.Errorf("Entry(deadset-go).Scope() = %q, want %q", e.Scope(), want)
+	}
+	run, err := os.ReadFile(dir.Scope())
+	if err != nil {
+		t.Fatalf("read %s: %v", dir.Scope(), err)
+	}
+	own, err := os.ReadFile(e.Scope())
+	if err != nil {
+		t.Fatalf("read %s: %v", e.Scope(), err)
+	}
+	if string(own) != string(run) {
+		t.Errorf("Entry(deadset-go).WriteScope(%+v) wrote\n%s\nwant the run's document\n%s", scope, own, run)
+	}
+}
+
 // TestWriteScopeRefusesAPathOutsideTheWorkingDirectory pins that a scope
 // naming anything but a local path inside an absolute working directory is
 // refused before any document is written.

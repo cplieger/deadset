@@ -1,0 +1,44 @@
+A Go library and one Go consumer that calls Greet and builds an Options
+naming Name. Spare and Farewell are referenced by nothing.
+
+-- scope.json --
+{"target": {"path": "lib"}, "consumers": [{"path": "consumer"}]}
+-- lib/deadset.json --
+{"target": {"kind": "library"}}
+-- lib/go.mod --
+module example.com/lib
+
+go 1.27
+-- lib/lib.go --
+// Package lib is a library one consumer reads.
+package lib
+
+// Options is what a caller configures.
+type Options struct {
+	Name  string
+	Spare int
+}
+
+// Greet greets the named caller.
+func Greet(o Options) string { return "hello " + o.Name }
+
+// Farewell is what no caller says.
+func Farewell() string { return "bye" }
+-- consumer/go.mod --
+module example.com/consumer
+
+go 1.27
+
+require example.com/lib v0.0.0
+
+replace example.com/lib => ../lib
+-- consumer/main.go --
+package main
+
+import (
+	"fmt"
+
+	"example.com/lib"
+)
+
+func main() { fmt.Println(lib.Greet(lib.Options{Name: "consumer"})) }

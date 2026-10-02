@@ -27,21 +27,25 @@ import (
 	"github.com/cplieger/deadset/internal/render"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/rundir"
+	"github.com/cplieger/deadset/internal/scope"
 	"github.com/cplieger/deadset/internal/summary"
 	"github.com/cplieger/deadset/internal/verdict"
 )
 
 func init() { register("analyze", runAnalyze) }
 
-const analyzeUsage = "usage: deadset analyze [--target=DIR] [--central=FILE] [--run-dir=DIR] [--template=FILE] " +
+const analyzeUsage = "usage: deadset analyze [--target=DIR] [--scope=FILE] [--central=FILE] [--run-dir=DIR] [--template=FILE] " +
 	"[--exit-code=on|off] [--languages=LIST] [--min-confidence=CLASS] [--formats=LIST] [--fail-on=SEVERITY]"
 
 // name is the analyzer name a merged report this command writes carries.
 const name = "deadset"
 
-// templateFlag names the flag that names the template the template format
-// renders.
-const templateFlag = "template"
+// The flags a refusal names: the one naming the template the template format
+// renders, and the one naming the scope document.
+const (
+	templateFlag = "template"
+	scopeFlag    = "scope"
+)
 
 // The two values --exit-code takes.
 const (
@@ -78,7 +82,7 @@ type analysis struct {
 	// none.
 	template *render.Template
 
-	target, central, runDir, templatePath string
+	target, scopePath, central, runDir, templatePath string
 
 	exitCode verdict.Switch
 }
@@ -92,6 +96,8 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	a.set.SetOutput(stderr)
 	a.set.Usage = func() { fmt.Fprintln(stderr, analyzeUsage) }
 	a.set.StringVar(&a.target, "target", ".", targetUsage)
+	a.set.StringVar(&a.scopePath, scopeFlag, "",
+		"the scope document naming the target and the consumers whose references count against it")
 	a.set.StringVar(&a.central, "central", "", centralUsage)
 	a.set.StringVar(&a.runDir, "run-dir", "",
 		"the run directory, which must not exist; empty makes one under the temporary directory")
@@ -151,11 +157,19 @@ func (a *analysis) run(ctx context.Context) (int, error) {
 	if refused := a.readTemplate(reporters.Formats); refused != nil {
 		return 0, refused
 	}
+	declared, err := a.readScope(root)
+	if err != nil {
+		return 0, err
+	}
 	inScope, err := detect.Languages(root, detect.Options{Languages: resolved.Config.Languages})
 	if err != nil {
 		return 0, err
 	}
 	analyzers, err := providers.Select(resolved.Config.Providers, inScope)
+	if err != nil {
+		return 0, err
+	}
+	whole, routes, err := plan(declared, analyzers, inScope)
 	if err != nil {
 		return 0, err
 	}
@@ -165,7 +179,7 @@ func (a *analysis) run(ctx context.Context) (int, error) {
 	}
 	fmt.Fprintf(a.stderr, "deadset: the run directory is %s\n", dir.Path())
 
-	runs, err := prepare(dir, root, resolved, analyzers, inScope)
+	runs, err := prepare(dir, resolved, analyzers, &whole, routes)
 	if err != nil {
 		return 0, err
 	}
@@ -232,34 +246,161 @@ type analyzerRun struct {
 	request invoke.Request
 }
 
-// prepare writes the scope document and each analyzer's configuration into
-// dir and returns one run per analyzer, in the order of analyzers. The scope's
-// working directory and every analyzer's are the one root, so every path a
-// report names is relative to the target.
-func prepare(dir *rundir.Dir, root string, resolved *config.Resolved,
-	analyzers []providers.Analyzer, inScope []string,
+// readScope reads the scope document --scope names, whose target must be the
+// target root. With no document the scope is the target alone.
+func (a *analysis) readScope(root string) (*scope.Document, error) {
+	if a.scopePath == "" {
+		return &scope.Document{Target: scope.Module{Path: root}}, nil
+	}
+	declared, err := scope.Read(a.scopePath)
+	if err != nil {
+		return nil, fmt.Errorf("--%s=%s: %w", scopeFlag, a.scopePath, err)
+	}
+	if !sameDirectory(declared.Target.Path, root) {
+		return nil, &verdict.InvocationError{
+			Err:  fmt.Errorf("the document names the target %s, and the target of the run is %s", declared.Target.Path, root),
+			Flag: scopeFlag,
+		}
+	}
+	return declared, nil
+}
+
+// sameDirectory reports whether two paths name one existing directory.
+func sameDirectory(a, b string) bool {
+	first, err := os.Stat(a)
+	if err != nil || !first.IsDir() {
+		return false
+	}
+	second, err := os.Stat(b)
+	return err == nil && os.SameFile(first, second)
+}
+
+// route is what one selected analyzer is handed: the languages in scope its
+// entry claims, and the declared consumers holding one of them.
+type route struct {
+	languages []string
+	consumers []rundir.Module
+}
+
+// plan is the scope the run writes for the declared document, and one route
+// per analyzer in the order of analyzers. Every analyzer runs in the scope's
+// working directory, the deepest directory holding every path the document
+// names, because each names the paths of its report relative to the
+// directory it runs in. A consumer is handed to every analyzer claiming a
+// language detection finds in it, and to no other, since an analyzer refuses
+// a consumer it cannot load: one that does not exist ends the run as a
+// failure, and one no analyzer claims is an invocation the run refuses.
+func plan(declared *scope.Document, analyzers []providers.Analyzer, inScope []string) (rundir.Scope, []route, error) {
+	root := declared.Root()
+	inside := func(path string) string {
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return path
+		}
+		return relative
+	}
+	whole := rundir.Scope{Root: root, Target: rundir.Module{ID: declared.Target.ID, Path: inside(declared.Target.Path)}}
+	if declared.Workspace != "" {
+		whole.Workspace = inside(declared.Workspace)
+	}
+	held := make([][]string, len(declared.Consumers))
+	for i, consumer := range declared.Consumers {
+		whole.Consumers = append(whole.Consumers, rundir.Module{ID: consumer.ID, Path: inside(consumer.Path)})
+		languages, err := consumerLanguages(consumer.Path)
+		if err != nil {
+			return rundir.Scope{}, nil, err
+		}
+		held[i] = languages
+	}
+
+	routes, claimed := routeConsumers(whole.Consumers, held, analyzers, inScope)
+	var unclaimed []error
+	for j, languages := range held {
+		if !claimed[j] {
+			unclaimed = append(unclaimed, fmt.Errorf("the consumer %s holds %s, and no analyzer of the run claims a language of it",
+				declared.Consumers[j].Path, strings.Join(languages, ", ")))
+		}
+	}
+	if len(unclaimed) > 0 {
+		return rundir.Scope{}, nil, &verdict.InvocationError{Err: errors.Join(unclaimed...), Flag: scopeFlag}
+	}
+	return whole, routes, nil
+}
+
+// routeConsumers is one route per analyzer, handing it every consumer whose
+// languages, held, include one its entry claims in scope, and whether each
+// consumer was handed to any analyzer.
+func routeConsumers(consumers []rundir.Module, held [][]string, analyzers []providers.Analyzer, inScope []string) (routes []route, claimed []bool) {
+	routes = make([]route, len(analyzers))
+	claimed = make([]bool, len(consumers))
+	for i := range analyzers {
+		languages := slices.DeleteFunc(slices.Clone(analyzers[i].Entry.Languages),
+			func(language string) bool { return !slices.Contains(inScope, language) })
+		routes[i].languages = languages
+		for j := range consumers {
+			if slices.ContainsFunc(held[j], func(language string) bool { return slices.Contains(languages, language) }) {
+				routes[i].consumers = append(routes[i].consumers, consumers[j])
+				claimed[j] = true
+			}
+		}
+	}
+	return routes, claimed
+}
+
+// consumerLanguages is every language detection finds in the consumer
+// directory at path. A consumer that cannot be read or holds no language fails
+// to load, so the run ends as a failure with no finding computed without it.
+func consumerLanguages(path string) ([]string, error) {
+	info, err := os.Stat(path)
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("the consumer %s that --%s declares cannot be read, and no finding is computed without it: %w", path, scopeFlag, err)
+	case !info.IsDir():
+		return nil, fmt.Errorf("the consumer %s that --%s declares is not a directory, and no finding is computed without it", path, scopeFlag)
+	}
+	languages, err := detect.Languages(path, detect.Options{})
+	if err != nil {
+		// %v, not %w: a consumer with no language fails to load, which is not
+		// the usage error a target with no language is.
+		return nil, fmt.Errorf("the consumer %s that --%s declares does not load, and no finding is computed without it: %v", path, scopeFlag, err)
+	}
+	return languages, nil
+}
+
+// prepare writes the run's scope document and each analyzer's configuration
+// into dir and returns one run per analyzer, in the order of analyzers. An
+// analyzer whose route holds only some of the run's consumers reads a scope
+// document of its own, which names those.
+func prepare(dir *rundir.Dir, resolved *config.Resolved, analyzers []providers.Analyzer,
+	whole *rundir.Scope, routes []route,
 ) ([]analyzerRun, error) {
-	scope := rundir.Scope{Root: root, Target: rundir.Module{Path: "."}}
-	if err := dir.WriteScope(&scope); err != nil {
+	if err := dir.WriteScope(whole); err != nil {
 		return nil, err
 	}
 	runs := make([]analyzerRun, 0, len(analyzers))
 	for i := range analyzers {
-		selected := &analyzers[i]
+		selected, routed := &analyzers[i], &routes[i]
 		entry, err := dir.Entry(selected.Entry.Name)
 		if err != nil {
 			return nil, err
 		}
-		claimed := slices.DeleteFunc(slices.Clone(selected.Entry.Languages),
-			func(language string) bool { return !slices.Contains(inScope, language) })
-		if err := entry.WriteConfig(resolved, claimed...); err != nil {
+		if err := entry.WriteConfig(resolved, routed.languages...); err != nil {
 			return nil, err
+		}
+		document := dir.Scope()
+		if len(routed.consumers) < len(whole.Consumers) {
+			own := *whole
+			own.Consumers = routed.consumers
+			if err := entry.WriteScope(&own); err != nil {
+				return nil, err
+			}
+			document = entry.Scope()
 		}
 		runs = append(runs, analyzerRun{entry: entry, request: invoke.Request{
 			Analyzer: selected.Entry.Name,
 			Command:  selected.Executable,
-			Dir:      scope.Root,
-			Scope:    dir.Scope(),
+			Dir:      whole.Root,
+			Scope:    document,
 			Config:   entry.Config(),
 			Report:   entry.Report(),
 		}})
