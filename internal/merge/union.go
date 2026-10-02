@@ -11,8 +11,9 @@ type records struct {
 	gaps     []report.DeclaredGap
 
 	// evaluations is every edge evaluation of every input, a dead one with
-	// the pending finding it carries. The merged report holds them as the
-	// union carried them.
+	// the pending finding it carries, until resolution leaves the live and
+	// absent ones the merged report holds. A carried evaluation's finding is
+	// the input's own, so nothing writes through it.
 	evaluations []report.EdgeEvaluation
 }
 

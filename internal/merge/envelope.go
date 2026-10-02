@@ -100,10 +100,10 @@ func firstPerID[T any](entries []T, id func(*T) string) []T {
 
 // totals are the merged report's counts, recomputed over the merged arrays
 // except the suppression counts, which no merged array holds and which sum
-// over the inputs. No input omitted a finding, so the merged report omits
-// none.
+// over the inputs. No input omitted a finding and resolution left no pending
+// one, so the merged report omits none and holds none pending.
 func totals(carried *records, held *gathered) report.Totals {
-	counted := report.Totals{
+	return report.Totals{
 		Findings:             len(carried.findings),
 		BySeverity:           severities(carried.findings),
 		DeletableLines:       deletableLines(carried.findings),
@@ -111,12 +111,6 @@ func totals(carried *records, held *gathered) report.Totals {
 		ReasonsRecorded:      held.reasons,
 		StaleSuppressions:    len(carried.stale),
 	}
-	for i := range carried.evaluations {
-		if carried.evaluations[i].State == report.StateDead {
-			counted.Pending++
-		}
-	}
-	return counted
 }
 
 func severities(findings []report.Finding) report.BySeverity {

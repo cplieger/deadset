@@ -108,6 +108,25 @@ func evaluation(edge string, side report.Side, state report.State) report.EdgeEv
 	return e
 }
 
+// pending is a dead evaluation of one side of edge carrying f as its pending
+// finding, about f's symbol.
+func pending(edge string, side report.Side, f report.Finding) report.EdgeEvaluation {
+	return report.EdgeEvaluation{Edge: edge, Side: side, Symbol: f.Symbol.Ref, State: report.StateDead, Finding: &f}
+}
+
+// componentIDs is the component identifier of every finding, in order, the
+// merge's own findings named by the merging product alone.
+func componentIDs(merged *report.Report) []string {
+	ids := make([]string, len(merged.Findings))
+	for i := range merged.Findings {
+		ids[i] = merged.Findings[i].Component.ID
+		if merged.Findings[i].Analyzer == "" {
+			ids[i], _, _ = strings.Cut(ids[i], "/")
+		}
+	}
+	return ids
+}
+
 // inputs pairs each report with a digest derived from its analyzer's name and
 // version, so one artifact keeps one digest whatever the order of the inputs.
 func inputs(reports ...*report.Report) []Input {
@@ -184,7 +203,7 @@ func TestMergeCarriesEveryRecordOfEveryInputUnderItsAnalyzer(t *testing.T) {
 	typescript.Findings = []report.Finding{finding("deadset-ts/c-1", "web/a.ts", 1, "a"), finding("deadset-ts/c-1", "web/a.ts", 1, "a")}
 	typescript.StaleSuppressions = []report.StaleSuppression{stale("deadset-ignore.json", 4, "go://example.com/app#b")}
 	typescript.DeclaredGaps = []report.DeclaredGap{gap("private-member-unread")}
-	typescript.EdgeEvaluations = []report.EdgeEvaluation{evaluation("wire/Event", report.SideUsedBy, report.StateAbsent)}
+	typescript.EdgeEvaluations = []report.EdgeEvaluation{evaluation("wire/Event", report.SideUsedBy, report.StateLive)}
 
 	merged, _ := mustMerge(t, inputs(golang, typescript))
 	if got := findingNames(merged); !slices.Equal(got, []string{"deadset-go:a", "deadset-ts:a", "deadset-ts:a"}) {
@@ -210,6 +229,9 @@ func TestMergeCarriesEveryRecordOfEveryInputUnderItsAnalyzer(t *testing.T) {
 	}
 }
 
+// A promoted pending finding and the carried findings of its component are
+// rewritten to the joined component, which leaves the input reports they came
+// from as they were.
 func TestMergeLeavesItsInputsAsTheyWere(t *testing.T) {
 	t.Parallel()
 
@@ -218,35 +240,24 @@ func TestMergeLeavesItsInputsAsTheyWere(t *testing.T) {
 	golang.StaleSuppressions = []report.StaleSuppression{stale("deadset-ignore.json", 4, "go://example.com/app#b")}
 	golang.EdgeEvaluations = []report.EdgeEvaluation{evaluation("wire/Event", report.SideProvides, report.StateDead)}
 	golang.Configurations = []report.Configuration{platform("linux-arm64"), platform("linux-amd64")}
+	typescript := analyzerReport("deadset-ts", "ts")
+	typescript.Findings = []report.Finding{finding("deadset-ts/c-1", "web/b.ts", 1, "b")}
+	typescript.EdgeEvaluations = []report.EdgeEvaluation{
+		pending("wire/Event", report.SideUsedBy, finding("deadset-ts/c-1", "web/wire.ts", 1, "Event")),
+		evaluation("wire/Stale", report.SideUsedBy, report.StateAbsent),
+	}
 	product := caller
-	before, err := json.Marshal([]any{golang, product})
+	before, err := json.Marshal([]any{golang, typescript, product})
 	if err != nil {
 		t.Fatalf("Setup: json.Marshal(the arguments) = %v", err)
 	}
 
-	if _, err := Merge(inputs(golang), accepted, &product); err != nil {
-		t.Fatalf("Merge() = %v, want a report", err)
+	merged, _ := mustMerge(t, inputs(golang, typescript))
+	if got := componentIDs(merged); !slices.Equal(got, []string{"deadset-go/c-1", "deadset", "deadset-ts/c-1", "deadset-ts/c-1", "deadset-ts/c-1", "deadset-go/c-2"}) {
+		t.Fatalf("Setup: Merge() component ids = %q, want the pending pair promoted and joined", got)
 	}
-	if after, err := json.Marshal([]any{golang, product}); err != nil || !bytes.Equal(after, before) {
+	if after, err := json.Marshal([]any{golang, typescript, product}); err != nil || !bytes.Equal(after, before) {
 		t.Errorf("the arguments after Merge() =\n%s\nwant them unchanged\n%s", after, before)
-	}
-}
-
-// An unresolved dead evaluation stays in the merged report with its pending
-// finding, which counts as pending rather than as a reported finding.
-func TestMergeCountsAnUnresolvedDeadEvaluationAsPending(t *testing.T) {
-	t.Parallel()
-
-	golang := analyzerReport("deadset-go", "go")
-	golang.EdgeEvaluations = []report.EdgeEvaluation{evaluation("wire/Event", report.SideProvides, report.StateDead)}
-	golang.Totals.Pending = 1
-
-	merged, _ := mustMerge(t, inputs(golang))
-	if len(merged.EdgeEvaluations) != 1 || merged.EdgeEvaluations[0].Finding == nil {
-		t.Errorf("Merge() edge evaluations = %+v, want the dead evaluation with its finding", merged.EdgeEvaluations)
-	}
-	if merged.Totals.Pending != 1 || merged.Totals.Findings != 0 || len(merged.Findings) != 0 {
-		t.Errorf("Merge() totals = %+v with %d findings, want one pending and no finding", merged.Totals, len(merged.Findings))
 	}
 }
 

@@ -25,6 +25,7 @@ method (*AdmissionError).Unwrap is unused
 method (*TargetError).Unwrap is unused
 method (*EntryError).Unwrap is unused
 method (*NameError).Unwrap is unused
+method (*UnresolvedError).Unwrap is unused
 method (*Error).Error is used in test only
 method (*Error).Error is unused
 
@@ -34,15 +35,13 @@ method (*Error).Error is unused
 # it and an encode writes it through reflection, so a report read and written
 # again keeps the member, and no Go code names the field while nothing judges
 # its value: the finding's test and generated flags, a symbol's container,
-# visibility and object path, and the symbol an edge side or a stale
-# suppression names.
+# visibility and object path, and the symbol a suppression entry names.
 field TestOnly is unused
 field Generated is unused
 field Parent is unused
 field Exported is unused
 field Objectpath is unused
 field Symbol is unused
-field Symbol is used in test only
 
 # --- Stages the analyze verb calls, which no verb calls yet.
 #

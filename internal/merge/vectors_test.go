@@ -21,22 +21,10 @@ import (
 
 const vectorsDir = "vectors/merge"
 
-// pendingCases are the published cases whose inputs carry a dead or absent
-// edge evaluation, which the resolution step and the stale-edge step decide.
-// This merge carries every evaluation unresolved, so it does not run them.
-var pendingCases = map[string]bool{
-	"edge-absent-on-every-side":          true,
-	"pending-member-beside-a-stale-edge": true,
-	"pending-member-on-a-second-edge":    true,
-	"pending-pair-absent":                true,
-	"pending-pair-dead":                  true,
-	"pending-pair-live":                  true,
-	"pending-pair-unevaluated":           true,
-}
-
-// admissionCases are the published cases the admission step refuses, each with
-// the reason its refusal names.
-var admissionCases = map[string]error{
+// refusedCases are the published cases the merge refuses, each with the
+// reason its refusal names: every admission refusal, and the pending finding
+// no report resolves.
+var refusedCases = map[string]error{
 	"configuration-built-and-not-built": ErrEntryState,
 	"configuration-entries-differ":      ErrEntryIdentity,
 	"conformance-not-passed":            ErrConformance,
@@ -45,6 +33,7 @@ var admissionCases = map[string]error{
 	"findings-omitted":                  ErrOmitted,
 	"one-analyzer-name-twice":           ErrAnalyzerName,
 	"one-artifact-run-twice":            ErrAnalyzerName,
+	"pending-pair-unevaluated":          ErrUnresolvedEdge,
 	"schema-version-out-of-range":       ErrSchemaVersion,
 	"targets-differ":                    ErrTarget,
 }
@@ -62,7 +51,8 @@ type vectorCase struct {
 // TestMergeReproducesEveryPublishedVector merges every published case and runs
 // the verdict over the merged report under the caller's failing severity: a
 // case that produces a report matches expected.json byte for byte and its
-// exit code, and a case that produces none ends in its typed refusal.
+// exit code, and a case that produces none ends in its typed refusal, whose
+// exit code is the case's.
 func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 	t.Parallel()
 
@@ -71,24 +61,17 @@ func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 			t.Parallel()
 
 			c := readCase(t, name)
-			if unresolved := carriesUnresolvedEvaluation(c.inputs); unresolved != pendingCases[name] {
-				t.Fatalf("case %s carries a dead or absent evaluation %t, and pendingCases names it %t",
-					name, unresolved, pendingCases[name])
-			}
-			if pendingCases[name] {
-				t.Skip("the inputs carry a dead or absent edge evaluation, and this merge resolves none")
-			}
 			merged, err := Merge(c.inputs, c.accepted, &c.caller)
 			if c.expected == nil {
-				want, known := admissionCases[name]
+				want, known := refusedCases[name]
 				if !known {
 					t.Fatalf("case %s holds no expected.json and names no refusal this test expects", name)
 				}
-				if c.exit != verdict.Failure {
-					t.Errorf("case %s expects exit %d with no merged report, want %d", name, c.exit, verdict.Failure)
-				}
 				if merged != nil || !errors.Is(err, want) {
-					t.Errorf("Merge(%s) = %v, %v, want no report and an error wrapping %v", name, merged, err, want)
+					t.Fatalf("Merge(%s) = %v, %v, want no report and an error wrapping %v", name, merged, err, want)
+				}
+				if got := verdict.ForError(err); got != c.exit {
+					t.Errorf("ForError(Merge(%s)) = %d, want expected_exit %d", name, got, c.exit)
 				}
 				return
 			}
@@ -105,22 +88,9 @@ func TestMergeReproducesEveryPublishedVector(t *testing.T) {
 	}
 }
 
-// carriesUnresolvedEvaluation reports whether any input holds an edge
-// evaluation whose state is dead or absent.
-func carriesUnresolvedEvaluation(inputs []Input) bool {
-	for _, in := range inputs {
-		for _, e := range in.Report.EdgeEvaluations {
-			if e.State != report.StateLive {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed pins what each
-// published admission refusal names: the analyzers, and what the rule read.
-func TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed(t *testing.T) {
+// TestMergeRefusesThePublishedCasesNamingWhatFailed pins what each published
+// refusal names: the analyzers, and what the rule read.
+func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -188,6 +158,15 @@ func TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed(t *testing.T) {
 			},
 		},
 		{
+			name: "pending-pair-unevaluated", named: []string{"wire/ServerEvent", "provides", "go://example.com/app/internal/wire#ServerEvent", "deadset-go"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*UnresolvedError](err)
+				return ok && refused.Edge == "wire/ServerEvent" && refused.Side == report.SideProvides &&
+					refused.Symbol == "go://example.com/app/internal/wire#ServerEvent" && refused.Analyzer == "deadset-go" &&
+					slices.Equal(refused.Searched, []string{"deadset-go"})
+			},
+		},
+		{
 			name: "one-artifact-run-twice", named: []string{"deadset-go"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*NameError](err)
@@ -215,8 +194,8 @@ func TestMergeRefusesThePublishedAdmissionCasesNamingWhatFailed(t *testing.T) {
 	for _, tc := range cases {
 		named = append(named, tc.name)
 	}
-	if want := slices.Sorted(maps.Keys(admissionCases)); !slices.Equal(slices.Sorted(slices.Values(named)), want) {
-		t.Errorf("the refusals this test pins are %q, want every admission case %q", named, want)
+	if want := slices.Sorted(maps.Keys(refusedCases)); !slices.Equal(slices.Sorted(slices.Values(named)), want) {
+		t.Errorf("the refusals this test pins are %q, want every refused case %q", named, want)
 	}
 }
 
@@ -256,9 +235,6 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 		},
 	}
 	for _, name := range caseNames(t) {
-		if pendingCases[name] {
-			continue
-		}
 		c := readCase(t, name)
 		if c.expected == nil {
 			continue
