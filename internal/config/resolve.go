@@ -240,7 +240,10 @@ func searched(kind string, document Document) string {
 // readConfig reads the settings the orchestrator reads out of the resolved values.
 func readConfig(values map[string]json.RawMessage) (Config, error) {
 	var c Config
+	providers, providersErr := readProviders(values[providerListKey])
+	c.Providers = providers
 	err := errors.Join(
+		providersErr,
 		json.Unmarshal(values["analysis.languages"], &c.Languages),
 		json.Unmarshal(values["reporters.formats"], &c.Reporters.Formats),
 		json.Unmarshal(values["reporters.sort"], &c.Reporters.Sort),

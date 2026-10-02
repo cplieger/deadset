@@ -26,8 +26,10 @@ method (*TargetError).Unwrap is unused
 method (*EntryError).Unwrap is unused
 method (*NameError).Unwrap is unused
 method (*UnresolvedError).Unwrap is unused
+method (*CommandError).Unwrap is unused
 method (*Error).Error is used in test only
 method (*Error).Error is unused
+method (*CommandError).Error is unused
 
 # --- Members of the report document that only encoding/json reads.
 #
@@ -72,6 +74,7 @@ function Annotations is used in test only
 # --- The merge, which the analyze verb calls, and no verb calls yet. It is
 # pinned by its package's suite over the Contract's merge vectors.
 function Merge is used in test only
+function Select is used in test only
 
 # --- The schema version the analyze verb hands the merge as a caller fact, and
 # no verb calls the merge yet.
