@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v3"
+	spec "github.com/cplieger/deadset-spec/v4"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/summary"
