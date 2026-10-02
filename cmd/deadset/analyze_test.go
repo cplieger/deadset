@@ -28,16 +28,19 @@ const (
 )
 
 // fake is an executable standing in for one analyzer, and the files it
-// leaves: the directory its analyze verb ran in.
+// leaves: the directory its analyze verb ran in, and a copy of the scope
+// document it was handed.
 type fake struct {
 	command string
 	ranIn   string
+	scope   string
 }
 
 // fakeAnalyzer writes an analyzer named name, claiming languages, whose
 // describe verb describes it with a conformance pass and whose analyze verb
-// records the directory it runs in, copies the published report written to
-// the path --report names unless written is empty, and exits with exit.
+// records the directory it runs in and the scope document it is handed,
+// copies the published report written to the path --report names unless
+// written is empty, and exits with exit.
 func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, written string) fake {
 	t.Helper()
 
@@ -63,13 +66,16 @@ func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, writt
 		writeFile(t, filepath.Join(dir, "written.json"), body)
 		copied = fmt.Sprintf(`cp '%s/written.json' "$report"`, dir)
 	}
-	f := fake{command: filepath.Join(dir, "analyzer"), ranIn: filepath.Join(dir, "pwd")}
+	f := fake{command: filepath.Join(dir, "analyzer"), ranIn: filepath.Join(dir, "pwd"), scope: filepath.Join(dir, "scope.json")}
 	script := strings.Join([]string{
 		"#!/bin/sh",
 		fmt.Sprintf(`if [ "$1" = describe ]; then cat '%s/described.json'; exit 0; fi`, dir),
 		fmt.Sprintf(`pwd > '%s'`, f.ranIn),
 		`for argument in "$@"; do`,
-		`	case "$argument" in --report=*) report="${argument#--report=}" ;; esac`,
+		`	case "$argument" in`,
+		`	--report=*) report="${argument#--report=}" ;;`,
+		fmt.Sprintf(`	--scope=*) cp "${argument#--scope=}" '%s' ;;`, f.scope),
+		`	esac`,
 		`done`,
 		copied,
 		"exit " + strconv.Itoa(exit),

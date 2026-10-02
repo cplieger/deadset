@@ -19,7 +19,7 @@ Every analyzer implements the same contract, published at [deadset-spec](https:/
 
 ## Status
 
-Pre-release. This build implements contract version `3.2.0`. `deadset analyze` runs every analyzer the provider list holds for a language in the target, merges their reports, prints the findings, the summary and the annotations on standard output, keeps the evidence of the run in a run directory and exits with the merged report's verdict. It renders `text` and `github` on standard output, `json` as the merged report in the run directory, and `sarif` and `template` as files beside the merged report whose paths the output names; `template` renders the Go template `--template` names. `deadset print-config` prints the resolved configuration and where each value came from, and `deadset version` prints the build's versions. Every other command is reserved and exits with a usage message.
+Pre-release. This build implements contract version `3.2.0`. `deadset analyze` runs every analyzer the provider list holds for a language in the target, merges their reports, prints the findings, the summary and the annotations on standard output, keeps the evidence of the run in a run directory and exits with the merged report's verdict; `--scope` hands each analyzer the consumers a scope document declares. It renders `text` and `github` on standard output, `json` as the merged report in the run directory, and `sarif` and `template` as files beside the merged report whose paths the output names; `template` renders the Go template `--template` names. `deadset print-config` prints the resolved configuration and where each value came from, and `deadset version` prints the build's versions. Every other command is reserved and exits with a usage message.
 
 ## Quick start
 
@@ -29,6 +29,31 @@ deadset version
 ```
 
 Go 1.27 or later is required to install from source. The binary is static and needs no C toolchain.
+
+## Usage
+
+```sh
+deadset analyze --target=lib --scope=scope.json
+```
+
+A library's published API has callers outside the library, so a finding about an exported symbol is only as certain as the set of callers the analysis loaded. `--scope` names a scope document that lists them: the target and its consumers, each a directory on the local filesystem.
+
+```json
+{
+  "target": { "path": "lib" },
+  "consumers": [{ "path": "app" }, { "path": "web" }]
+}
+```
+
+The document is the scope document [deadset-spec](https://github.com/cplieger/deadset-spec) publishes in `contract/scope.schema.json`, the same one each analyzer's own `--scope` reads. A relative path is resolved against the directory that holds the document, and its target must be the directory `--target` names.
+
+- Each consumer is handed to every analyzer claiming a language detected in it, and to no other, so a Go consumer reaches the Go analyzer and a TypeScript one the TypeScript analyzer. A consumer holding a language no analyzer of the run claims is refused with exit code 2. A consumer that does not exist, is not a directory or holds no language does not load, and a scope document that cannot be read or does not meet the schema is refused; each ends the run with exit code 3.
+- The analyzers run in the deepest directory holding the target and every consumer, so the merged report's `target.root` and each consumer's path under `consumers.loaded` are relative to that directory.
+- The run directory keeps the declared scope as `scope.json`. An analyzer handed only some of the consumers reads its own, `scope.<name>.json`.
+
+With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`; a Go workspace's other modules are consumers only when the scope document declares them.
+
+`deadset` never clones, fetches or checks out a consumer. Whatever runs it puts every consumer on the filesystem first: a CI workflow checks each one out before the step that runs `deadset`, and a container is given a scope document naming the paths mounted into it.
 
 ## Security
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
 )
 
@@ -17,8 +19,16 @@ import (
 func goAnalyzerOnPath(t *testing.T) {
 	t.Helper()
 
-	if _, err := exec.LookPath("deadset-go"); err != nil {
-		t.Skipf("a run of the real Go analyzer needs deadset-go on PATH: %v", err)
+	analyzerOnPath(t, "deadset-go")
+}
+
+// analyzerOnPath skips a test of a real run when PATH holds no analyzer named
+// command.
+func analyzerOnPath(t *testing.T, command string) {
+	t.Helper()
+
+	if _, err := exec.LookPath(command); err != nil {
+		t.Skipf("a run of the real analyzer needs %s on PATH: %v", command, err)
 	}
 }
 
@@ -177,5 +187,87 @@ func TestAnalyzeRendersTheGoAnalyzersFindingAsTheGoAnalyzerDoes(t *testing.T) {
 	if ours.RuleID != "DS1002" || !maps.Equal(ours.PartialFingerprints, theirs.PartialFingerprints) {
 		t.Errorf("the merged log's result is %s with %v, want DS1002 with the Go analyzer's own %v",
 			ours.RuleID, ours.PartialFingerprints, theirs.PartialFingerprints)
+	}
+}
+
+// claims is each finding of a merged report as its code, its subject's name,
+// its reachability class and the consumers it names.
+func claims(r *report.Report) []string {
+	var found []string
+	for i := range r.Findings {
+		f := &r.Findings[i]
+		found = append(found, fmt.Sprintf("%s %s %s %v", f.Code, f.Symbol.Name, f.ReachabilityClass, f.ConsumersLoaded))
+	}
+	return found
+}
+
+// A library and one consumer referencing part of its published API, run
+// through each real analyzer with the archive's scope document and without
+// it. With it, the merged report names the consumer under consumers.loaded,
+// every finding is certain and names the consumer, and the unreferenced
+// exported function is reported; without it, nothing is loaded and the one
+// finding a library with no consumer information keeps is possible.
+func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		archive, analyzer, consumer string
+		with, without               []string
+	}{
+		{
+			archive: "go.txtar", analyzer: "deadset-go", consumer: "example.com/consumer",
+			with:    []string{"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]"},
+			without: []string{"DS1003 Options.Spare possible []"},
+		},
+		{
+			archive: "ts.txtar", analyzer: "deadset-ts", consumer: "@example/consumer",
+			with:    []string{"DS1003 Options.spare certain [@example/consumer]", "DS1001 farewell certain [@example/consumer]"},
+			without: []string{"DS1003 Options.spare possible []"},
+		},
+	} {
+		t.Run(strings.TrimSuffix(c.archive, ".txtar"), func(t *testing.T) {
+			t.Parallel()
+			analyzerOnPath(t, c.analyzer)
+
+			for _, run := range []struct {
+				name     string
+				loaded   []report.LoadedConsumer
+				root     string
+				findings []string
+				scoped   bool
+			}{
+				{
+					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with,
+					loaded: []report.LoadedConsumer{{ID: c.consumer, Role: "consumer", Path: "consumer"}},
+				},
+				{name: "without-it", root: ".", findings: c.without},
+			} {
+				t.Run(run.name, func(t *testing.T) {
+					t.Parallel()
+
+					base := t.TempDir()
+					extractArchive(t, filepath.Join("testdata", "consumers", c.archive), base)
+					var extra []string
+					if run.scoped {
+						extra = append(extra, "--scope="+filepath.Join(base, "scope.json"))
+					}
+					got := analyze(t, filepath.Join(base, "lib"), filepath.Join(base, "run"), extra...)
+					if got.code != verdict.Findings {
+						t.Fatalf("analyze(%s, %s) = %d, want %d\nstderr: %s", c.archive, run.name, got.code, verdict.Findings, got.stderr)
+					}
+					merged := mergedReport(t, filepath.Join(base, "run"))
+					if !slices.Equal(merged.Consumers.Loaded, run.loaded) || merged.Consumers.Declared != len(run.loaded) {
+						t.Errorf("analyze(%s, %s) consumers = %+v, want %+v loaded", c.archive, run.name, merged.Consumers, run.loaded)
+					}
+					if found := claims(merged); !slices.Equal(found, run.findings) {
+						t.Errorf("analyze(%s, %s) findings = %q, want %q", c.archive, run.name, found, run.findings)
+					}
+					if merged.Target.Root != run.root || len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != c.analyzer {
+						t.Errorf("analyze(%s, %s) merged %+v over the root %q, want %s alone over %q",
+							c.archive, run.name, merged.MergedFrom, merged.Target.Root, c.analyzer, run.root)
+					}
+				})
+			}
+		})
 	}
 }

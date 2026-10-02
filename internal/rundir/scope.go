@@ -60,7 +60,14 @@ type scopeModule struct {
 // inside s.Root. It refuses, with an error satisfying errors.Is(err,
 // ErrScopePath) and before writing anything, a scope naming a path outside
 // s.Root.
-func (d *Dir) WriteScope(s *Scope) error {
+func (d *Dir) WriteScope(s *Scope) error { return writeScope(d.Scope(), s) }
+
+// WriteScope writes s, as [Dir.WriteScope] writes the run's, as the scope
+// document of the entry's analyzer alone, at [Entry.Scope].
+func (e Entry) WriteScope(s *Scope) error { return writeScope(e.Scope(), s) }
+
+// writeScope writes s as the scope document at the path file.
+func writeScope(file string, s *Scope) error {
 	if !filepath.IsAbs(s.Root) {
 		return fmt.Errorf("%w: the working directory %q is not an absolute path", ErrScopePath, s.Root)
 	}
@@ -97,5 +104,5 @@ func (d *Dir) WriteScope(s *Scope) error {
 	if err := encoder.Encode(&document); err != nil {
 		return fmt.Errorf("rundir: encode the scope document: %w", err)
 	}
-	return writeOnce(d.Scope(), encoded.Bytes())
+	return writeOnce(file, encoded.Bytes())
 }

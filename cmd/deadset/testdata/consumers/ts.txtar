@@ -1,0 +1,50 @@
+A TypeScript library and one TypeScript consumer that calls greet. The
+member spare and the function farewell are read by nothing.
+
+-- scope.json --
+{"target": {"path": "lib"}, "consumers": [{"path": "consumer"}]}
+-- lib/deadset.json --
+{"target": {"kind": "library"}}
+-- lib/package.json --
+{"name": "@example/lib", "private": true, "version": "0.0.0", "type": "module", "main": "./lib.ts"}
+-- lib/tsconfig.json --
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}
+-- lib/lib.ts --
+export interface Options {
+  name: string;
+  spare: number;
+}
+
+export function greet(options: Options): string {
+  return "hello " + options.name;
+}
+
+export function farewell(): string {
+  return "bye";
+}
+-- consumer/package.json --
+{"name": "@example/consumer", "private": true, "version": "0.0.0", "type": "module"}
+-- consumer/tsconfig.json --
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}
+-- consumer/main.ts --
+import { greet } from "../lib/lib.js";
+
+console.log(greet({ name: "consumer", spare: 0 }));

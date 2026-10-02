@@ -76,9 +76,10 @@ func listed(t *testing.T, path string) []string {
 }
 
 // TestARunKeepsEveryFileKeyedByEntryName writes what a run writes for two
-// entries claiming one language, and the run directory holds one describe, one
-// configuration and one report per entry, each named for the entry, beside the
-// scope document and the merged report, with nothing else.
+// entries claiming one language, one of them reading a scope document of its
+// own, and the run directory holds one describe, one configuration and one
+// report per entry and that entry's scope document, each named for the entry,
+// beside the run's scope document and the merged report, with nothing else.
 func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +95,11 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 		}
 		if err := e.WriteConfig(r, "go"); err != nil {
 			t.Fatalf("Entry(%q).WriteConfig(go) = %v", name, err)
+		}
+		if name == "deadset-go-next" {
+			if err := e.WriteScope(&rundir.Scope{Root: path, Target: rundir.Module{Path: "."}}); err != nil {
+				t.Fatalf("Entry(%q).WriteScope() = %v", name, err)
+			}
 		}
 		// The analyzer writes its own report, at the path the entry names.
 		if err := os.WriteFile(e.Report(), []byte("{}"), 0o600); err != nil {
@@ -112,7 +118,7 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 		"config.deadset-go-next.json", "config.deadset-go.json",
 		"describe.deadset-go-next.json", "describe.deadset-go.json",
 		"report.deadset-go-next.json", "report.deadset-go.json",
-		"report.json", "scope.json",
+		"report.json", "scope.deadset-go-next.json", "scope.json",
 	}
 	if got := listed(t, path); !slices.Equal(got, want) {
 		t.Errorf("the run directory holds %q, want %q", got, want)
@@ -269,6 +275,13 @@ func TestEveryFileIsWrittenOnce(t *testing.T) {
 				return d.WriteScope(&rundir.Scope{Root: "/src/run", Target: rundir.Module{Path: "."}})
 			},
 			path: func(d *rundir.Dir, _ rundir.Entry) string { return d.Scope() },
+		},
+		{
+			name: "entry-scope",
+			write: func(_ *rundir.Dir, e rundir.Entry) error {
+				return e.WriteScope(&rundir.Scope{Root: "/src/run", Target: rundir.Module{Path: "."}})
+			},
+			path: func(_ *rundir.Dir, e rundir.Entry) string { return e.Scope() },
 		},
 	}
 	for _, w := range writes {
