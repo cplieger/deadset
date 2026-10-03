@@ -2,41 +2,77 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/cplieger/deadset.svg)](https://pkg.go.dev/github.com/cplieger/deadset) [![Go version](https://img.shields.io/github/go-mod/go-version/cplieger/deadset)](https://github.com/cplieger/deadset/blob/main/go.mod) [![Mutation](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cplieger/deadset/badges/mutation.json)](https://github.com/cplieger/deadset/issues?q=label%3Agremlins-tracker)
 
-One command for dead code across Go and TypeScript, resolving the references that cross the language boundary.
+deadset finds dead code in repositories that mix Go and TypeScript, and counts a Go type as used while the TypeScript generated from it is in use.
 
-## What it does
+It runs the [deadset-go](https://github.com/cplieger/deadset-go) and [deadset-ts](https://github.com/cplieger/deadset-ts) analyzers and merges their reports into one result and one exit code. The deadset-go analyzer supports Linux only, and deadset-ts needs Node.js 24 or later. The deadset command uses only the standard library, builds as a static binary with no C toolchain, needs Go 1.27.1 or later and is licensed under GPL-3.0-or-later.
 
-Dead code is a declaration nothing reaches: a function nobody calls, an export nothing imports, a file no build includes, a dependency no import needs. Each language has its own analyzer for that question. `deadset` is the command you run when a repository holds more than one language, and it does four things:
+## Why use it
 
-1. Detects which languages the repository contains, and runs only the analyzers for those. A repository with one language never needs the other language's toolchain.
-2. Runs each analyzer as a separate process. `deadset` contains no parser and no type checker of its own; every finding comes from an analyzer.
-3. Resolves the references that cross the language boundary. A Go type consumed only through the TypeScript client generated from it has no reference in Go and no declaration in TypeScript, so each analyzer alone would judge it wrong. `deadset` reads both reports, follows the declared edge between the two symbols, and reports the pair as dead only when both sides are.
-4. Merges the reports into one and returns one exit code, so a CI step reads one result.
+deadset is built for a CI gate on dead code where Go and TypeScript meet, such as a Go server with a generated TypeScript client, or a library and the repositories that use it.
 
-The analyzers are complete programs on their own. [deadset-go](https://github.com/cplieger/deadset-go) analyzes a Go module and [deadset-ts](https://github.com/cplieger/deadset-ts) analyzes a TypeScript or JavaScript package, each from parsing to exit code. Running one directly produces the same findings as running it through `deadset`, so this command is never a required hop; it earns its place when there is a language boundary to resolve.
+- It detects the languages from file names and runs only the analyzers they need, so a Go-only tree never needs Node.js.
+- You pair a Go declaration with its generated TypeScript in `deadset-edges.json`, and deadset reports the pair only when neither side is used.
+- It also checks the repositories that use a library, so an export they call is not reported as dead.
+- It writes one merged report as text, JSON, GitHub annotations, SARIF 2.1.0 or your own template.
+- It only reports, makes no network request and runs only analyzers already installed.
 
-Every analyzer implements the same contract, published at [deadset-spec](https://github.com/cplieger/deadset-spec): one vocabulary of issue kinds, one report schema, one suppression grammar, one exit-code table and one merge definition. Any analyzer that passes that repository's conformance corpus can be listed in `deadset`'s provider list, including one written by someone else for a language neither first-party analyzer covers.
+In a repository with one language, deadset-go or deadset-ts alone gives the same findings. deadset is pre-release, so the report shape, exit codes and configuration keys can still change.
 
-## Status
-
-Pre-release. This build implements contract version `4.0.0`. `deadset analyze` runs every analyzer the provider list holds for a language in the target, merges their reports, prints the findings, the summary and the annotations on standard output, keeps the evidence of the run in a run directory and exits with the merged report's verdict; `--scope` hands each analyzer the consumers a scope document declares. It renders `text` and `github` on standard output, `json` as the merged report in the run directory, and `sarif` and `template` as files beside the merged report whose paths the output names; `template` renders the template `--template` names, written in the template language the contract states and reading the merged report by its JSON member names. `deadset print-config` prints the resolved configuration and where each value came from, and `deadset version` prints the build's versions. Every other command is reserved and exits with a usage message.
-
-## Quick start
+## Install
 
 ```sh
 go install github.com/cplieger/deadset/cmd/deadset@latest
-deadset version
+go install github.com/cplieger/deadset-go/cmd/deadset-go@latest
+npm install --global @cplieger/deadset-ts
 ```
 
-Go 1.27 or later is required to install from source. The binary is static and needs no C toolchain.
-
 ## Usage
+
+Install the analyzer for each language your repository holds, so `deadset-go` or `deadset-ts` is on your `PATH`. Then create a `deadset.json` at the root that names the target kind, `application` or `library`, and run `analyze` there:
+
+```sh
+echo '{ "target": { "kind": "application" } }' > deadset.json
+deadset analyze
+```
+
+On a Go module with one uncalled function, the run prints:
+
+```text
+main.go:5:6: function unused: unexported function has no reference in the target [certain] (DS1002)
+analyzer deadset-go <version> sha256:<digest of the deadset-go binary>
+summary: 1 finding (0 allow, 0 warn, 1 deny), 1 deletable line, 0 suppressions in effect, 0 reasons recorded, 0 stale suppressions, 0 pending, 0 omitted, across go
+remediation: for each failing finding, delete the symbol, wire it up so the program uses it, or record an adjudication with its reason in an inline directive or a deadset-ignore.json entry
+```
+
+It exits with 1, and standard error names the run directory that keeps every report. A run with no target kind exits with 2, and one with an analyzer missing from `PATH` exits with 3.
+
+### Pairing a Go type with its generated TypeScript
+
+A Go type that only its generated TypeScript client uses has no reference in Go. Declare the pair in `deadset-edges.json` at the target root:
+
+```json
+{
+  "description": "The wire type the server relays, paired with the TypeScript interface generated from it.",
+  "edges": [
+    {
+      "id": "wire/ServerEvent",
+      "because": "generated",
+      "provides": "go://example.com/server/internal/wire#ServerEvent",
+      "used_by": "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
+    }
+  ]
+}
+```
+
+deadset reports the pair only when both sides are unused. An edge whose side neither analyzer finds is reported as `DS1705`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v4.0.0/docs/edges.md) describes the format.
+
+### Checking a library against its consumers
+
+List a library and its consumers, each a local directory, in a scope document:
 
 ```sh
 deadset analyze --target=lib --scope=scope.json
 ```
-
-A library's published API has callers outside the library, so a finding about an exported symbol is only as certain as the set of callers the analysis loaded. `--scope` names a scope document that lists them: the target and its consumers, each a directory on the local filesystem.
 
 ```json
 {
@@ -45,23 +81,30 @@ A library's published API has callers outside the library, so a finding about an
 }
 ```
 
-The document is the scope document [deadset-spec](https://github.com/cplieger/deadset-spec) publishes in `contract/scope.schema.json`, the same one each analyzer's own `--scope` reads. A relative path is resolved against the directory that holds the document, and its target must be the directory `--target` names.
+With every declared consumer loaded, the library's findings are `certain`. With no scope document, a finding about its exported API is `possible`. Because deadset never fetches a consumer, check each one out first. [Libraries and their consumers](docs/scope.md) gives the rules.
 
-- Each consumer is handed to every analyzer claiming a language detected in it, and to no other, so a Go consumer reaches the Go analyzer and a TypeScript one the TypeScript analyzer. A consumer holding a language no analyzer of the run claims is refused with exit code 2. A consumer that does not exist, is not a directory or holds no language does not load, and a scope document that cannot be read or does not meet the schema is refused; each ends the run with exit code 3.
-- The analyzers run in the deepest directory holding the target and every consumer, so the merged report's `target.root` and each consumer's path under `consumers.loaded` are relative to that directory.
-- The run directory keeps the declared scope as `scope.json`. An analyzer handed only some of the consumers reads its own, `scope.<name>.json`.
+## API
 
-A target or consumer holding both Go and TypeScript is named in every report by its Go module path, so the merge reads the two analyzers' reports as one module; the scope document may leave its `id` out. With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`; a Go workspace's other modules are consumers only when the scope document declares them.
+deadset is a command, and its interface is its verbs, the merged JSON report and the exit codes.
 
-`deadset` never clones, fetches or checks out a consumer. Whatever runs it puts every consumer on the filesystem first: a CI workflow checks each one out before the step that runs `deadset`, and a container is given a scope document naming the paths mounted into it.
+- `analyze` runs every analyzer a language in scope needs, merges their reports and exits with the verdict.
+- `print-config` prints the resolved configuration with the source of each setting, and `version` prints the deadset and contract versions.
+- `explain`, `install` and `describe` are reserved verbs that do nothing yet and exit with 2.
+- The run exits 0 when nothing fails it and 1 for a failing finding or a stale suppression. It exits 2 on a usage error or a `--fix` flag, and 3 when it cannot produce an answer.
 
-## Security
+The report follows version 4.0.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v4.0.0). [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes.
 
-`deadset` performs no network request during analysis. It executes only analyzers already installed on the local filesystem, at the path its provider list names, and exits with an error rather than fetching one that is missing. It is report-only: no command edits a source file, and any request for one is refused with exit code 2.
+## Related projects
 
-## Dependencies
+deadset implements version 4.0.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v4.0.0), which defines the issue codes, the report schema, the merge and the exit codes. Another Go or TypeScript analyzer can take the place of deadset-go or deadset-ts. That analyzer must name itself as its provider entry does, read a report schema version deadset accepts and pass the contract's conformance corpus.
 
-The binary uses the standard library only. The test suite requires `deadset-spec`, whose Contract files it checks the binary against. The analyzers it runs are separate programs with their own releases.
+- [deadset-go](https://github.com/cplieger/deadset-go) analyzes a Go module and the repositories that import it.
+- [deadset-ts](https://github.com/cplieger/deadset-ts) analyzes TypeScript and JavaScript projects, down to class and type members.
+
+## Documentation
+
+- [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes, for wiring deadset into CI or a script.
+- [Libraries and their consumers](docs/scope.md) explains the scope document and how each consumer reaches an analyzer.
 
 ## Contributing
 
