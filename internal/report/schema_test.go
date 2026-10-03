@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 )
 
 // The two schemas the types of this package mirror.

@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
 )
