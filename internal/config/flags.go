@@ -25,7 +25,7 @@ var settingFlags = []settingFlag{
 	},
 	{
 		name: "languages", path: "analysis.languages", list: true,
-		usage: "the languages in scope, separated by commas; empty detects them",
+		usage: "the languages in scope, separated by commas. Leave it empty to detect them",
 	},
 	{
 		name: "min-confidence", path: "analysis.min_confidence",
