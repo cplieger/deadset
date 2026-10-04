@@ -39,6 +39,8 @@ var (
 	states          = []State{StateLive, StateDead, StateAbsent}
 	staleCodes      = []string{staleSuppressionCode}
 	mechanisms      = []string{"inline", "ignore", "baseline"}
+	noteKinds       = []NoteKind{NotePublishedPackage}
+	noteKeys        = []string{"roots.patterns"}
 	classes         = []Class{ClassCertain, ClassProbable, ClassPossible}
 	relations       = []Relation{RelationReferenceCounting, RelationReachability}
 	fixabilities    = []Fixability{FixabilityDeletable, FixabilityNarrowable, FixabilityManual, FixabilityNone}
@@ -156,6 +158,14 @@ func (r *Report) validate() error {
 		matchesEach("excluded_by_cgo", r.ExcludedByCgo, true, artifactPattern),
 		required("test_file_rules", r.TestFileRules),
 		listOf("test_file_rules", r.TestFileRules, true, (*TestFileRule).validate),
+		required("type_error_skips", r.TypeErrorSkips),
+		listOf("type_error_skips", r.TypeErrorSkips, true, (*TypeErrorSkip).validate),
+		required("notes", r.Notes),
+		listOf("notes", r.Notes, true, (*Note).validate),
+		required("unanswered_questions", r.UnansweredQuestions),
+		listOf("unanswered_questions", r.UnansweredQuestions, true, (*UnansweredQuestion).validate),
+		required("conventions_applied", r.ConventionsApplied),
+		listOf("conventions_applied", r.ConventionsApplied, true, (*ConventionApplied).validate),
 		at("totals", r.Totals.validate()),
 	)
 }
@@ -280,6 +290,40 @@ func (g *DeclaredGap) validate() error {
 
 func (t *TestFileRule) validate() error {
 	return first(matches("rule", t.Rule, tokenPattern), atLeast("matched", t.Matched, 0))
+}
+
+func (s *TypeErrorSkip) validate() error {
+	return first(
+		matches("path", s.Path, artifactPattern),
+		atLeast("line", s.Line, 1),
+		matches("message", s.Message, oneLinePattern),
+	)
+}
+
+func (n *Note) validate() error {
+	return first(
+		within("kind", n.Kind, noteKinds),
+		matches("path", n.Path, artifactPattern),
+		within("key", n.Key, noteKeys),
+		matches("message", n.Message, oneLinePattern),
+	)
+}
+
+func (q *UnansweredQuestion) validate() error {
+	return first(
+		nonEmpty("configuration", q.Configuration),
+		atLeast("questions", q.Questions, 1),
+		atLeast("declarations", q.Declarations, 0),
+	)
+}
+
+func (c *ConventionApplied) validate() error {
+	return first(
+		matches("name", c.Name, tokenPattern),
+		nonEmpty("package", c.Package),
+		nonEmpty("version", c.Version),
+		matches("manifest", c.Manifest, artifactPattern),
+	)
 }
 
 func (t *Totals) validate() error {

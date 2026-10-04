@@ -165,6 +165,7 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 		{name: "list-entry-outside-its-set", document: `{"analysis": {"languages": ["go", "rust"]}}`, at: "analysis.languages[1]"},
 		{name: "list-entry-repeated", document: `{"roots": {"patterns": ["go://a#B", "go://a#B"]}}`, at: "roots.patterns[1]"},
 		{name: "exemption-class-spelling", document: `{"exemptions": {"disabled": ["Template_Field"]}}`, at: "exemptions.disabled[0]"},
+		{name: "component-extension-repeated", document: `{"ts": {"component_extensions": [".vue", ".vue"]}}`, at: "ts.component_extensions"},
 		{name: "severity-outside-its-set", document: `{"severity": {"DS1101": "error"}}`, at: "severity.DS1101"},
 		{name: "contract-version-spelling", document: `{"contract_version": "3.0"}`, at: "contract_version"},
 		{name: "provider-member-undeclared", document: `{"providers": {"analyzers": [{"name": "a", "languages": ["go"], "command": "a", "argument": 0}]}}`, at: "providers.analyzers[0].argument"},
@@ -266,8 +267,8 @@ func TestResolve_contractVersion(t *testing.T) {
 	}
 }
 
-// The value of a key of a language's own section passes through unread: the
-// analyzer of that language reads and checks it.
+// The value of a key of a language's own section that the key list gives no
+// check passes through unread: the analyzer of that language reads and checks it.
 func TestResolve_passesALanguageSectionThroughUnread(t *testing.T) {
 	t.Parallel()
 
@@ -277,6 +278,7 @@ func TestResolve_passesALanguageSectionThroughUnread(t *testing.T) {
 	}
 	want := map[string]any{
 		"test_files": []any{}, "entry_files": []any{float64(7)},
+		"component_extensions": []any{".vue", ".svelte", ".astro"}, "disabled_conventions": []any{},
 		"injection_registrations": []any{}, "lifecycle_contracts": []any{}, "serializers": []any{},
 	}
 	if got := printed(t, r).Values["ts"]; !reflect.DeepEqual(got, want) {

@@ -338,30 +338,29 @@ func claims(r *report.Report) []string {
 }
 
 // A library and one consumer referencing part of its published API, run
-// through the real analyzers of its languages with the archive's scope
-// document and without it. With it, the merged report names the consumer
-// once under consumers.loaded, by the name every analyzer's report of it
-// carries, every finding is certain and names the consumer, and the
-// unreferenced exported function is reported; without it, nothing is loaded
-// and the one finding per language a library with no consumer information
-// keeps is possible.
+// through the real analyzers with the archive's scope document and without it.
+// With it, the merged report names the consumer once under consumers.loaded,
+// every finding is certain and names it, and the unreferenced exported
+// function is reported. Without it, nothing is loaded, the default minimum
+// confidence withholds the published API's findings, and the minimum possible
+// reports each as possible, the function only the consumer calls among them.
 func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 	t.Parallel()
 
 	for _, c := range []struct {
 		archive, consumer string
 		analyzers         []string
-		with, without     []string
+		with, possible    []string
 	}{
 		{
 			archive: "go.txtar", analyzers: []string{"deadset-go"}, consumer: "example.com/consumer",
-			with:    []string{"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]"},
-			without: []string{"DS1003 Options.Spare possible []"},
+			with:     []string{"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]"},
+			possible: []string{"DS1003 Options.Spare possible []", "DS1001 Greet possible []", "DS1001 Farewell possible []"},
 		},
 		{
 			archive: "ts.txtar", analyzers: []string{"deadset-ts"}, consumer: "@example/consumer",
-			with:    []string{"DS1003 Options.spare certain [@example/consumer]", "DS1001 farewell certain [@example/consumer]"},
-			without: []string{"DS1003 Options.spare possible []"},
+			with:     []string{"DS1003 Options.spare certain [@example/consumer]", "DS1001 farewell certain [@example/consumer]"},
+			possible: []string{"DS1003 Options.spare possible []", "DS1001 greet possible []", "DS1001 farewell possible []"},
 		},
 		{
 			archive: "mixed.txtar", analyzers: []string{"deadset-go", "deadset-ts"}, consumer: "example.com/consumer",
@@ -369,7 +368,10 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 				"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]",
 				"DS1003 Options.spare certain [example.com/consumer]", "DS1001 farewell certain [example.com/consumer]",
 			},
-			without: []string{"DS1003 Options.Spare possible []", "DS1003 Options.spare possible []"},
+			possible: []string{
+				"DS1003 Options.Spare possible []", "DS1001 Greet possible []", "DS1001 Farewell possible []",
+				"DS1003 Options.spare possible []", "DS1001 greet possible []", "DS1001 farewell possible []",
+			},
 		},
 	} {
 		t.Run(strings.TrimSuffix(c.archive, ".txtar"), func(t *testing.T) {
@@ -382,27 +384,30 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 				name     string
 				loaded   []report.LoadedConsumer
 				root     string
+				flags    []string
 				findings []string
+				code     int
 				scoped   bool
 			}{
 				{
-					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with,
+					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with, code: verdict.Findings,
 					loaded: []report.LoadedConsumer{{ID: c.consumer, Role: "consumer", Path: "consumer"}},
 				},
-				{name: "without-it", root: ".", findings: c.without},
+				{name: "without-it", root: ".", code: verdict.Clean},
+				{name: "without-it-at-possible", root: ".", flags: []string{"--min-confidence=possible"}, findings: c.possible, code: verdict.Findings},
 			} {
 				t.Run(run.name, func(t *testing.T) {
 					t.Parallel()
 
 					base := t.TempDir()
 					extractArchive(t, filepath.Join("testdata", "consumers", c.archive), base)
-					var extra []string
+					extra := slices.Clone(run.flags)
 					if run.scoped {
 						extra = append(extra, "--scope="+filepath.Join(base, "scope.json"))
 					}
 					got := analyze(t, filepath.Join(base, "lib"), filepath.Join(base, "run"), extra...)
-					if got.code != verdict.Findings {
-						t.Fatalf("analyze(%s, %s) = %d, want %d\nstderr: %s", c.archive, run.name, got.code, verdict.Findings, got.stderr)
+					if got.code != run.code {
+						t.Fatalf("analyze(%s, %s) = %d, want %d\nstderr: %s", c.archive, run.name, got.code, run.code, got.stderr)
 					}
 					merged := mergedReport(t, filepath.Join(base, "run"))
 					if !slices.Equal(merged.Consumers.Loaded, run.loaded) || merged.Consumers.Declared != len(run.loaded) {

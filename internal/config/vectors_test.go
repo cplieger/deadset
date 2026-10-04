@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/verdict"
 )
@@ -22,6 +22,8 @@ import (
 // adds fails here rather than going unrun.
 var publishedCases = []string{
 	"array-spanning-lines",
+	"component-extension-without-a-full-stop",
+	"component-extensions-configured",
 	"duplicated-key",
 	"integer-written-with-a-fraction",
 	"member-written-as-null",

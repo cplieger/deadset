@@ -28,7 +28,8 @@ const (
 	// setting is one value, which check refuses or accepts.
 	setting
 	// passThrough is one value of a language's own section, which its analyzer
-	// reads and checks.
+	// reads and checks. One with a check is refused here as well, before any
+	// analyzer runs.
 	passThrough
 	// codes is the severity object: one setting per issue-kind code or family it
 	// names.
@@ -80,7 +81,7 @@ func keyList(contractVersion string) node {
 			},
 			{
 				name: "min_confidence", kind: setting, owner: everyAnalyzer,
-				fallback: raw(`"possible"`), check: oneOf("certain", "probable", "possible"),
+				fallback: raw(`"probable"`), check: oneOf("certain", "probable", "possible"),
 			},
 			{
 				name: "generated_files", kind: setting, owner: everyAnalyzer,
@@ -138,8 +139,16 @@ func keyList(contractVersion string) node {
 		}},
 		{name: "go", kind: section, owner: languageAnalyzer},
 		{name: "ts", kind: section, owner: languageAnalyzer, children: []node{
-			{name: "test_files", kind: passThrough, owner: languageAnalyzer, fallback: raw(`["**/*.test.{ts,tsx,mts,cts}"]`)},
+			{
+				name: "test_files", kind: passThrough, owner: languageAnalyzer,
+				fallback: raw(`["**/*.test.{ts,tsx,mts,cts}","**/*.spec.*","**/__tests__/**","**/__mocks__/**"]`),
+			},
 			{name: "entry_files", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
+			{
+				name: "component_extensions", kind: passThrough, owner: languageAnalyzer,
+				fallback: raw(`[".vue",".svelte",".astro"]`), check: atKey(list(0, matches(componentExtension, "a full stop followed by letters and digits"))),
+			},
+			{name: "disabled_conventions", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{name: "injection_registrations", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{name: "lifecycle_contracts", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{name: "serializers", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},

@@ -51,6 +51,10 @@ func analyzerReport(name, language string) *report.Report {
 		DeclaredGaps:           []report.DeclaredGap{},
 		ExcludedByCgo:          []string{},
 		TestFileRules:          []report.TestFileRule{},
+		TypeErrorSkips:         []report.TypeErrorSkip{},
+		Notes:                  []report.Note{},
+		UnansweredQuestions:    []report.UnansweredQuestion{},
+		ConventionsApplied:     []report.ConventionApplied{},
 	}
 }
 
@@ -406,6 +410,66 @@ func TestMergeUnionsTheEnvelopeMembersWithOneEntryPerID(t *testing.T) {
 		wantRules := []report.TestFileRule{{Rule: "go-test-suffix", Matched: 2}, {Rule: "go-test-suffix", Matched: 3}, {Rule: "ts-test-suffix", Matched: 1}}
 		if !slices.Equal(merged.TestFileRules, wantRules) {
 			t.Errorf("Merge() test_file_rules = %+v, want %+v", merged.TestFileRules, wantRules)
+		}
+	}
+}
+
+// The type-error skips, notes, unanswered-question counts and applied
+// convention rows of every input are carried once each, in the orders the
+// merge grammar states, whichever order the merge reads the inputs in: a skip
+// by path and then by line as a number, a note by kind and then by path, a
+// count by configuration, a row by name and then by manifest, and two entries
+// that tie on those by their encodings. The configurations "x" and "x y", and
+// two rows whose packages sort the other way from their manifests, are entries
+// the encodings alone would order differently.
+func TestMergeUnionsTheEnvelopeRecordsInTheGrammarsOrder(t *testing.T) {
+	t.Parallel()
+
+	note := func(path string) report.Note {
+		return report.Note{Kind: report.NotePublishedPackage, Path: path, Key: "roots.patterns", Message: "no package imports " + path}
+	}
+	row := func(name, pkg, manifest string) report.ConventionApplied {
+		return report.ConventionApplied{Name: name, Package: pkg, Version: "2.1.0", Manifest: manifest}
+	}
+	golang := analyzerReport("deadset-go", "go")
+	golang.TypeErrorSkips = []report.TypeErrorSkip{{Path: "a.go", Line: 12, Message: "x"}, {Path: "b.go", Line: 1, Message: "y"}}
+	golang.Notes = []report.Note{note("z"), note("m")}
+	golang.UnansweredQuestions = []report.UnansweredQuestion{
+		{Configuration: "tsconfig.json", Questions: 3, Declarations: 2}, {Configuration: "x y", Questions: 1, Declarations: 1},
+	}
+	golang.ConventionsApplied = []report.ConventionApplied{row("b-rows", "@example/b", "web/package.json"), row("a-rows", "@example/a", "z/package.json")}
+	typescript := analyzerReport("deadset-ts", "ts")
+	typescript.TypeErrorSkips = []report.TypeErrorSkip{{Path: "a.go", Line: 9, Message: "z"}, {Path: "a.go", Line: 12, Message: "x"}}
+	typescript.Notes = []report.Note{note("a"), note("m")}
+	typescript.UnansweredQuestions = []report.UnansweredQuestion{
+		{Configuration: "tsconfig.json", Questions: 2, Declarations: 2}, {Configuration: "x", Questions: 1, Declarations: 0},
+	}
+	typescript.ConventionsApplied = []report.ConventionApplied{row("a-rows", "@example/z", "app/package.json"), row("b-rows", "@example/b", "web/package.json")}
+
+	wantSkips := []report.TypeErrorSkip{{Path: "a.go", Line: 9, Message: "z"}, {Path: "a.go", Line: 12, Message: "x"}, {Path: "b.go", Line: 1, Message: "y"}}
+	wantNotes := []report.Note{note("a"), note("m"), note("z")}
+	wantQuestions := []report.UnansweredQuestion{
+		{Configuration: "tsconfig.json", Questions: 2, Declarations: 2},
+		{Configuration: "tsconfig.json", Questions: 3, Declarations: 2},
+		{Configuration: "x", Questions: 1, Declarations: 0},
+		{Configuration: "x y", Questions: 1, Declarations: 1},
+	}
+	wantRows := []report.ConventionApplied{
+		row("a-rows", "@example/z", "app/package.json"), row("a-rows", "@example/a", "z/package.json"), row("b-rows", "@example/b", "web/package.json"),
+	}
+	for _, order := range [][]*report.Report{{golang, typescript}, {typescript, golang}} {
+		merged, _ := mustMerge(t, inputs(order...))
+		if !slices.Equal(merged.TypeErrorSkips, wantSkips) {
+			t.Errorf("Merge() type_error_skips = %+v, want %+v", merged.TypeErrorSkips, wantSkips)
+		}
+		if !slices.Equal(merged.Notes, wantNotes) {
+			t.Errorf("Merge() notes = %+v, want %+v", merged.Notes, wantNotes)
+		}
+		if !slices.Equal(merged.UnansweredQuestions, wantQuestions) {
+			t.Errorf("Merge() unanswered_questions = %+v, want %+v", merged.UnansweredQuestions, wantQuestions)
+		}
+		if !slices.Equal(merged.ConventionsApplied, wantRows) {
+			t.Errorf("Merge() conventions_applied = %+v, want %+v", merged.ConventionsApplied, wantRows)
 		}
 	}
 }

@@ -25,17 +25,13 @@ var subsetNames = []string{
 	"and", "or", "not", "len", "index", "eq", "ne", "lt", "le", "gt", "ge", "print", "printf", "println",
 }
 
-// The two functions a parsed template calls that no template can name, because
-// the parser admits subsetNames alone: the one that refuses a range over a
-// value that is not an array, an object or null, and the one a lone nil
-// constant evaluates to.
-const (
-	rangeGuard = "deadsetRange"
-	nilValue   = "deadsetNil"
-)
+// rangeGuard is the function a parsed range calls that no template can name,
+// because the parser admits subsetNames alone: it refuses a range over a value
+// that is not an array, an object or null.
+const rangeGuard = "deadsetRange"
 
 // templateFuncs is every function the subset gives another meaning than
-// text/template's builtin of that name, and the two functions the parsed tree
+// text/template's builtin of that name, and the function the parsed tree
 // calls.
 var templateFuncs = template.FuncMap{
 	"len":      length,
@@ -48,7 +44,6 @@ var templateFuncs = template.FuncMap{
 	"ge":       ordered(func(c int) bool { return c >= 0 }),
 	"printf":   printf,
 	rangeGuard: rangeable,
-	nilValue:   func() any { return nil },
 }
 
 // integerConstant is the one number constant the subset admits.
@@ -87,10 +82,9 @@ func ParseTemplate(text string) (*Template, error) {
 	return &Template{parsed: parsed}, nil
 }
 
-// subset refuses a node outside the template subset, and adjusts the two
-// forms whose subset meaning text/template's execution does not give: a
-// range evaluates its value through rangeGuard, and a lone nil constant is
-// the null value.
+// subset refuses a node outside the template subset, and makes a range
+// evaluate its value through rangeGuard, which text/template's execution does
+// not do.
 func subset(tree *parse.Tree, node parse.Node) error {
 	switch n := node.(type) {
 	case *parse.ListNode:
@@ -146,14 +140,9 @@ func subsetBranch(tree *parse.Tree, n *parse.BranchNode) error {
 	return subsetAll(tree, n.List, n.ElseList)
 }
 
-// subsetPipe checks every argument of every command of a pipeline, and makes
-// a command that is a lone nil constant the null value.
+// subsetPipe checks every argument of every command of a pipeline.
 func subsetPipe(tree *parse.Tree, pipe *parse.PipeNode) error {
-	for i, cmd := range pipe.Cmds {
-		if len(cmd.Args) == 1 && cmd.Args[0].Type() == parse.NodeNil {
-			pipe.Cmds[i] = call(tree, cmd.Position(), nilValue)
-			continue
-		}
+	for _, cmd := range pipe.Cmds {
 		if err := subsetAll(tree, cmd.Args...); err != nil {
 			return err
 		}

@@ -9,21 +9,28 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 )
 
 // TestDecodeReadsEveryExampleReportBack decodes every report the Contract
-// publishes as an example and encodes it again, which must give the same
-// document: the examples are written in another layout, so the two are
-// compared as JSON values.
+// publishes as an example or as the round of a baseline vector, and encodes
+// it again, which must give the same document: the documents are written in
+// another layout, so the two are compared as JSON values.
 func TestDecodeReadsEveryExampleReportBack(t *testing.T) {
 	t.Parallel()
 
+	documents := map[string]fs.FS{}
 	for _, name := range glob(t, spec.Examples, "examples/reports/*.json") {
+		documents[name] = spec.Examples
+	}
+	for _, name := range glob(t, spec.Vectors, "vectors/baseline/*/report.json") {
+		documents[name] = spec.Vectors
+	}
+	for name, tree := range documents {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			body := read(t, spec.Examples, name)
+			body := read(t, tree, name)
 			decoded, err := Decode(body)
 			if err != nil {
 				t.Fatalf("Decode(%s) = %v, want a report", name, err)
