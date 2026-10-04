@@ -75,7 +75,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // set, whichever verb files the build holds.
 func dispatch(verbs map[string]handler, args []string, stdout, stderr io.Writer) int {
 	if flagName, ok := requestsFix(args); ok {
-		fmt.Fprintf(stderr, "deadset: %s requested a source edit; deadset is report-only and never edits a source file\n", flagName)
+		fmt.Fprintf(stderr, "deadset: %s requested a source edit, but deadset is report-only and never edits a source file\n", flagName)
 		return verdict.Usage
 	}
 

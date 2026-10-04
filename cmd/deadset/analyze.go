@@ -101,7 +101,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 		"the scope document naming the target and the consumers whose references count against it")
 	a.set.StringVar(&a.central, "central", "", centralUsage)
 	a.set.StringVar(&a.runDir, "run-dir", "",
-		"the run directory, which must not exist; empty makes one under the temporary directory")
+		"the run directory, which must not exist. Leave it empty to make one under the temporary directory")
 	a.set.StringVar(&a.templatePath, templateFlag, "", "the file holding the template the template format renders")
 	exitCode := a.set.String("exit-code", exitCodeOn,
 		"whether the exit code carries the verdict of the run: "+exitCodeOn+" or "+exitCodeOff)
