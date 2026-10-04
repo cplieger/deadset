@@ -38,6 +38,19 @@ func (r *rejection) under(at string) *rejection {
 	return &rejection{at: at + r.at, detail: r.detail, undeclared: r.undeclared}
 }
 
+// atKey is c with a rejection of one part of the value placed at the setting
+// itself, the part named in its detail: the refusal names the key, as the
+// Contract's configuration cases spell it for a component extension.
+func atKey(c checker) checker {
+	return func(value json.RawMessage) *rejection {
+		rejected := c(value)
+		if rejected == nil || rejected.at == "" {
+			return rejected
+		}
+		return &rejection{detail: "entry " + rejected.at + ": " + rejected.detail, undeclared: rejected.undeclared}
+	}
+}
+
 // first returns the first of several rejections, or none when every check
 // accepted.
 func first(rejections ...*rejection) *rejection {
@@ -49,15 +62,17 @@ func first(rejections ...*rejection) *rejection {
 	return nil
 }
 
-// semanticVersion, exemptionClass and projectPath are the spellings the key list
-// declares for contract_version, an exemption class name, and the compiler
-// configuration file a project entry of the build matrix names: a path below the
-// target root whose segments are joined by /, none of them empty, . or .., and
-// none holding a backslash or a line break.
+// semanticVersion, exemptionClass, componentExtension and projectPath are the
+// spellings the key list declares for contract_version, an exemption class name,
+// a component file's extension, and the compiler configuration file a project
+// entry of the build matrix names: a path below the target root whose segments
+// are joined by /, none of them empty, . or .., and none holding a backslash or a
+// line break.
 var (
-	semanticVersion = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
-	exemptionClass  = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	projectPath     = regexp.MustCompile(`^(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*$`)
+	semanticVersion    = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	exemptionClass     = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	componentExtension = regexp.MustCompile(`^\.[A-Za-z0-9]+$`)
+	projectPath        = regexp.MustCompile(`^(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*$`)
 )
 
 // decoded decodes one JSON value into v and reports whether it could. It refuses

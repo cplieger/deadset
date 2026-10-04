@@ -1,6 +1,7 @@
 package merge
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -44,6 +45,18 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 		ExcludedByCgo:          distinct(held.excludedByCgo, compareStrings),
 		TestFileRules: distinct(held.testFileRules,
 			func(a, b *report.TestFileRule) int { return strings.Compare(a.Rule, b.Rule) }),
+		TypeErrorSkips: distinct(held.typeErrorSkips, func(a, b *report.TypeErrorSkip) int {
+			return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
+		}),
+		Notes: distinct(held.notes, func(a, b *report.Note) int {
+			return cmp.Or(strings.Compare(string(a.Kind), string(b.Kind)), strings.Compare(a.Path, b.Path))
+		}),
+		UnansweredQuestions: distinct(held.unanswered, func(a, b *report.UnansweredQuestion) int {
+			return strings.Compare(a.Configuration, b.Configuration)
+		}),
+		ConventionsApplied: distinct(held.conventions, func(a, b *report.ConventionApplied) int {
+			return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Manifest, b.Manifest))
+		}),
 		Totals: totals(carried, &held),
 	}
 }
@@ -59,6 +72,10 @@ type gathered struct {
 	unavailable    []report.UnavailableConsumer
 	excludedByCgo  []string
 	testFileRules  []report.TestFileRule
+	typeErrorSkips []report.TypeErrorSkip
+	notes          []report.Note
+	unanswered     []report.UnansweredQuestion
+	conventions    []report.ConventionApplied
 
 	inEffect int
 	reasons  int
@@ -78,6 +95,10 @@ func (g *gathered) add(in *Input) {
 	g.unavailable = append(g.unavailable, r.Consumers.Unavailable...)
 	g.excludedByCgo = append(g.excludedByCgo, r.ExcludedByCgo...)
 	g.testFileRules = append(g.testFileRules, r.TestFileRules...)
+	g.typeErrorSkips = append(g.typeErrorSkips, r.TypeErrorSkips...)
+	g.notes = append(g.notes, r.Notes...)
+	g.unanswered = append(g.unanswered, r.UnansweredQuestions...)
+	g.conventions = append(g.conventions, r.ConventionsApplied...)
 	g.inEffect += r.Totals.SuppressionsInEffect
 	g.reasons += r.Totals.ReasonsRecorded
 }

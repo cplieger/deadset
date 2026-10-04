@@ -92,7 +92,8 @@ func TestParseTemplateRefusesTheFormsOutsideTheSubset(t *testing.T) {
 }
 
 // A range over a value other than an array, an object or null fails the
-// rendering, and a lone nil constant prints as null does.
+// rendering, nil as the command of an action or as the pipeline of if, with or
+// range fails it, and nil as a function's operand is the null value.
 func TestTemplateRangeAndNil(t *testing.T) {
 	t.Parallel()
 
@@ -105,7 +106,12 @@ func TestTemplateRangeAndNil(t *testing.T) {
 		{text: "{{range .name}}x{{end}}", fails: true},
 		{text: "{{range $i, $v := .count}}x{{end}}", fails: true},
 		{text: "{{range .none}}x{{else}}empty{{end}}", want: "empty"},
-		{text: "{{nil}}|{{.none}}|{{if nil}}t{{else}}f{{end}}", want: "<no value>|<no value>|f"},
+		{text: "{{.none}}|{{print nil}}|{{printf \"%v\" nil}}", want: "<no value>|<nil>|<nil>"},
+		{text: "{{nil}}", fails: true},
+		{text: "x{{nil | print}}", fails: true},
+		{text: "{{if nil}}t{{else}}f{{end}}", fails: true},
+		{text: "{{with nil}}t{{else}}f{{end}}", fails: true},
+		{text: "{{range nil}}t{{else}}f{{end}}", fails: true},
 	} {
 		t.Run(c.text, func(t *testing.T) {
 			t.Parallel()

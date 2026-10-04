@@ -1,20 +1,19 @@
 {
-  "schema_version": "6.1.0",
-  "contract_version": "4.0.0",
+  "schema_version": "7.0.0",
+  "contract_version": "5.1.0",
   "analyzer": {
     "name": "deadset-ts",
-    "version": "3.13.0",
+    "version": "5.0.0",
     "languages": [
       "ts"
     ],
     "schema_versions_accepted": [
-      "6.0.0",
-      "6.1.0"
+      "7.0.0"
     ],
     "conformance": {
-      "corpus_version": "2.0.0",
+      "corpus_version": "2.1.1",
       "result": "pass",
-      "digest": "sha256:1274315595d7b944d22eb0126081e24cf293c9fe53a236f4d263c714644f32ee"
+      "digest": "sha256:e5e456bf3a706f1fa9f906ae71e10ea98a78da52d7d99a5ed59dca8a72bbe927"
     }
   },
   "target": {
@@ -94,8 +93,24 @@
     {
       "rule": "test-file-pattern-1",
       "matched": 0
+    },
+    {
+      "rule": "test-file-pattern-2",
+      "matched": 0
+    },
+    {
+      "rule": "test-file-pattern-3",
+      "matched": 0
+    },
+    {
+      "rule": "test-file-pattern-4",
+      "matched": 0
     }
   ],
+  "type_error_skips": [],
+  "notes": [],
+  "unanswered_questions": [],
+  "conventions_applied": [],
   "totals": {
     "findings": 1,
     "by_severity": {

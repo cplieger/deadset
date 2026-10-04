@@ -41,9 +41,13 @@ type Report struct {
 
 	// ExcludedByCgo is every source file the toolchain ignored solely for
 	// importing the C pseudo-package, as a target-relative path.
-	ExcludedByCgo []string       `json:"excluded_by_cgo"`
-	TestFileRules []TestFileRule `json:"test_file_rules"`
-	Totals        Totals         `json:"totals"`
+	ExcludedByCgo       []string             `json:"excluded_by_cgo"`
+	TestFileRules       []TestFileRule       `json:"test_file_rules"`
+	TypeErrorSkips      []TypeErrorSkip      `json:"type_error_skips"`
+	Notes               []Note               `json:"notes"`
+	UnansweredQuestions []UnansweredQuestion `json:"unanswered_questions"`
+	ConventionsApplied  []ConventionApplied  `json:"conventions_applied"`
+	Totals              Totals               `json:"totals"`
 }
 
 // Analyzer is the product that wrote a report: an analyzer for a report of one
@@ -227,6 +231,50 @@ type DeclaredGap struct {
 type TestFileRule struct {
 	Rule    string `json:"rule"`
 	Matched int    `json:"matched"`
+}
+
+// TypeErrorSkip is one type error inside a function or a file-level statement
+// the analysis therefore did not evaluate.
+//
+//nolint:govet // fieldalignment: the field order is the schema's member order, which the encoding writes
+type TypeErrorSkip struct {
+	Path    string `json:"path"`
+	Line    int    `json:"line"`
+	Message string `json:"message"`
+}
+
+// Note is one hint the analysis has about a run's setup. It is no finding:
+// nothing counts it and it fails no run.
+type Note struct {
+	Kind    NoteKind `json:"kind"`
+	Path    string   `json:"path"`
+	Key     string   `json:"key"`
+	Message string   `json:"message"`
+}
+
+// NoteKind is what a note is about.
+type NoteKind string
+
+// NotePublishedPackage is a package of an application no other package of the
+// target imports and outside programs may import.
+const NotePublishedPackage NoteKind = "published-package"
+
+// UnansweredQuestion counts, for one configuration, the questions the analysis
+// asked its type checker that went unanswered and the declarations they held.
+type UnansweredQuestion struct {
+	Configuration string `json:"configuration"`
+	Questions     int    `json:"questions"`
+	Declarations  int    `json:"declarations"`
+}
+
+// ConventionApplied is one convention row the analysis applied: the row's
+// name, the enabling package and its installed version, and the manifest that
+// declares it.
+type ConventionApplied struct {
+	Name     string `json:"name"`
+	Package  string `json:"package"`
+	Version  string `json:"version"`
+	Manifest string `json:"manifest"`
 }
 
 // Totals are the counts a summary line prints. A merge recomputes them over

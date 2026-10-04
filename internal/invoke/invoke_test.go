@@ -34,7 +34,7 @@ func TestAnalyzeReadsTheReportOfEveryVerdict(t *testing.T) {
 			t.Parallel()
 
 			req := request(t, "deadset-go", fakeAnalyzer(t, exit, written).command)
-			got, err := invoke.Analyze(t.Context(), &req)
+			got, _, err := invoke.Analyze(t.Context(), &req)
 			if err != nil {
 				t.Fatalf("Analyze(an analyzer exiting %d over a written report) = %v, want the report", exit, err)
 			}
@@ -53,7 +53,7 @@ func TestAnalyzeRunsTheAnalyzeVerbWithTheThreePaths(t *testing.T) {
 
 	analyzer := fakeAnalyzer(t, 0, published(t, oneReport))
 	req := request(t, "deadset-go", analyzer.command)
-	if _, err := invoke.Analyze(t.Context(), &req); err != nil {
+	if _, _, err := invoke.Analyze(t.Context(), &req); err != nil {
 		t.Fatalf("Analyze() = %v, want the report", err)
 	}
 
@@ -88,7 +88,7 @@ func TestAnalyzeReadsNoReportAfterAnExitThatCarriesNone(t *testing.T) {
 			t.Parallel()
 
 			req := request(t, "deadset-go", fakeAnalyzer(t, exit, truncated(t)).command)
-			got, err := invoke.Analyze(t.Context(), &req)
+			got, _, err := invoke.Analyze(t.Context(), &req)
 			if got != nil {
 				t.Errorf("Analyze(an analyzer exiting %d) = %+v, want no report", exit, got)
 			}
@@ -115,7 +115,7 @@ func TestAnalyzeRefusesAnAbsentReport(t *testing.T) {
 	t.Parallel()
 
 	req := request(t, "deadset-go", fakeAnalyzer(t, 0, nil).command)
-	got, err := invoke.Analyze(t.Context(), &req)
+	got, _, err := invoke.Analyze(t.Context(), &req)
 	if got != nil || !errors.Is(err, invoke.ErrNoReport) {
 		t.Fatalf("Analyze(an analyzer exiting 0 with no report) = %+v, %v, want no report and ErrNoReport", got, err)
 	}
@@ -148,7 +148,7 @@ func TestAnalyzeRefusesAReportThatDoesNotDecode(t *testing.T) {
 			t.Parallel()
 
 			req := request(t, "deadset-ts", fakeAnalyzer(t, 1, c.written(t)).command)
-			got, err := invoke.Analyze(t.Context(), &req)
+			got, _, err := invoke.Analyze(t.Context(), &req)
 			if got != nil {
 				t.Errorf("Analyze(a %s report) = %+v, want no report", c.name, got)
 			}
@@ -183,7 +183,7 @@ func TestAnalyzeRefusesAFileAlreadyAtTheReportPath(t *testing.T) {
 		t.Fatalf("Setup: write %s: %v", req.Report, err)
 	}
 
-	got, err := invoke.Analyze(t.Context(), &req)
+	got, _, err := invoke.Analyze(t.Context(), &req)
 	if got != nil || !errors.Is(err, invoke.ErrReportExists) {
 		t.Errorf("Analyze(over an existing report) = %+v, %v, want no report and ErrReportExists", got, err)
 	}
@@ -198,7 +198,7 @@ func TestAnalyzeRefusesAnAnalyzerItCannotRun(t *testing.T) {
 	t.Parallel()
 
 	req := request(t, "deadset-go", filepath.Join(t.TempDir(), "absent"))
-	got, err := invoke.Analyze(t.Context(), &req)
+	got, _, err := invoke.Analyze(t.Context(), &req)
 	if got != nil || !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("Analyze(an absent command) = %+v, %v, want no report and an error satisfying errors.Is(err, fs.ErrNotExist)", got, err)
 	}
@@ -220,7 +220,7 @@ func TestAnalyzeRefusesACommandThatIsNotAnAbsolutePath(t *testing.T) {
 		t.Fatalf("Setup: Rel(%s, %s): %v", req.Dir, analyzer.command, err)
 	}
 	req.Command = relative
-	got, err := invoke.Analyze(t.Context(), &req)
+	got, _, err := invoke.Analyze(t.Context(), &req)
 	if got != nil || !errors.Is(err, invoke.ErrUnresolvedCommand) {
 		t.Fatalf("Analyze(command %q) = %+v, %v, want no report and ErrUnresolvedCommand", req.Command, got, err)
 	}
@@ -263,7 +263,7 @@ func TestAnalyzeInterruptsTheAnalyzerOfACancelledRun(t *testing.T) {
 		}
 	}()
 
-	got, err := invoke.Analyze(ctx, &req)
+	got, _, err := invoke.Analyze(ctx, &req)
 	if got != nil || !errors.Is(err, context.Canceled) {
 		t.Errorf("Analyze(a cancelled run) = %+v, %v, want no report and an error satisfying errors.Is(err, context.Canceled)", got, err)
 	}
@@ -282,7 +282,7 @@ func TestAnalyzeCopiesWhatTheAnalyzerPrints(t *testing.T) {
 	var printed bytes.Buffer
 	req.Diagnostics = &printed
 
-	if _, err := invoke.Analyze(t.Context(), &req); !errors.Is(err, invoke.ErrExited) {
+	if _, _, err := invoke.Analyze(t.Context(), &req); !errors.Is(err, invoke.ErrExited) {
 		t.Fatalf("Analyze(an analyzer exiting 3) = %v, want ErrExited", err)
 	}
 	for _, line := range []string{"to stdout\n", "to stderr\n"} {
@@ -320,7 +320,7 @@ func TestAnalyzeRefusesARunWhoseOutputCannotBeCopied(t *testing.T) {
 			req := request(t, "deadset-go", analyzer.command)
 			req.Diagnostics = refusingWriter{}
 
-			got, err := invoke.Analyze(t.Context(), &req)
+			got, _, err := invoke.Analyze(t.Context(), &req)
 			if got != nil || !errors.Is(err, errDiagnostics) {
 				t.Errorf("Analyze(an analyzer exiting %d, its output refused) = %+v, %v, want no report and the write's error", exit, got, err)
 			}
@@ -342,7 +342,7 @@ func TestAnalyzeNamesTheWriteErrorWhenTheAnalyzerDiesOfIt(t *testing.T) {
 	req := request(t, "deadset-go", analyzer.command)
 	req.Diagnostics = refusingWriter{}
 
-	got, err := invoke.Analyze(t.Context(), &req)
+	got, _, err := invoke.Analyze(t.Context(), &req)
 	if got != nil || !errors.Is(err, errDiagnostics) {
 		t.Errorf("Analyze(an analyzer printing until its output is refused) = %+v, %v, want no report and the write's error", got, err)
 	}

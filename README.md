@@ -64,7 +64,7 @@ A Go type that only its generated TypeScript client uses has no reference in Go.
 }
 ```
 
-deadset reports the pair only when both sides are unused. An edge whose side neither analyzer finds is reported as `DS1705`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v4.0.0/docs/edges.md) describes the format.
+deadset reports the pair only when both sides are unused. An edge whose side neither analyzer finds is reported as `DS1705`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v5.1.2/docs/edges.md) describes the format.
 
 ### Checking a library against its consumers
 
@@ -81,7 +81,7 @@ deadset analyze --target=lib --scope=scope.json
 }
 ```
 
-With every declared consumer loaded, the library's findings are `certain`. With no scope document, a finding about its exported API is `possible`. Because deadset never fetches a consumer, check each one out first. [Libraries and their consumers](docs/scope.md) gives the rules.
+With every declared consumer loaded, the library's findings are `certain`. With no scope document, exported API findings are hidden by default. Because deadset never fetches a consumer, check each one out first. [Libraries and their consumers](docs/scope.md) gives the rules.
 
 ## API
 
@@ -92,11 +92,11 @@ deadset is a command, and its interface is its verbs, the merged JSON report and
 - `explain`, `install` and `describe` are reserved verbs that do nothing yet and exit with 2.
 - The run exits 0 when nothing fails it and 1 for a failing finding or a stale suppression. It exits 2 on a usage error or a `--fix` flag, and 3 when it cannot produce an answer.
 
-The report follows version 4.0.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v4.0.0). [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes.
+The report follows version 5.1.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v5.1.2). [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes.
 
 ## Related projects
 
-deadset implements version 4.0.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v4.0.0), which defines the issue codes, the report schema, the merge and the exit codes. Another Go or TypeScript analyzer can take the place of deadset-go or deadset-ts. That analyzer must name itself as its provider entry does, read a report schema version deadset accepts and pass the contract's conformance corpus.
+deadset implements version 5.1.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v5.1.2), which defines the issue codes, the report schema, the merge and the exit codes. Another Go or TypeScript analyzer can take the place of deadset-go or deadset-ts. That analyzer must name itself as its provider entry does, read a report schema version deadset accepts and pass the contract's conformance corpus.
 
 - [deadset-go](https://github.com/cplieger/deadset-go) analyzes a Go module and the repositories that import it.
 - [deadset-ts](https://github.com/cplieger/deadset-ts) analyzes TypeScript and JavaScript projects, down to class and type members.

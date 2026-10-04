@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 )
 
 // schemaKey is one key of the Contract's configuration schema, with the members of
@@ -345,6 +345,11 @@ func TestPatterns_agreeWithTheSchema(t *testing.T) {
 			name: "exemption-class", ours: exemptionClass,
 			schema:  schemaString(t, "properties", "exemptions", "properties", "disabled", "items", "pattern"),
 			samples: []string{"template-field", "Template", "a", "-a", "a-", "a_b", "9a", "a9-b"},
+		},
+		{
+			name: "component-extension", ours: componentExtension,
+			schema:  schemaString(t, "properties", "ts", "properties", "component_extensions", "items", "pattern"),
+			samples: []string{".vue", ".astro", ".Vue2", "vue", ".", "..vue", ".v-e", ".vue\n", "a.vue", ".\u0661"},
 		},
 		{
 			name: "project-path", ours: projectPath,

@@ -17,7 +17,7 @@ deadset analyze --target=lib --scope=scope.json
 }
 ```
 
-The document is the scope document [deadset-spec](https://github.com/cplieger/deadset-spec/tree/v4.0.0) publishes in [`contract/scope.schema.json`](https://github.com/cplieger/deadset-spec/blob/v4.0.0/contract/scope.schema.json), the same one each analyzer's own `--scope` reads. A relative path is resolved against the directory that holds the document. Its target must be the directory `--target` names, or the run exits with 2. An optional `workspace` member names the `go.work` file through which the consumers resolve the target.
+The document is the scope document [deadset-spec](https://github.com/cplieger/deadset-spec/tree/v5.1.2) publishes in [`contract/scope.schema.json`](https://github.com/cplieger/deadset-spec/blob/v5.1.2/contract/scope.schema.json), the same one each analyzer's own `--scope` reads. A relative path is resolved against the directory that holds the document. Its target must be the directory `--target` names, or the run exits with 2. An optional `workspace` member names the `go.work` file through which the consumers resolve the target.
 
 ## How consumers reach the analyzers
 
@@ -31,7 +31,7 @@ A target or consumer can hold both Go and TypeScript. When the scope document gi
 
 ## What the findings mean
 
-With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`. A Go workspace's other modules are consumers only when the scope document declares them.
+With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`. The default minimum confidence, `probable`, leaves such a finding out, and `--min-confidence=possible` reports it. A Go workspace's other modules are consumers only when the scope document declares them.
 
 ## Putting the consumers in place
 

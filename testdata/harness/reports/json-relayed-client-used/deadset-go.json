@@ -1,20 +1,19 @@
 {
-  "schema_version": "6.0.0",
-  "contract_version": "4.0.0",
+  "schema_version": "7.0.0",
+  "contract_version": "5.1.0",
   "analyzer": {
     "name": "deadset-go",
-    "version": "1.21.0",
+    "version": "1.22.2",
     "languages": [
       "go"
     ],
     "schema_versions_accepted": [
-      "6.0.0",
-      "6.1.0"
+      "7.0.0"
     ],
     "conformance": {
-      "corpus_version": "2.0.0",
+      "corpus_version": "2.1.1",
       "result": "pass",
-      "digest": "sha256:10a13a55e94c873406aa44c40d1217852a50b05ae8630ad92589e3664fd2e108"
+      "digest": "sha256:2be13591363e1561a28b6cd163a1b12b0648095b674e9d378493a26fe9f75154"
     }
   },
   "target": {
@@ -92,6 +91,10 @@
       "matched": 0
     }
   ],
+  "type_error_skips": [],
+  "notes": [],
+  "unanswered_questions": [],
+  "conventions_applied": [],
   "totals": {
     "findings": 0,
     "by_severity": {

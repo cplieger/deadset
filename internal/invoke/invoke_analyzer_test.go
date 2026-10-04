@@ -132,7 +132,7 @@ func TestAnalyzeReadsTheReportARealAnalyzerWrites(t *testing.T) {
 
 	req, entry := goRun(t, goAnalyzerOnPath(t),
 		"package app\n\n// Used is called.\nfunc Used() int { return 1 }\n\nfunc dead() {}\n\nfunc alsoDead() {}\n")
-	got, err := invoke.Analyze(t.Context(), &req)
+	got, _, err := invoke.Analyze(t.Context(), &req)
 	if err != nil {
 		t.Fatalf("Analyze(%s over a module with two dead functions) = %v, want its report", goAnalyzer, err)
 	}
@@ -184,13 +184,13 @@ func TestAnalyzeReadsTheReportARealAnalyzerWrites(t *testing.T) {
 }
 
 // TestRunPresentsNoReportBesideARealAnalyzerFailure runs the Go analyzer over a
-// module that does not type-check, beside an analyzer that writes a valid
-// report: the Go analyzer exits 3, its load error reaches the diagnostics, and
-// the run has no report from either.
+// module importing a package nothing provides, beside an analyzer that writes
+// a valid report: the Go analyzer exits 3, its setup-failure line reaches the
+// diagnostics as it printed it, and the run has no report from either.
 func TestRunPresentsNoReportBesideARealAnalyzerFailure(t *testing.T) {
 	t.Parallel()
 
-	failing, _ := goRun(t, goAnalyzerOnPath(t), "package app\n\nfunc broken() int { return \"one\" }\n")
+	failing, _ := goRun(t, goAnalyzerOnPath(t), "package app\n\nimport \"example.com/app/gen\"\n\nvar V = gen.X\n")
 	var printed bytes.Buffer
 	failing.Diagnostics = &printed
 	requests := []invoke.Request{
@@ -206,7 +206,7 @@ func TestRunPresentsNoReportBesideARealAnalyzerFailure(t *testing.T) {
 	if len(found) != 1 || found[0].Analyzer != goAnalyzer || found[0].Exit != 3 {
 		t.Errorf("Run() = %v, want one refusal, of %s exiting 3", err, goAnalyzer)
 	}
-	if !strings.Contains(printed.String(), "app.go") {
-		t.Errorf("%s printed %q, want the load error naming app.go", goAnalyzer, printed.String())
+	if !strings.HasPrefix(printed.String(), "setup failure: missing-module: app.go:") {
+		t.Errorf("%s printed %q, want its setup-failure line naming app.go", goAnalyzer, printed.String())
 	}
 }

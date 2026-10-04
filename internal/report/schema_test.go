@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 )
 
 // The two schemas the types of this package mirror.
@@ -43,6 +43,10 @@ func TestTheTypesDeclareEveryObjectTheSchemasDeclare(t *testing.T) {
 		reportSchema + "#/properties/stale_suppressions/items/properties/position": reflect.TypeFor[SuppressionPosition](),
 		reportSchema + "#/properties/declared_gaps/items":                          reflect.TypeFor[DeclaredGap](),
 		reportSchema + "#/properties/test_file_rules/items":                        reflect.TypeFor[TestFileRule](),
+		reportSchema + "#/properties/type_error_skips/items":                       reflect.TypeFor[TypeErrorSkip](),
+		reportSchema + "#/properties/notes/items":                                  reflect.TypeFor[Note](),
+		reportSchema + "#/properties/unanswered_questions/items":                   reflect.TypeFor[UnansweredQuestion](),
+		reportSchema + "#/properties/conventions_applied/items":                    reflect.TypeFor[ConventionApplied](),
 		reportSchema + "#/properties/totals":                                       reflect.TypeFor[Totals](),
 		reportSchema + "#/properties/totals/properties/by_severity":                reflect.TypeFor[BySeverity](),
 		findingSchema + "#":                                           reflect.TypeFor[Finding](),
@@ -137,6 +141,12 @@ func TestThePatternsAreTheSchemas(t *testing.T) {
 		reportSchema + "#/properties/declared_gaps/items/properties/analyzer":                      tokenPattern,
 		reportSchema + "#/properties/excluded_by_cgo/items":                                        artifactPattern,
 		reportSchema + "#/properties/test_file_rules/items/properties/rule":                        tokenPattern,
+		reportSchema + "#/properties/type_error_skips/items/properties/path":                       artifactPattern,
+		reportSchema + "#/properties/type_error_skips/items/properties/message":                    oneLinePattern,
+		reportSchema + "#/properties/notes/items/properties/path":                                  artifactPattern,
+		reportSchema + "#/properties/notes/items/properties/message":                               oneLinePattern,
+		reportSchema + "#/properties/conventions_applied/items/properties/name":                    tokenPattern,
+		reportSchema + "#/properties/conventions_applied/items/properties/manifest":                artifactPattern,
 		findingSchema + "#/properties/code":                                                        codePattern,
 		findingSchema + "#/properties/kind":                                                        tokenPattern,
 		findingSchema + "#/properties/symbol/properties/name":                                      oneLinePattern,
@@ -201,6 +211,8 @@ func TestTheVocabulariesAreTheSchemas(t *testing.T) {
 		reportSchema + "#/properties/edge_evaluations/items/properties/state":                names(states),
 		reportSchema + "#/properties/stale_suppressions/items/properties/code":               staleCodes,
 		reportSchema + "#/properties/stale_suppressions/items/properties/mechanism":          mechanisms,
+		reportSchema + "#/properties/notes/items/properties/kind":                            names(noteKinds),
+		reportSchema + "#/properties/notes/items/properties/key":                             noteKeys,
 		findingSchema + "#/properties/language":                                              languages,
 		findingSchema + "#/properties/symbol/properties/kind":                                symbolKinds,
 		findingSchema + "#/properties/reachability_class":                                    names(classes),

@@ -38,14 +38,20 @@ type Dir struct {
 	path string
 }
 
-// Create makes the run directory at path, whose parent must exist. It refuses
-// a path that already exists, with an error satisfying errors.Is(err,
-// fs.ErrExist).
+// Create makes the run directory at path, whose parent must exist. A relative
+// path is resolved against the working directory, and every path the
+// directory names is absolute, because the analyzers that read and write them
+// run in another directory. It refuses a path that already exists, with an
+// error satisfying errors.Is(err, fs.ErrExist).
 func Create(path string) (*Dir, error) {
-	if err := os.Mkdir(path, 0o750); err != nil {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
 		return nil, fmt.Errorf("rundir: create the run directory: %w", err)
 	}
-	return &Dir{path: path}, nil
+	if err := os.Mkdir(absolute, 0o750); err != nil {
+		return nil, fmt.Errorf("rundir: create the run directory: %w", err)
+	}
+	return &Dir{path: absolute}, nil
 }
 
 // CreateTemp makes a run directory of a name no other directory holds, under

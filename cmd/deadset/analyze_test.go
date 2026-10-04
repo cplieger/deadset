@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
 )
@@ -44,6 +44,14 @@ type fake struct {
 func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, written string) fake {
 	t.Helper()
 
+	return printingAnalyzer(t, name, languages, exit, written, "")
+}
+
+// printingAnalyzer is [fakeAnalyzer] whose analyze verb prints printed on
+// standard error before it exits.
+func printingAnalyzer(t *testing.T, name string, languages []string, exit int, written, printed string) fake {
+	t.Helper()
+
 	dir := t.TempDir()
 	described, err := json.Marshal(map[string]any{
 		"name":                     name,
@@ -66,6 +74,7 @@ func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, writt
 		writeFile(t, filepath.Join(dir, "written.json"), body)
 		copied = fmt.Sprintf(`cp '%s/written.json' "$report"`, dir)
 	}
+	writeFile(t, filepath.Join(dir, "printed.txt"), []byte(printed))
 	f := fake{command: filepath.Join(dir, "analyzer"), ranIn: filepath.Join(dir, "pwd"), scope: filepath.Join(dir, "scope.json")}
 	script := strings.Join([]string{
 		"#!/bin/sh",
@@ -78,6 +87,7 @@ func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, writt
 		`	esac`,
 		`done`,
 		copied,
+		fmt.Sprintf(`cat '%s/printed.txt' >&2`, dir),
 		"exit " + strconv.Itoa(exit),
 		"",
 	}, "\n")
@@ -632,5 +642,55 @@ func TestAnalyzeFailsASARIFRenderingOfAnUnreadableSourceFile(t *testing.T) {
 	}
 	if names := listing(t, runDir); !slices.Contains(names, "report.json") || slices.Contains(names, "report.json.sarif") {
 		t.Errorf("the run directory holds %q, want the merged report and no SARIF log", names)
+	}
+}
+
+// A relative --run-dir names a directory below the working directory the run
+// was invoked from, whatever directory the analyzers run in: each analyzer
+// writes its report into it and the merged report lands beside them.
+func TestAnalyzeResolvesARelativeRunDirectoryAgainstTheWorkingDirectory(t *testing.T) {
+	goFake := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
+	target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}}}, "")
+	t.Chdir(filepath.Dir(runDir))
+
+	got := analyze(t, target, filepath.Base(runDir))
+	if got.code != verdict.Findings {
+		t.Fatalf("analyze(--run-dir=%s) = %d, want %d\nstderr: %s", filepath.Base(runDir), got.code, verdict.Findings, got.stderr)
+	}
+	if names := listing(t, runDir); !slices.Contains(names, "report.deadset-go.json") || !slices.Contains(names, "report.json") {
+		t.Errorf("the run directory %s holds %q, want the analyzer's report and the merged report", runDir, names)
+	}
+	if !strings.Contains(got.stderr, "the run directory is "+runDir+"\n") {
+		t.Errorf("analyze stderr = %q, want it to name the run directory by its absolute path %s", got.stderr, runDir)
+	}
+}
+
+// An analyzer's setup-failure and memory-exhaustion lines reach standard error
+// as the analyzer printed them, each analyzer's output whole and in analyzer
+// name order, and the run ends with the failure code.
+func TestAnalyzePassesAnAnalyzersFailureLinesThroughUnchanged(t *testing.T) {
+	t.Parallel()
+
+	const (
+		setupFailure = "setup failure: missing-module: internal/gen/gen.go imports example.com/app/gen, which nothing provides; run go generate ./...\n"
+		memory       = "memory exhausted: at least 9.5 GB were needed, 8.0 GB are available\n"
+	)
+	tsFake := printingAnalyzer(t, "deadset-ts", []string{"ts"}, verdict.Failure, "", memory)
+	goFake := printingAnalyzer(t, "deadset-go", []string{"go"}, verdict.Failure, "", setupFailure)
+	target, runDir := goTarget(t, []provider{
+		{Name: "deadset-ts", Command: tsFake.command, Languages: []string{"ts"}},
+		{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}},
+	}, "")
+	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
+
+	got := analyze(t, target, runDir)
+	if got.code != verdict.Failure {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Failure, got.stderr)
+	}
+	if !strings.Contains(got.stderr, "\n"+setupFailure+memory) {
+		t.Errorf("analyze stderr = %q, want deadset-go's line and then deadset-ts's, each on a line of its own as printed", got.stderr)
+	}
+	if got.stdout != "" {
+		t.Errorf("analyze stdout = %q, want nothing presented as the run's result", got.stdout)
 	}
 }

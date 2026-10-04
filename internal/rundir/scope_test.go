@@ -14,7 +14,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 	"github.com/cplieger/deadset/internal/rundir"
 )
 

@@ -15,6 +15,7 @@
 package invoke
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -25,6 +26,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/cplieger/deadset/internal/report"
@@ -107,16 +110,17 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Err }
 
 // Analyze runs the analyze verb of the analyzer req names and reads the
-// report it wrote. It returns the report, or no report and an [*Error].
-func Analyze(ctx context.Context, req *Request) (*report.Report, error) {
-	refuse := func(exit int, err error) error {
-		return &Error{Err: err, Analyzer: req.Analyzer, Report: req.Report, Exit: exit}
+// report it wrote. It returns the report and the analyzer's exit code, or no
+// report and an [*Error].
+func Analyze(ctx context.Context, req *Request) (*report.Report, int, error) {
+	refuse := func(exit int, err error) (*report.Report, int, error) {
+		return nil, exit, &Error{Err: err, Analyzer: req.Analyzer, Report: req.Report, Exit: exit}
 	}
 	if err := resolved(req.Command); err != nil {
-		return nil, refuse(-1, err)
+		return refuse(-1, err)
 	}
 	if _, err := os.Lstat(req.Report); !errors.Is(err, fs.ErrNotExist) {
-		return nil, refuse(-1, cmp.Or(err, ErrReportExists))
+		return refuse(-1, cmp.Or(err, ErrReportExists))
 	}
 
 	cmd := command(ctx, req, req.Command, "analyze",
@@ -127,45 +131,84 @@ func Analyze(ctx context.Context, req *Request) (*report.Report, error) {
 	exit, err := wait(ctx, cmd, copied)
 	switch {
 	case err != nil:
-		return nil, refuse(exit, err)
+		return refuse(exit, err)
 	case !slices.Contains(reportCodes, exit):
-		return nil, refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrExited))
+		return refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrExited))
 	}
 
 	data, err := os.ReadFile(req.Report)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrNoReport))
+		return refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrNoReport))
 	}
 	if err != nil {
-		return nil, refuse(exit, err)
+		return refuse(exit, err)
 	}
 	read, err := report.Decode(data)
 	if err != nil {
-		return nil, refuse(exit, err)
+		return refuse(exit, err)
 	}
-	return read, nil
+	return read, exit, nil
 }
 
-// Run analyzes every request in order, each as its own process, and returns
-// every report in the order of the requests. When any request leaves no
-// report, it returns no report at all and an error joining every [*Error] in
-// request order, so no analyzer's findings stand as the run's result beside
-// another's failure.
+// Run analyzes every request at once, each as its own process, and returns
+// every report in the order of the requests. What each analyzer prints is held
+// until every analyzer has exited and then written to its request's
+// Diagnostics whole, the requests ordered by analyzer name, so two analyzers'
+// lines never interleave. When any request leaves no report, it returns no
+// report at all and an error joining every [*Error] in request order, so no
+// analyzer's findings stand as the run's result beside another's failure.
 func Run(ctx context.Context, requests []Request) ([]*report.Report, error) {
-	reports := make([]*report.Report, 0, len(requests))
-	var failures []error
+	outcomes := make([]outcome, len(requests))
+	var running sync.WaitGroup
 	for i := range requests {
-		read, err := Analyze(ctx, &requests[i])
-		if err != nil {
-			failures = append(failures, err)
+		held := requests[i]
+		if held.Diagnostics != nil {
+			held.Diagnostics = &outcomes[i].printed
+		}
+		running.Go(func() { outcomes[i].read, outcomes[i].exit, outcomes[i].err = Analyze(ctx, &held) })
+	}
+	running.Wait()
+
+	order := make([]int, len(requests))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return strings.Compare(requests[a].Analyzer, requests[b].Analyzer) })
+	for _, i := range order {
+		req, done := &requests[i], &outcomes[i]
+		if req.Diagnostics == nil {
 			continue
 		}
-		reports = append(reports, read)
+		if _, err := req.Diagnostics.Write(done.printed.Bytes()); err != nil && done.err == nil {
+			done.read = nil
+			done.err = &Error{
+				Err: fmt.Errorf("copy what the analyzer printed: %w", err), Analyzer: req.Analyzer, Report: req.Report, Exit: done.exit,
+			}
+		}
+	}
+
+	reports := make([]*report.Report, 0, len(requests))
+	var failures []error
+	for i := range outcomes {
+		if outcomes[i].err != nil {
+			failures = append(failures, outcomes[i].err)
+			continue
+		}
+		reports = append(reports, outcomes[i].read)
 	}
 	if len(failures) > 0 {
 		return nil, errors.Join(failures...)
 	}
 	return reports, nil
+}
+
+// outcome is what one request of a [Run] left: what the analyzer printed, and
+// its report and exit code or the refusal of its read.
+type outcome struct {
+	read    *report.Report
+	err     error
+	printed bytes.Buffer
+	exit    int
 }
 
 // resolved refuses a command that is not an absolute path.

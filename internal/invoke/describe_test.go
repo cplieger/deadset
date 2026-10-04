@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v4"
+	spec "github.com/cplieger/deadset-spec/v5"
 	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/rundir"
@@ -284,16 +284,16 @@ func TestDescribeRefusesAnAnalyzerWithNoConformancePass(t *testing.T) {
 func TestDescribeRefusesASchemaVersionOutsideTheRange(t *testing.T) {
 	t.Parallel()
 
-	printed := document(replaced(describedMembers(), memberSchemaVersions, `"schema_versions_accepted": ["5.0.0", "7.0.0"]`))
+	printed := document(replaced(describedMembers(), memberSchemaVersions, `"schema_versions_accepted": ["5.0.0", "6.1.0"]`))
 	req := request(t, "deadset-go", describer(t, 0, printed).command)
 	got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), accepted)
 	if got != nil {
-		t.Errorf("Describe(an analyzer reading 5.0.0 and 7.0.0) = %+v, want no description", got)
+		t.Errorf("Describe(an analyzer reading 5.0.0 and 6.1.0) = %+v, want no description", got)
 	}
 	handshakeRefusal(t, err, invoke.ErrSchemaVersion)
-	for _, named := range []string{"deadset-go", "5.0.0, 7.0.0", report.SchemaVersion} {
+	for _, named := range []string{"deadset-go", "5.0.0, 6.1.0", report.SchemaVersion} {
 		if !strings.Contains(err.Error(), named) {
-			t.Errorf("Describe(an analyzer reading 5.0.0 and 7.0.0) = %q, want the message to name %q", err, named)
+			t.Errorf("Describe(an analyzer reading 5.0.0 and 6.1.0) = %q, want the message to name %q", err, named)
 		}
 	}
 }
@@ -409,11 +409,11 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 		}
 		want := &invoke.Description{
 			Conformance: &report.Conformance{
-				CorpusVersion: "2.0.0", Result: report.ResultPass,
+				CorpusVersion: "2.1.1", Result: report.ResultPass,
 				Digest: "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66",
 			},
-			Name: "deadset-go", Version: "1.21.0", ContractVersion: "4.0.0",
-			SchemaVersionsAccepted: []string{"6.0.0", "6.1.0"}, Languages: []string{"go"},
+			Name: "deadset-go", Version: "1.21.0", ContractVersion: "5.1.0",
+			SchemaVersionsAccepted: []string{"7.0.0"}, Languages: []string{"go"},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Describe(conformance-recorded.json) = %+v, want %+v", got, want)

@@ -1,0 +1,7 @@
+analyzer deadset-go 1.0.0
+analyzer deadset-ts 1.0.0
+internal/store/store.go:19:6 DS1001 unused-exported deny deadset-go
+internal/store/store.go:41:6 DS1002 unused-unexported deny deadset-go
+web/src/tabs.ts:31:3 DS1003 unused-member deny deadset-ts
+web/src/wire.ts:8:18 DS1001 unused-exported deny deadset-ts
+4 findings, 0 stale, 0 omitted
