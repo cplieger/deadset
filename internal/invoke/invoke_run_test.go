@@ -170,3 +170,85 @@ func TestRunWritesEachAnalyzersOutputWholeInNameOrder(t *testing.T) {
 		t.Errorf("Run() wrote the diagnostics %q, want %q, each analyzer's whole and deadset-go's first", got, want)
 	}
 }
+
+// printing is a fake analyzer that prints printed on standard error, copies
+// written to its report unless written is nil, and exits with exit.
+func printing(t *testing.T, exit int, printed string, written []byte) fake {
+	t.Helper()
+
+	dir := t.TempDir()
+	write := ""
+	if written != nil {
+		document := filepath.Join(dir, "written.json")
+		if err := os.WriteFile(document, written, 0o600); err != nil {
+			t.Fatalf("Setup: write %s: %v", document, err)
+		}
+		write = fmt.Sprintf("cp '%s' \"$report\"\n", document)
+	}
+	return script(t, dir, fmt.Sprintf("printf '%%s' '%s' >&2\n%sexit %d\n", printed, write, exit))
+}
+
+// TestRunNamesTheWorkaroundAfterASetupFailure pins the line that follows the
+// lines of an analyzer a setup failure ended: it comes before the next
+// analyzer's lines, names the languages and the analyzers of every request
+// that left a report, and is absent when no request left one or when the
+// failure was not a setup failure.
+func TestRunNamesTheWorkaroundAfterASetupFailure(t *testing.T) {
+	t.Parallel()
+
+	const (
+		setup  = "setup failure: missing-module: gen.go imports example.com/app/gen, which nothing provides; run go generate ./...\n"
+		memory = "memory exhausted: at least 9.5 GB were needed, 8.0 GB are available\n"
+		ran    = "deadset-ts ran\n"
+	)
+	tests := []struct {
+		name    string
+		goExit  int
+		goLines string
+		tsExit  int
+		tsLines string
+		tsWrite bool
+		want    string
+	}{
+		{
+			name: "beside-a-report", goExit: 3, goLines: setup, tsExit: 1, tsLines: ran, tsWrite: true,
+			want: setup +
+				`deadset: to analyze the target without deadset-go, set analysis.languages: ["ts"] or run deadset-ts alone` + "\n" +
+				ran,
+		},
+		{
+			name: "beside-another-setup-failure", goExit: 3, goLines: setup, tsExit: 3, tsLines: setup,
+			want: setup + setup,
+		},
+		{
+			name: "memory-exhausted", goExit: 3, goLines: memory, tsExit: 1, tsLines: ran, tsWrite: true,
+			want: memory + ran,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var written []byte
+			if tc.tsWrite {
+				written = published(t, tsReport)
+			}
+			requests := []invoke.Request{
+				request(t, "deadset-ts", printing(t, tc.tsExit, tc.tsLines, written).command),
+				request(t, "deadset-go", printing(t, tc.goExit, tc.goLines, nil).command),
+			}
+			requests[0].Languages = []string{"ts"}
+			requests[1].Languages = []string{"go"}
+			var diagnostics bytes.Buffer
+			for i := range requests {
+				requests[i].Diagnostics = &diagnostics
+			}
+			if _, err := invoke.Run(t.Context(), requests); err == nil {
+				t.Fatalf("Run(deadset-go exiting %d) = nil, want its refusal", tc.goExit)
+			}
+			if got := diagnostics.String(); got != tc.want {
+				t.Errorf("Run() wrote the diagnostics %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

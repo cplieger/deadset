@@ -409,10 +409,10 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 		}
 		want := &invoke.Description{
 			Conformance: &report.Conformance{
-				CorpusVersion: "2.2.0", Result: report.ResultPass,
+				CorpusVersion: "3.0.0", Result: report.ResultPass,
 				Digest: "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66",
 			},
-			Name: "deadset-go", Version: "1.21.0", ContractVersion: "5.2.0",
+			Name: "deadset-go", Version: "1.21.0", ContractVersion: "5.3.0",
 			SchemaVersionsAccepted: []string{"7.0.0"}, Languages: []string{"go"},
 		}
 		if !reflect.DeepEqual(got, want) {

@@ -197,6 +197,7 @@ func TestRunPresentsNoReportBesideARealAnalyzerFailure(t *testing.T) {
 		request(t, "deadset-ts", fakeAnalyzer(t, 1, published(t, tsReport)).command),
 		failing,
 	}
+	requests[0].Languages = []string{"ts"}
 
 	reports, err := invoke.Run(t.Context(), requests)
 	if reports != nil {
@@ -208,5 +209,9 @@ func TestRunPresentsNoReportBesideARealAnalyzerFailure(t *testing.T) {
 	}
 	if !strings.HasPrefix(printed.String(), "setup failure: missing-module: app.go:") {
 		t.Errorf("%s printed %q, want its setup-failure line naming app.go", goAnalyzer, printed.String())
+	}
+	const workaround = "\ndeadset: to analyze the target without deadset-go, set analysis.languages: [\"ts\"] or run deadset-ts alone\n"
+	if !strings.HasSuffix(printed.String(), workaround) {
+		t.Errorf("the diagnostics of %s are %q, want them to end with the line %q", goAnalyzer, printed.String(), workaround[1:])
 	}
 }
