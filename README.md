@@ -108,7 +108,7 @@ deadset implements version 5.2.0 of the [deadset contract](https://github.com/cp
 
 ## Contributing
 
-Issues and pull requests are welcome. The general guidelines live in [cplieger/.github](https://github.com/cplieger/.github/blob/main/CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Disclaimer
 
