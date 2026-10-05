@@ -141,7 +141,7 @@ func keyList(contractVersion string) node {
 		{name: "ts", kind: section, owner: languageAnalyzer, children: []node{
 			{
 				name: "test_files", kind: passThrough, owner: languageAnalyzer,
-				fallback: raw(`["**/*.test.{ts,tsx,mts,cts}","**/*.spec.*","**/__tests__/**","**/__mocks__/**"]`),
+				fallback: raw(`["**/*.test.{ts,tsx,mts,cts}","**/*.test-d.{ts,tsx,mts,cts}","**/*.spec-d.{ts,tsx,mts,cts}","**/*.spec.*","**/__tests__/**","**/__mocks__/**","**/test-d/**"]`),
 			},
 			{name: "entry_files", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{

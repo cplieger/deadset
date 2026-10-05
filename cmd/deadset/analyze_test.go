@@ -694,3 +694,33 @@ func TestAnalyzePassesAnAnalyzersFailureLinesThroughUnchanged(t *testing.T) {
 		t.Errorf("analyze stdout = %q, want nothing presented as the run's result", got.stdout)
 	}
 }
+
+// A setup failure of one analyzer still ends the run with the failure code,
+// and the line after the analyzer's own names the language the other analyzer
+// was handed and that analyzer, as the two ways to analyze the rest.
+func TestAnalyzeNamesTheWorkaroundAfterASetupFailure(t *testing.T) {
+	t.Parallel()
+
+	const (
+		setupFailure = "setup failure: missing-module: internal/gen/gen.go imports example.com/app/gen, which nothing provides; run go generate ./...\n"
+		workaround   = `deadset: to analyze the target without deadset-go, set analysis.languages: ["ts"] or run deadset-ts alone` + "\n"
+	)
+	tsFake := fakeAnalyzer(t, "deadset-ts", []string{"ts"}, verdict.Findings, tsFindings)
+	goFake := printingAnalyzer(t, "deadset-go", []string{"go"}, verdict.Failure, "", setupFailure)
+	target, runDir := goTarget(t, []provider{
+		{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}},
+		{Name: "deadset-ts", Command: tsFake.command, Languages: []string{"ts"}},
+	}, "")
+	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
+
+	got := analyze(t, target, runDir)
+	if got.code != verdict.Failure {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Failure, got.stderr)
+	}
+	if !strings.Contains(got.stderr, "\n"+setupFailure+workaround) {
+		t.Errorf("analyze stderr = %q, want deadset-go's line and then the line %q", got.stderr, workaround)
+	}
+	if got.stdout != "" {
+		t.Errorf("analyze stdout = %q, want nothing presented as the run's result", got.stdout)
+	}
+}

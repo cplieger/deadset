@@ -425,12 +425,13 @@ func prepare(dir *rundir.Dir, resolved *config.Resolved, analyzers []providers.A
 			document = entry.Scope()
 		}
 		runs = append(runs, analyzerRun{entry: entry, request: invoke.Request{
-			Analyzer: selected.Entry.Name,
-			Command:  selected.Executable,
-			Dir:      whole.Root,
-			Scope:    document,
-			Config:   entry.Config(),
-			Report:   entry.Report(),
+			Analyzer:  selected.Entry.Name,
+			Languages: routed.languages,
+			Command:   selected.Executable,
+			Dir:       whole.Root,
+			Scope:     document,
+			Config:    entry.Config(),
+			Report:    entry.Report(),
 		}})
 	}
 	return runs, nil

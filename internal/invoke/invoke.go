@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +85,9 @@ type Request struct {
 	Scope  string // the scope document, passed as --scope
 	Config string // the analyzer's configuration, passed as --config
 	Report string // where the analyzer writes its report, passed as --report
+
+	// Languages are the languages of the target the run hands the analyzer.
+	Languages []string
 }
 
 // Error is an invocation that left no report the run may read.
@@ -156,7 +160,8 @@ func Analyze(ctx context.Context, req *Request) (*report.Report, int, error) {
 // Diagnostics whole, the requests ordered by analyzer name, so two analyzers'
 // lines never interleave. When any request leaves no report, it returns no
 // report at all and an error joining every [*Error] in request order, so no
-// analyzer's findings stand as the run's result beside another's failure.
+// analyzer's findings stand as the run's result beside another's failure. A
+// setup failure's lines are followed by the [workaround] line.
 func Run(ctx context.Context, requests []Request) ([]*report.Report, error) {
 	outcomes := make([]outcome, len(requests))
 	var running sync.WaitGroup
@@ -168,6 +173,7 @@ func Run(ctx context.Context, requests []Request) ([]*report.Report, error) {
 		running.Go(func() { outcomes[i].read, outcomes[i].exit, outcomes[i].err = Analyze(ctx, &held) })
 	}
 	running.Wait()
+	noteWorkarounds(requests, outcomes)
 
 	order := make([]int, len(requests))
 	for i := range order {
@@ -209,6 +215,61 @@ type outcome struct {
 	err     error
 	printed bytes.Buffer
 	exit    int
+}
+
+// setupFailureExit is the exit code an analyzer returns when a setup failure
+// ends its run, and every one of its setup failures is a printed line opening
+// with setupFailurePrefix.
+const (
+	setupFailureExit   = 3
+	setupFailurePrefix = "setup failure: "
+)
+
+// setupFailed reports whether a setup failure ended the analyzer's run.
+func (o *outcome) setupFailed() bool {
+	if o.exit != setupFailureExit {
+		return false
+	}
+	for line := range bytes.Lines(o.printed.Bytes()) {
+		if bytes.HasPrefix(line, []byte(setupFailurePrefix)) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteWorkarounds appends the [workaround] line to what each analyzer a setup
+// failure ended printed.
+func noteWorkarounds(requests []Request, outcomes []outcome) {
+	for i := range outcomes {
+		if outcomes[i].setupFailed() {
+			outcomes[i].printed.WriteString(workaround(requests, outcomes, i))
+		}
+	}
+}
+
+// workaround is the line telling how to analyze the target without the
+// analyzer of requests[failed]: the configuration that hands the run only the
+// languages of the requests that left a report, or those analyzers run alone.
+// With no such request it is empty.
+func workaround(requests []Request, outcomes []outcome, failed int) string {
+	var languages, names []string
+	for i := range requests {
+		if outcomes[i].err == nil {
+			languages = append(languages, requests[i].Languages...)
+			names = append(names, requests[i].Analyzer)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	quoted := make([]string, 0, len(languages))
+	for _, language := range slices.Compact(slices.Sorted(slices.Values(languages))) {
+		quoted = append(quoted, strconv.Quote(language))
+	}
+	slices.Sort(names)
+	return fmt.Sprintf("deadset: to analyze the target without %s, set analysis.languages: [%s] or run %s alone\n",
+		requests[failed].Analyzer, strings.Join(quoted, ", "), strings.Join(names, " and "))
 }
 
 // resolved refuses a command that is not an absolute path.
