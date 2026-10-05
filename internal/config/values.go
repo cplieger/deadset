@@ -38,19 +38,6 @@ func (r *rejection) under(at string) *rejection {
 	return &rejection{at: at + r.at, detail: r.detail, undeclared: r.undeclared}
 }
 
-// atKey is c with a rejection of one part of the value placed at the setting
-// itself, the part named in its detail: the refusal names the key, as the
-// Contract's configuration cases spell it for a component extension.
-func atKey(c checker) checker {
-	return func(value json.RawMessage) *rejection {
-		rejected := c(value)
-		if rejected == nil || rejected.at == "" {
-			return rejected
-		}
-		return &rejection{detail: "entry " + rejected.at + ": " + rejected.detail, undeclared: rejected.undeclared}
-	}
-}
-
 // first returns the first of several rejections, or none when every check
 // accepted.
 func first(rejections ...*rejection) *rejection {

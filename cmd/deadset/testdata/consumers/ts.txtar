@@ -1,5 +1,6 @@
-A TypeScript library and one TypeScript consumer that calls greet. The
-member spare and the function farewell are read by nothing.
+A TypeScript library and one TypeScript consumer that calls greet with an
+Options naming the name. The member spare and the function farewell are
+referenced by nothing.
 
 -- scope.json --
 {"target": {"path": "lib"}, "consumers": [{"path": "consumer"}]}
@@ -21,7 +22,7 @@ member spare and the function farewell are read by nothing.
 -- lib/lib.ts --
 export interface Options {
   name: string;
-  spare: number;
+  spare?: number;
 }
 
 export function greet(options: Options): string {
@@ -47,4 +48,4 @@ export function farewell(): string {
 -- consumer/main.ts --
 import { greet } from "../lib/lib.js";
 
-console.log(greet({ name: "consumer", spare: 0 }));
+console.log(greet({ name: "consumer" }));

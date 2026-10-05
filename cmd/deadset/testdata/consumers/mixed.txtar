@@ -1,6 +1,6 @@
 A library and one consumer, each holding Go and TypeScript. The consumer
 calls Greet and greet and builds an Options naming the name in each language.
-Spare, spare, Farewell and farewell are read by nothing.
+Spare, spare, Farewell and farewell are referenced by nothing.
 
 -- scope.json --
 {"target": {"path": "lib"}, "consumers": [{"path": "consumer"}]}
@@ -41,7 +41,7 @@ func Farewell() string { return "bye" }
 -- lib/lib.ts --
 export interface Options {
   name: string;
-  spare: number;
+  spare?: number;
 }
 
 export function greet(options: Options): string {
@@ -85,4 +85,4 @@ func main() { fmt.Println(lib.Greet(lib.Options{Name: "consumer"})) }
 -- consumer/main.ts --
 import { greet } from "../lib/lib.js";
 
-console.log(greet({ name: "consumer", spare: 0 }));
+console.log(greet({ name: "consumer" }));
