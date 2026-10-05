@@ -146,7 +146,7 @@ func keyList(contractVersion string) node {
 			{name: "entry_files", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{
 				name: "component_extensions", kind: passThrough, owner: languageAnalyzer,
-				fallback: raw(`[".vue",".svelte",".astro"]`), check: atKey(list(0, matches(componentExtension, "a full stop followed by letters and digits"))),
+				fallback: raw(`[".vue",".svelte",".astro"]`), check: list(0, matches(componentExtension, "a full stop followed by letters and digits")),
 			},
 			{name: "disabled_conventions", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{name: "injection_registrations", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
