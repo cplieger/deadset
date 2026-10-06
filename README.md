@@ -94,6 +94,19 @@ deadset is a command, and its interface is its verbs, the merged JSON report and
 
 The report follows version 5.3.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v5.3.1). [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes.
 
+## Measured accuracy
+
+deadset v1.9.0 was measured with deadset-go v1.24.0 and deadset-ts v5.2.0. It ran beside the dead-code tools that Go and TypeScript projects run, on the author's repositories and on 16 open-source projects. Precision is the share of judged findings that are correct. Misses count the known dead code that a row does not report.
+
+| Projects | Language | deadset at the default | Other tools combined | `possible` findings alone |
+| --- | --- | --- | --- | --- |
+| Author's repositories | Go | 90% precision, 36 misses | 17% precision, 1,547 misses | 3% precision |
+| Author's repositories | TypeScript | 69% to 74% precision, 177 misses | 97% precision, 714 misses | 36% precision |
+| Open-source projects | Go | 77% to 80% precision, 61 misses | 23% to 24% precision, 740 misses | 10% precision |
+| Open-source projects | TypeScript | 28% to 43% precision, 208 misses | 21% to 42% precision, 683 misses | 0% precision |
+
+Every finding at the default was `certain`, so that column is also the measured accuracy of `certain`. `possible` findings are a library's API with no declared consumer, code only tests use, and the tests of that API. The other tools' misses include kinds of dead code they do not check. They also include the open-source projects with no knip configuration, where knip did not run. [Benchmarks](docs/benchmarks.md) gives the full tables, each tool on its own kinds, the method and the known gaps.
+
 ## Related projects
 
 deadset implements version 5.3.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v5.3.1), which defines the issue codes, the report schema, the merge and the exit codes. Another Go or TypeScript analyzer can take the place of deadset-go or deadset-ts. That analyzer must name itself as its provider entry does, read a report schema version deadset accepts and pass the contract's conformance corpus.
@@ -105,6 +118,7 @@ deadset implements version 5.3.0 of the [deadset contract](https://github.com/cp
 
 - [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes, for wiring deadset into CI or a script.
 - [Libraries and their consumers](docs/scope.md) explains the scope document and how each consumer reaches an analyzer.
+- [Benchmarks](docs/benchmarks.md) gives the measured precision and misses of each confidence level beside other dead-code tools, for judging how far to trust a finding.
 
 ## Contributing
 
