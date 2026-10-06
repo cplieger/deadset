@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v5"
+	spec "github.com/cplieger/deadset-spec/v6"
 	"github.com/cplieger/deadset/internal/report"
 )
 
