@@ -31,7 +31,7 @@ A target or consumer can hold both Go and TypeScript. When the scope document gi
 
 ## What the findings mean
 
-With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`. The default minimum confidence, `probable`, leaves such a finding out, and `--min-confidence=possible` reports it. A Go workspace's other modules are consumers only when the scope document declares them.
+With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`. The default minimum confidence, `probable`, leaves such a finding out, and `--min-confidence=possible` reports it. [Benchmarks](benchmarks.md#accuracy-of-each-confidence-level) gives the measured accuracy of each level. A Go workspace's other modules are consumers only when the scope document declares them.
 
 ## Putting the consumers in place
 
