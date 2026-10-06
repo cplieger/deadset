@@ -52,6 +52,14 @@ The deadset-go analyzer gave no answer on one of the author's modules and on 9 c
 - Precision is correct findings divided by correct and false findings together. Findings that are not decidable are left out of both. Where findings were not judged, the range counts them all false, then all correct.
 - Every deadset row comes from one run at `possible`, with each finding counted at its own level. A separate run at the default reported the same findings. Two of them, in the open-source TypeScript, were judged correct there and false here.
 
+### Limits of the measurement
+
+- Known dead code comes from the tools being compared. Dead code that no tool reported is in no count, so every row's misses are a lower bound, deadset's included.
+- A miss of deadset at the default can be a finding deadset reports at `possible`. The default hides those findings, so they count as missed in the default row.
+- The removed-code set is the one set that does not depend on the tools. Its known dead items are the declarations a later commit deleted.
+- Each verdict was reached by reading the code against the rule above. Findings that reading could not settle are counted as not decidable and left out of precision.
+- The author's repositories and the open-source projects were also used while developing deadset. Projects it was not tuned on may score lower, and their results will be added once measured.
+
 ## The other tools
 
 Each tool ran with the options a CI job gives it.

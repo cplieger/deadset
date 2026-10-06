@@ -96,7 +96,7 @@ The report follows version 5.3.0 of the [deadset contract](https://github.com/cp
 
 ## Measured accuracy
 
-deadset v1.9.0 was measured with deadset-go v1.24.0 and deadset-ts v5.2.0. It ran beside the dead-code tools that Go and TypeScript projects run, on the author's repositories and on 16 open-source projects. Precision is the share of judged findings that are correct. Misses count the known dead code that a row does not report.
+deadset v1.9.0 was measured with deadset-go v1.24.0 and deadset-ts v5.2.0. It ran beside the dead-code tools that Go and TypeScript projects run, on the author's repositories and on 16 open-source projects. Precision is the share of judged findings that are correct. Misses count the known dead code\* that a row does not report.
 
 | Projects | Language | deadset at the default | Other tools combined | `possible` findings alone |
 | --- | --- | --- | --- | --- |
@@ -104,6 +104,8 @@ deadset v1.9.0 was measured with deadset-go v1.24.0 and deadset-ts v5.2.0. It ra
 | Author's repositories | TypeScript | 69% to 74% precision, 177 misses | 97% precision, 714 misses | 36% precision |
 | Open-source projects | Go | 77% to 80% precision, 61 misses | 23% to 24% precision, 740 misses | 10% precision |
 | Open-source projects | TypeScript | 28% to 43% precision, 208 misses | 21% to 42% precision, 683 misses | 0% precision |
+
+\* Known dead code is every finding that one of the tools reported and that was judged correct by reading the code. Dead code that no tool reported is not counted, so the real misses of every row are higher. The [measurement on removed code](docs/benchmarks.md#results-on-removed-code) uses what a later commit deleted instead.
 
 Every finding at the default was `certain`, so that column is also the measured accuracy of `certain`. `possible` findings are a library's API with no declared consumer, code only tests use, and the tests of that API. The other tools' misses include kinds of dead code they do not check. They also include the open-source projects with no knip configuration, where knip did not run. [Benchmarks](docs/benchmarks.md) gives the full tables, each tool on its own kinds, the method and the known gaps.
 
