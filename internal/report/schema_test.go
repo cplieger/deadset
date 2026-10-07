@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v5"
+	spec "github.com/cplieger/deadset-spec/v6"
 )
 
 // The two schemas the types of this package mirror.
@@ -49,6 +49,7 @@ func TestTheTypesDeclareEveryObjectTheSchemasDeclare(t *testing.T) {
 		reportSchema + "#/properties/conventions_applied/items":                    reflect.TypeFor[ConventionApplied](),
 		reportSchema + "#/properties/totals":                                       reflect.TypeFor[Totals](),
 		reportSchema + "#/properties/totals/properties/by_severity":                reflect.TypeFor[BySeverity](),
+		reportSchema + "#/properties/totals/properties/withheld":                   reflect.TypeFor[Withheld](),
 		findingSchema + "#":                                           reflect.TypeFor[Finding](),
 		findingSchema + "#/$defs/position":                            reflect.TypeFor[Position](),
 		findingSchema + "#/$defs/positioned_symbol":                   reflect.TypeFor[Positioned](),

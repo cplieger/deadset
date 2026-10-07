@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v5"
+	spec "github.com/cplieger/deadset-spec/v6"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/summary"
 )
@@ -78,6 +78,77 @@ func TestTextWritesOneLineThePageAcceptsPerRecord(t *testing.T) {
 				t.Errorf("Text(%s) line %d parses to %+v, want %+v", name, i, parsed, want[i])
 			}
 		}
+	}
+}
+
+// withheldLines is every withheld line contract/grammar/text-line.md shows,
+// each with the counts it names.
+func withheldLines(t *testing.T) map[string]report.Withheld {
+	t.Helper()
+
+	page, err := spec.Contract.ReadFile("contract/grammar/text-line.md")
+	if err != nil {
+		t.Fatalf("Setup: read text-line.md: %v", err)
+	}
+	count := regexp.MustCompile(`([0-9]+) (probable|possible)`)
+	shown := map[string]report.Withheld{}
+	for _, line := range regexp.MustCompile("withheld by analysis\\.min_confidence: [^`\\n]*").FindAllString(string(page), -1) {
+		var withheld report.Withheld
+		for _, m := range count.FindAllStringSubmatch(line, -1) {
+			n, _ := strconv.Atoi(m[1])
+			if m[2] == string(report.ClassProbable) {
+				withheld.Probable = n
+			} else {
+				withheld.Possible = n
+			}
+		}
+		shown[line] = withheld
+	}
+	if len(shown) < 2 {
+		t.Fatalf("Setup: text-line.md shows %d withheld lines, want the block's and the default minimum's", len(shown))
+	}
+	return shown
+}
+
+// A report whose totals count withheld findings ends its text with the withheld
+// line the page shows for those counts, after every record's line, and the
+// published expression refuses it.
+func TestTextEndsWithTheWithheldLineThePageShows(t *testing.T) {
+	t.Parallel()
+
+	expression := textLine(t)
+	for want, withheld := range withheldLines(t) {
+		r := vector(t, "stale-suppression-carried")
+		var bare strings.Builder
+		if err := summary.Text(&bare, r); err != nil {
+			t.Fatalf("Text = %v", err)
+		}
+		r.Totals.Withheld = withheld
+		var written strings.Builder
+		if err := summary.Text(&written, r); err != nil {
+			t.Fatalf("Text(%+v) = %v", withheld, err)
+		}
+		if got := written.String(); got != bare.String()+want+"\n" {
+			t.Errorf("Text(%+v) = %q, want the record lines then %q", withheld, got, want)
+		}
+		if expression.MatchString(want) {
+			t.Errorf("the withheld line %q matches the finding-line expression", want)
+		}
+	}
+}
+
+// The merged report's withheld line names the counts the merge summed.
+func TestTextOfAMergedReportNamesTheSummedWithheldCounts(t *testing.T) {
+	t.Parallel()
+
+	var written strings.Builder
+	if err := summary.Text(&written, vector(t, "withheld-counts-summed")); err != nil {
+		t.Fatalf("Text = %v", err)
+	}
+	got := lines(written.String())
+	const want = "withheld by analysis.min_confidence: 3 probable, 5 possible, shown with analysis.min_confidence set to possible"
+	if got[len(got)-1] != want {
+		t.Errorf("Text(withheld-counts-summed) ends with %q, want %q", got[len(got)-1], want)
 	}
 }
 

@@ -19,7 +19,8 @@ const (
 // Text writes one text line per finding of r and then one per stale
 // suppression, each in the order r holds them, in the shape
 // contract/grammar/text-line.md states: the position, the kind, the name, the
-// message, the confidence and the code.
+// message, the confidence and the code. The withheld line follows where r's
+// totals count a withheld finding.
 func Text(w io.Writer, r *report.Report) error {
 	var text strings.Builder
 	for i := range r.Findings {
@@ -33,6 +34,9 @@ func Text(w io.Writer, r *report.Report) error {
 		fmt.Fprintf(&text, "%s:%d:%d: %s %s: %s [%s] (%s)\n",
 			stale.Position.Path, stale.Position.Line, stale.Position.Column,
 			staleSuppressionToken, stale.Symbol, stale.Message, staleSuppressionConfidence, stale.Code)
+	}
+	if line := r.Totals.Withheld.Line(); line != "" {
+		text.WriteString(line + "\n")
 	}
 	_, err := io.WriteString(w, text.String())
 	return err

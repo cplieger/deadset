@@ -79,6 +79,7 @@ type gathered struct {
 
 	inEffect int
 	reasons  int
+	withheld report.Withheld
 }
 
 func (g *gathered) add(in *Input) {
@@ -101,6 +102,9 @@ func (g *gathered) add(in *Input) {
 	g.conventions = append(g.conventions, r.ConventionsApplied...)
 	g.inEffect += r.Totals.SuppressionsInEffect
 	g.reasons += r.Totals.ReasonsRecorded
+	g.withheld.Certain += r.Totals.Withheld.Certain
+	g.withheld.Probable += r.Totals.Withheld.Probable
+	g.withheld.Possible += r.Totals.Withheld.Possible
 }
 
 // firstPerID is one entry per id, ordered by id: of the entries under one id,
@@ -120,9 +124,9 @@ func firstPerID[T any](entries []T, id func(*T) string) []T {
 }
 
 // totals are the merged report's counts, recomputed over the merged arrays
-// except the suppression counts, which no merged array holds and which sum
-// over the inputs. No input omitted a finding and resolution left no pending
-// one, so the merged report omits none and holds none pending.
+// except the suppression and withheld counts, which no merged array holds and
+// which sum over the inputs. No input omitted a finding and resolution left no
+// pending one, so the merged report omits none and holds none pending.
 func totals(carried *records, held *gathered) report.Totals {
 	return report.Totals{
 		Findings:             len(carried.findings),
@@ -131,6 +135,7 @@ func totals(carried *records, held *gathered) report.Totals {
 		SuppressionsInEffect: held.inEffect,
 		ReasonsRecorded:      held.reasons,
 		StaleSuppressions:    len(carried.stale),
+		Withheld:             held.withheld,
 	}
 }
 

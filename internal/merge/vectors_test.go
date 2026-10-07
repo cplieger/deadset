@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v5"
+	spec "github.com/cplieger/deadset-spec/v6"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/verdict"
@@ -112,11 +112,11 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		check func(error) bool
 	}{
 		{
-			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "7.0.0"},
+			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "8.0.0"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*AdmissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
-					slices.Equal(refused.Accepted, []string{"7.0.0"})
+					slices.Equal(refused.Accepted, []string{"8.0.0"})
 			},
 		},
 		{
@@ -234,6 +234,7 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 		"a configuration's id": func(r *report.Report) bool { r.Configurations[0].ID += "x"; return true },
 		"a test file rule":     func(r *report.Report) bool { r.TestFileRules[0].Matched++; return true },
 		"totals.reasons":       func(r *report.Report) bool { r.Totals.ReasonsRecorded++; return true },
+		"totals.withheld":      func(r *report.Report) bool { r.Totals.Withheld.Possible++; return true },
 		"totals.deletable":     func(r *report.Report) bool { r.Totals.DeletableLines++; return true },
 		"the carried analyzer": func(r *report.Report) bool {
 			switch {

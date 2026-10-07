@@ -18,7 +18,7 @@ package report
 // ContractVersion is the version of the deadset Contract this module
 // implements. A report this module writes names it in contract_version, and the
 // version verb prints it.
-const ContractVersion = "5.3.0"
+const ContractVersion = "6.0.0"
 
 // SchemaVersions is every report schema version the Contract admits, in
 // ascending order: the versions a merge accepts and a handshake admits an
@@ -29,4 +29,4 @@ var SchemaVersions = []string{SchemaVersion}
 // SchemaVersion is the report schema version the types of this package model,
 // the latest of [SchemaVersions], and the version a report this module writes
 // names.
-const SchemaVersion = "7.0.0"
+const SchemaVersion = "8.0.0"
