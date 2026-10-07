@@ -18,8 +18,9 @@ import (
 
 // Write writes one line per analyzer r was merged from, naming its version and
 // the digest of its artifact in the order r lists them, then the summary line:
-// every count r's totals hold and the languages r covers. Neither shape is a
-// finding line's, so a filter for finding lines passes none of them.
+// every count r's totals hold but the withheld counts, which the text format's
+// withheld line names, and the languages r covers. Neither shape is a finding
+// line's, so a filter for finding lines passes none of them.
 func Write(w io.Writer, r *report.Report) error {
 	var text strings.Builder
 	for _, ran := range r.MergedFrom {

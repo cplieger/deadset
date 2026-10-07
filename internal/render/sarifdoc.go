@@ -14,10 +14,13 @@ type sarifLog struct {
 	Properties *sarifLogProperties `json:"properties,omitempty"`
 }
 
+//nolint:govet // fieldalignment: the field order is the mapping's property order, which the document writes
 type sarifLogProperties struct {
-	Totals report.Totals `json:"totals"`
+	Totals   report.Totals `json:"totals"`
+	Withheld string        `json:"withheld,omitzero"`
 }
 
+//nolint:govet // fieldalignment: the field order is the mapping's property order, which the document writes
 type sarifRun struct {
 	Tool               sarifTool               `json:"tool"`
 	AutomationDetails  sarifAutomationDetails  `json:"automationDetails"`
@@ -69,8 +72,10 @@ type sarifURIBase struct {
 	Description sarifMessage `json:"description"`
 }
 
+//nolint:govet // fieldalignment: the field order is the mapping's property order, which the document writes
 type sarifRunProperties struct {
-	Totals report.Totals `json:"totals"`
+	Totals   report.Totals `json:"totals"`
+	Withheld string        `json:"withheld,omitzero"`
 }
 
 //nolint:govet // fieldalignment: the field order is the mapping's property order, which the document writes

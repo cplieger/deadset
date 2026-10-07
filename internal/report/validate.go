@@ -340,6 +340,11 @@ func (t *Totals) validate() error {
 		atLeast("stale_suppressions", t.StaleSuppressions, 0),
 		atLeast("pending", t.Pending, 0),
 		atLeast("omitted", t.Omitted, 0),
+		at("withheld", first(
+			atLeast("certain", t.Withheld.Certain, 0),
+			atLeast("probable", t.Withheld.Probable, 0),
+			atLeast("possible", t.Withheld.Possible, 0),
+		)),
 	)
 }
 

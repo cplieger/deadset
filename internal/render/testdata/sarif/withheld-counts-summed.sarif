@@ -814,10 +814,11 @@
           "omitted": 0,
           "withheld": {
             "certain": 0,
-            "probable": 0,
-            "possible": 0
+            "probable": 1,
+            "possible": 2
           }
-        }
+        },
+        "withheld": "withheld by analysis.min_confidence: 1 probable, 2 possible, shown with analysis.min_confidence set to possible"
       }
     },
     {
@@ -1587,10 +1588,11 @@
           "omitted": 0,
           "withheld": {
             "certain": 0,
-            "probable": 0,
-            "possible": 0
+            "probable": 2,
+            "possible": 3
           }
-        }
+        },
+        "withheld": "withheld by analysis.min_confidence: 2 probable, 3 possible, shown with analysis.min_confidence set to possible"
       }
     }
   ],
@@ -1610,9 +1612,10 @@
       "omitted": 0,
       "withheld": {
         "certain": 0,
-        "probable": 0,
-        "possible": 0
+        "probable": 3,
+        "possible": 5
       }
-    }
+    },
+    "withheld": "withheld by analysis.min_confidence: 3 probable, 5 possible, shown with analysis.min_confidence set to possible"
   }
 }

@@ -1,5 +1,10 @@
 package report
 
+import (
+	"strconv"
+	"strings"
+)
+
 // Report is one report document: the envelope an analyzer writes over one
 // analysis, or the envelope a merge writes over several. Every array is
 // required and holds its elements in the order the schema states for it; a
@@ -278,7 +283,8 @@ type ConventionApplied struct {
 }
 
 // Totals are the counts a summary line prints. A merge recomputes them over
-// the merged arrays.
+// the merged arrays, except the counts of records no merged array holds, which
+// it sums over the inputs.
 type Totals struct {
 	Findings             int        `json:"findings"`
 	BySeverity           BySeverity `json:"by_severity"`
@@ -288,6 +294,39 @@ type Totals struct {
 	StaleSuppressions    int        `json:"stale_suppressions"`
 	Pending              int        `json:"pending"`
 	Omitted              int        `json:"omitted"`
+	Withheld             Withheld   `json:"withheld"`
+}
+
+// Withheld is how many findings analysis.min_confidence withheld, per
+// confidence: the findings a run with the minimum set to possible would count at
+// that confidence that this run does not.
+type Withheld struct {
+	Certain  int `json:"certain"`
+	Probable int `json:"probable"`
+	Possible int `json:"possible"`
+}
+
+// Line is the withheld line contract/grammar/text-line.md states: the probable
+// and the possible count, each only where it is not 0, and the setting that
+// shows them all. It is empty where both are 0. No minimum withholds a certain
+// finding, so the line never names one.
+func (w *Withheld) Line() string {
+	var named []string
+	lowest := ""
+	for _, count := range []struct {
+		confidence Class
+		n          int
+	}{{ClassProbable, w.Probable}, {ClassPossible, w.Possible}} {
+		if count.n > 0 {
+			named = append(named, strconv.Itoa(count.n)+" "+string(count.confidence))
+			lowest = string(count.confidence)
+		}
+	}
+	if named == nil {
+		return ""
+	}
+	return "withheld by analysis.min_confidence: " + strings.Join(named, ", ") +
+		", shown with analysis.min_confidence set to " + lowest
 }
 
 // BySeverity is how many findings carry each severity.

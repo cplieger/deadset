@@ -573,7 +573,9 @@ func TestMergeRefusesTwoReportsOfOneAnalyzerName(t *testing.T) {
 	}
 }
 
-func TestMergeRecomputesTheTotalsAndSumsTheSuppressionCounts(t *testing.T) {
+// The merge recomputes the counts its arrays decide and sums the suppression
+// and withheld counts, which no merged array holds.
+func TestMergeRecomputesTheTotalsAndSumsTheCountsNoArrayHolds(t *testing.T) {
 	t.Parallel()
 
 	golang := analyzerReport("deadset-go", "go")
@@ -587,10 +589,10 @@ func TestMergeRecomputesTheTotalsAndSumsTheSuppressionCounts(t *testing.T) {
 	warned.Severity = report.SeverityWarn
 	golang.Findings = []report.Finding{shared, second, member, warned}
 	golang.StaleSuppressions = []report.StaleSuppression{stale("deadset-ignore.json", 4, "go://example.com/app#x")}
-	golang.Totals = report.Totals{SuppressionsInEffect: 2, ReasonsRecorded: 3}
+	golang.Totals = report.Totals{SuppressionsInEffect: 2, ReasonsRecorded: 3, Withheld: report.Withheld{Probable: 1, Possible: 4}}
 	typescript := analyzerReport("deadset-ts", "ts")
 	typescript.Findings = []report.Finding{finding("deadset-ts/c-1", "web/a.ts", 1, "a")}
-	typescript.Totals = report.Totals{SuppressionsInEffect: 1, ReasonsRecorded: 4}
+	typescript.Totals = report.Totals{SuppressionsInEffect: 1, ReasonsRecorded: 4, Withheld: report.Withheld{Certain: 1, Possible: 2}}
 
 	merged, _ := mustMerge(t, inputs(golang, typescript))
 	want := report.Totals{
@@ -600,6 +602,7 @@ func TestMergeRecomputesTheTotalsAndSumsTheSuppressionCounts(t *testing.T) {
 		SuppressionsInEffect: 3,
 		ReasonsRecorded:      7,
 		StaleSuppressions:    1,
+		Withheld:             report.Withheld{Certain: 1, Probable: 1, Possible: 6},
 	}
 	if merged.Totals != want {
 		t.Errorf("Merge() totals = %+v, want %+v", merged.Totals, want)

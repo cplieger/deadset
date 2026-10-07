@@ -27,10 +27,11 @@ func renderSARIF(t *testing.T, c *mergedCase) []byte {
 }
 
 // goldenCases are the merged reports whose SARIF rendering is committed: two
-// analyzers' runs, a run of the merge's own finding, and a stale suppression.
+// analyzers' runs, a run of the merge's own finding, a stale suppression, and
+// the withheld lines of two runs and of the log.
 // Every rule list is the whole vocabulary's, so the other cases are held to
 // the mapping's structure rather than to bytes.
-var goldenCases = []string{"two-reports-no-edges", "edge-absent-on-every-side", "stale-suppression-carried"}
+var goldenCases = []string{"two-reports-no-edges", "edge-absent-on-every-side", "stale-suppression-carried", "withheld-counts-summed"}
 
 // The SARIF rendering of each golden case is its committed golden, byte for
 // byte.
@@ -58,7 +59,8 @@ type (
 		Version    string       `json:"version"`
 		Runs       []checkedRun `json:"runs"`
 		Properties struct {
-			Totals *report.Totals `json:"totals"`
+			Totals   *report.Totals `json:"totals"`
+			Withheld *string        `json:"withheld"`
 		} `json:"properties"`
 	}
 	checkedRun struct {
@@ -75,7 +77,8 @@ type (
 		OriginalURIBaseIDs map[string]map[string]json.RawMessage `json:"originalUriBaseIds"`
 		Results            []checkedResult                       `json:"results"`
 		Properties         struct {
-			Totals *report.Totals `json:"totals"`
+			Totals   *report.Totals `json:"totals"`
+			Withheld *string        `json:"withheld"`
 		} `json:"properties"`
 		Invocations json.RawMessage `json:"invocations"`
 	}
@@ -111,17 +114,20 @@ var (
 )
 
 // conforms names the first way log departs from the structure the Contract's
-// mapping pins for r, merged from inputs: r's totals on the log, one run per
-// input report in bytewise order of name and one for the records naming no
-// analyzer, each with its driver, its ordered and described rules, its
-// category, column unit, base and the totals of the report its driver wrote,
-// and one result per record its analyzer carried.
+// mapping pins for r, merged from inputs: r's totals and their withheld line on
+// the log, one run per input report in bytewise order of name and one for the
+// records naming no analyzer, each with its driver, its ordered and described
+// rules, its category, column unit, base, the totals of the report its driver
+// wrote and their withheld line, and one result per record its analyzer carried.
 func conforms(log *checkedLog, r *report.Report, inputs []*report.Report) error {
 	if log.Schema != sarifSchema || log.Version != "2.1.0" {
 		return fmt.Errorf("the log names %q version %q", log.Schema, log.Version)
 	}
 	if log.Properties.Totals == nil || *log.Properties.Totals != r.Totals {
 		return fmt.Errorf("the log's totals are %+v, want the merged report's %+v", log.Properties.Totals, r.Totals)
+	}
+	if err := withheldConforms(log.Properties.Withheld, &r.Totals); err != nil {
+		return fmt.Errorf("the log: %w", err)
 	}
 	carriers := make(map[string]*report.Totals)
 	var order []string
@@ -170,6 +176,9 @@ func runConforms(run *checkedRun, r *report.Report, carrier string, totals *repo
 	case run.Invocations != nil:
 		return errors.New("the run carries invocations")
 	}
+	if err := withheldConforms(run.Properties.Withheld, totals); err != nil {
+		return err
+	}
 	for at, rule := range driver.Rules {
 		ordered := at == 0 || driver.Rules[at-1].ID < rule.ID
 		if !ordered || rule.Name == "" || rule.ShortDescription["text"] == "" ||
@@ -185,6 +194,22 @@ func runConforms(run *checkedRun, r *report.Report, carrier string, totals *repo
 		if err := resultConforms(&run.Results[at], driver.Rules, &records[at]); err != nil {
 			return fmt.Errorf("result %d: %w", at, err)
 		}
+	}
+	return nil
+}
+
+// withheldConforms names how a withheld property departs from the withheld line
+// of totals: present and equal where the line is written, absent where it is
+// not.
+func withheldConforms(got *string, totals *report.Totals) error {
+	want := totals.Withheld.Line()
+	switch {
+	case want == "" && got != nil:
+		return fmt.Errorf("the withheld line is %q, want none for %+v", *got, totals.Withheld)
+	case want != "" && got == nil:
+		return fmt.Errorf("no withheld line is written, want %q", want)
+	case want != "" && *got != want:
+		return fmt.Errorf("the withheld line is %q, want %q", *got, want)
 	}
 	return nil
 }

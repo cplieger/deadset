@@ -61,10 +61,10 @@ type Sources struct {
 // A merged report is one run per report it was merged from, in bytewise order
 // of name, holding the findings and then the stale suppressions that report
 // carried, then one run under r's own analyzer for the records that name no
-// analyzer, and the log carries r's totals. A record no run holds, a file Read
-// cannot return, and a line the file does not hold each fail the rendering, the
-// last two because a fingerprint computed from other bytes opens a second alert
-// for the same finding.
+// analyzer, and the log carries r's totals and their withheld line. A record no
+// run holds, a file Read cannot return, and a line the file does not hold each
+// fail the rendering, the last two because a fingerprint computed from other
+// bytes opens a second alert for the same finding.
 func SARIF(w io.Writer, r *report.Report, src *Sources) error {
 	hashes := &lineHashCache{read: src.Read, held: make(map[string][]string)}
 	if len(r.MergedFrom) == 0 {
@@ -83,7 +83,7 @@ func SARIF(w io.Writer, r *report.Report, src *Sources) error {
 	}
 	return encode(w, &sarifLog{
 		Schema: sarifSchema, Version: sarifVersion, Runs: runs,
-		Properties: &sarifLogProperties{Totals: r.Totals},
+		Properties: &sarifLogProperties{Totals: r.Totals, Withheld: r.Totals.Withheld.Line()},
 	})
 }
 
@@ -175,7 +175,7 @@ type run struct {
 
 // newRun is an empty run under the named driver, with the rules of languages
 // (every live kind when languages is nil) and the totals of the report the
-// driver wrote.
+// driver wrote, with their withheld line.
 func newRun(name, version, automation string, languages []string, totals *report.Totals) (*run, error) {
 	rules, err := rulesFor(languages)
 	if err != nil {
@@ -194,7 +194,7 @@ func newRun(name, version, automation string, languages []string, totals *report
 			sarifURIBaseID: {Description: sarifMessage{Text: sarifRootComment}},
 		},
 		Results:    []sarifResult{},
-		Properties: sarifRunProperties{Totals: *totals},
+		Properties: sarifRunProperties{Totals: *totals, Withheld: totals.Withheld.Line()},
 	}, nil
 }
 

@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"reflect"
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v5"
+	spec "github.com/cplieger/deadset-spec/v6"
 )
 
 // TestDecodeReadsEveryExampleReportBack decodes every report the Contract
@@ -327,6 +328,63 @@ func TestEncodeRefusesAReportDecodeWouldRefuse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEncodeRefusesEveryNegativeCount sets each count of a valid report's
+// totals, nested ones included, to -1 in turn: the schema gives every one a
+// minimum of 0, so each is refused at its own pointer.
+func TestEncodeRefusesEveryNegativeCount(t *testing.T) {
+	t.Parallel()
+
+	var counts []string
+	var walk func(prefix string, v reflect.Value)
+	walk = func(prefix string, v reflect.Value) {
+		for i := range v.NumField() {
+			name, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
+			switch field := v.Field(i); field.Kind() {
+			case reflect.Int:
+				counts = append(counts, prefix+"/"+name)
+			case reflect.Struct:
+				walk(prefix+"/"+name, field)
+			default:
+				t.Fatalf("Setup: %s/%s is a %s, want a count or an object of counts", prefix, name, field.Kind())
+			}
+		}
+	}
+	walk("/totals", reflect.ValueOf(Totals{}))
+	for _, pointer := range counts {
+		t.Run(strings.TrimPrefix(pointer, "/"), func(t *testing.T) {
+			t.Parallel()
+
+			decoded, err := Decode(read(t, spec.Vectors, "vectors/merge/one-report/inputs/00-go.json"))
+			if err != nil {
+				t.Fatalf("Setup: Decode(one-report input) = %v", err)
+			}
+			held := reflect.ValueOf(&decoded.Totals).Elem()
+			for segment := range strings.SplitSeq(strings.TrimPrefix(pointer, "/totals/"), "/") {
+				held = held.FieldByIndex(fieldNamed(t, held.Type(), segment))
+			}
+			held.SetInt(-1)
+			err = Encode(io.Discard, decoded)
+			var refused *Error
+			if !errors.As(err, &refused) || refused.Pointer != pointer || !errors.Is(err, errValue) {
+				t.Errorf("Encode(%s = -1) = %v, want %v at %q", pointer, err, errValue, pointer)
+			}
+		})
+	}
+}
+
+// fieldNamed is the index of the field of held that JSON names name.
+func fieldNamed(t *testing.T, held reflect.Type, name string) []int {
+	t.Helper()
+
+	for i := range held.NumField() {
+		if tag, _, _ := strings.Cut(held.Field(i).Tag.Get("json"), ","); tag == name {
+			return []int{i}
+		}
+	}
+	t.Fatalf("Setup: %s has no field named %q", held, name)
+	return nil
 }
 
 // decodeFinding holds one finding document to the finding schema, the way a
