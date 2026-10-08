@@ -13,7 +13,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -29,7 +29,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 0,
         "pending": 0,
         "findings": [],
@@ -69,7 +69,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -85,7 +85,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -130,7 +130,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -146,7 +146,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 0,
         "pending": 0,
         "findings": [],
@@ -186,7 +186,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -202,7 +202,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -247,7 +247,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -263,7 +263,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 0,
         "pending": 0,
         "findings": [],
@@ -303,7 +303,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -319,7 +319,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -369,7 +369,7 @@
       },
       "go": {
         "analyzer": "deadset-go",
-        "version": "1.25.0",
+        "version": "1.26.0",
         "exit": 4,
         "pending": 1,
         "findings": [],
@@ -385,7 +385,7 @@
       },
       "ts": {
         "analyzer": "deadset-ts",
-        "version": "6.0.0",
+        "version": "6.1.0",
         "exit": 1,
         "pending": 0,
         "findings": [

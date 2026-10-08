@@ -39,7 +39,7 @@ deadset reads each setting from the first of four sources that sets it:
 3. The central configuration `--central` names.
 4. The setting's default.
 
-The keys are those of the contract's [configuration schema](https://github.com/cplieger/deadset-spec/blob/v6.0.2/contract/config.schema.json). A run exits with 2 on a key the schema does not declare, a value it refuses, or a document over 1 MiB. The table below names the settings deadset acts on itself. It checks every other setting and hands it to the analyzers, whose own docs describe them.
+The keys are those of the contract's [configuration schema](https://github.com/cplieger/deadset-spec/blob/v6.1.1/contract/config.schema.json). A run exits with 2 on a key the schema does not declare, a value it refuses, or a document over 1 MiB. The table below names the settings deadset acts on itself. It checks every other setting and hands it to the analyzers, whose own docs describe them.
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -79,7 +79,7 @@ Standard output carries the `text` and `github` formats, in the order `--formats
 
 Standard error names the run directory, the count of stale suppressions when there are any, and the verdict when `--exit-code=off` hid it. What each analysis printed follows the run directory line, whole and in analyzer name order. An analyzer's `setup failure:` and `memory exhausted:` lines appear there as the analyzer wrote them.
 
-The `sarif` format writes SARIF 2.1.0. It reads the source lines its results name, inside the target root only. The `template` format renders the template `--template` names. The template uses the subset of Go's `text/template` that the contract's [template rendering](https://github.com/cplieger/deadset-spec/blob/v6.0.2/contract/grammar/template.md) states. It reads the merged report by its JSON member names. A run that asks for `template` with no `--template` ends with exit code 2 before any analyzer runs. So does one that names a template that cannot be read or does not parse.
+The `sarif` format writes SARIF 2.1.0. It reads the source lines its results name, inside the target root only. The `template` format renders the template `--template` names. The template uses the subset of Go's `text/template` that the contract's [template rendering](https://github.com/cplieger/deadset-spec/blob/v6.1.1/contract/grammar/template.md) states. It reads the merged report by its JSON member names. A run that asks for `template` with no `--template` ends with exit code 2 before any analyzer runs. So does one that names a template that cannot be read or does not parse.
 
 ## The run directory
 
@@ -108,8 +108,8 @@ A run directory belongs to one run, and no file in it is ever overwritten. It ho
 | 3 | The run produced no answer: an analyzer was missing, refused or failed, a consumer did not load, or a cross-language finding had no analyzer report its paired side |
 | 4 | Reserved by the contract for a report that still holds a pending finding. deadset settles every cross-language pair in the merge or ends the run with 3, so `analyze` does not return 4 |
 
-A stale suppression fails the run whatever its severity. A run that ends with 2 or 3 keeps that code under `--exit-code=off`. When one analyzer stops on a setup failure, the run still ends with 3. After that analyzer's lines, standard error names the `analysis.languages` value for the other languages and the analyzer you can run alone instead. The contract's [exit codes](https://github.com/cplieger/deadset-spec/blob/v6.0.2/docs/exit-codes.md) page states the whole table.
+A stale suppression fails the run whatever its severity. A run that ends with 2 or 3 keeps that code under `--exit-code=off`. When one analyzer stops on a setup failure, the run still ends with 3. After that analyzer's lines, standard error names the `analysis.languages` value for the other languages and the analyzer you can run alone instead. The contract's [exit codes](https://github.com/cplieger/deadset-spec/blob/v6.1.1/docs/exit-codes.md) page states the whole table.
 
 ## Versions
 
-`deadset version` prints the version of the build and the contract version it implements, 6.0.0. The test suite checks the binary against the contract files of [deadset-spec](https://github.com/cplieger/deadset-spec/tree/v6.0.2) and uses [rapid](https://pkg.go.dev/pgregory.net/rapid) for property tests. Neither is part of the binary.
+`deadset version` prints the version of the build and the contract version it implements, 6.1.0. The test suite checks the binary against the contract files of [deadset-spec](https://github.com/cplieger/deadset-spec/tree/v6.1.1) and uses [rapid](https://pkg.go.dev/pgregory.net/rapid) for property tests. Neither is part of the binary.

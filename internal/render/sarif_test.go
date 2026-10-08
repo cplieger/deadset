@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cplieger/deadset/internal/merge"
 	"github.com/cplieger/deadset/internal/report"
 )
 
@@ -422,4 +424,62 @@ func TestSARIFPlacesAStaleSuppressionNamingNoAnalyzerInTheMergesRun(t *testing.T
 		t.Errorf("SARIF(a stale suppression naming no analyzer) holds %d runs, the last %q with %d results, "+
 			"want the merge's own run after the inputs' holding the DS1703 result", len(log.Runs), last.Tool.Driver.Name, len(last.Results))
 	}
+}
+
+// A merge carries every member of a component, so the merged log relates the
+// declaration a second package of one name holds under the finding's own
+// reference, with the links the analyzer's own log writes.
+func TestSARIFOfAMergedReportRelatesEveryOtherDeclarationOfTheComponent(t *testing.T) {
+	t.Parallel()
+
+	const name = "component-member-sharing-the-finding-reference"
+	c := readSARIFCase(t, name)
+	conformance, err := merge.Conformance()
+	if err != nil {
+		t.Fatalf("Setup: merge.Conformance() = %v", err)
+	}
+	merged, err := merge.Merge([]merge.Input{{Report: c.report, Digest: "sha256:" + strings.Repeat("0", 64)}}, report.SchemaVersions, &merge.Caller{
+		SchemaVersion: report.SchemaVersion, ContractVersion: report.ContractVersion,
+		Name: "deadset", Version: "0.0.0", Conformance: conformance,
+	})
+	if err != nil {
+		t.Fatalf("Setup: merge.Merge(%s) = %v", name, err)
+	}
+	var out bytes.Buffer
+	if err := SARIF(&out, merged, &Sources{Read: c.read, Inputs: []*report.Report{c.report}}); err != nil {
+		t.Fatalf("SARIF(merged %s) = %v", name, err)
+	}
+
+	got, want := relatedOfEachResult(t, out.Bytes()), relatedOfEachResult(t, c.expected)
+	if len(got) != 1 || len(want) != 1 {
+		t.Fatalf("SARIF(merged %s) holds %d results, want the one result of expected.json, which holds %d", name, len(got), len(want))
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SARIF(merged %s) relates %+v, want the related locations and links of expected.json %+v", name, got, want)
+	}
+}
+
+// relatedOfEachResult is the message and the related locations of every
+// result of a SARIF log, in run and result order, each decoded as a value.
+func relatedOfEachResult(t *testing.T, document []byte) []any {
+	t.Helper()
+
+	var log struct {
+		Runs []struct {
+			Results []struct {
+				RelatedLocations json.RawMessage `json:"relatedLocations"`
+				Message          json.RawMessage `json:"message"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(document, &log); err != nil {
+		t.Fatalf("decode the SARIF log: %v", err)
+	}
+	var held []any
+	for _, run := range log.Runs {
+		for _, result := range run.Results {
+			held = append(held, []any{decodedValue(t, result.Message), decodedValue(t, result.RelatedLocations)})
+		}
+	}
+	return held
 }

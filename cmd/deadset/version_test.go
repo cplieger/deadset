@@ -64,7 +64,7 @@ func TestTheVersionVerbPrintsTheDevelVersionUnderTest(t *testing.T) {
 	if got := run([]string{"version"}, &stdout, &stderr); got != verdict.Clean {
 		t.Fatalf("run([version]) = %d, want %d; stderr: %q", got, verdict.Clean, stderr.String())
 	}
-	const want = "deadset 0.0.0-devel\ncontract 6.0.0\n"
+	const want = "deadset 0.0.0-devel\ncontract 6.1.0\n"
 	if stdout.String() != want {
 		t.Errorf("run([version]) stdout = %q, want %q", stdout.String(), want)
 	}

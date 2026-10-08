@@ -298,8 +298,8 @@ type Totals struct {
 }
 
 // Withheld is how many findings analysis.min_confidence withheld, per
-// confidence: the findings a run with the minimum set to possible would count at
-// that confidence that this run does not.
+// confidence: each finding the run does not report because its confidence is
+// below the minimum, counted at the confidence the run assigns it.
 type Withheld struct {
 	Certain  int `json:"certain"`
 	Probable int `json:"probable"`
