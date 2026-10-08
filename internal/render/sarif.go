@@ -336,11 +336,18 @@ func relatedLocations(found *report.Finding) []sarifLocation {
 		add(labelWrite, &found.Details.WritePositions[i])
 	}
 	for i := range found.Component.Members {
-		if member := &found.Component.Members[i]; member.Ref != found.Symbol.Ref {
+		if member := &found.Component.Members[i]; !ownDeclaration(found, member) {
 			add(labelMember, &member.Position)
 		}
 	}
 	return held
+}
+
+// ownDeclaration reports whether member is the declaration found is about: one
+// reference can spell a declaration in each of two packages of one name, so
+// the path tells them apart.
+func ownDeclaration(found *report.Finding, member *report.Positioned) bool {
+	return member.Ref == found.Symbol.Ref && member.Position.Path == found.Position.Path
 }
 
 // messageWithLinks is a result's message: the finding's message, and where
