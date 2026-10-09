@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v6"
+	spec "github.com/cplieger/deadset-spec/v7"
 	"github.com/cplieger/deadset/internal/config"
 	"github.com/cplieger/deadset/internal/present"
 	"github.com/cplieger/deadset/internal/report"

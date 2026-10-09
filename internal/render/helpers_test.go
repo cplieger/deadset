@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v6"
+	spec "github.com/cplieger/deadset-spec/v7"
 	"github.com/cplieger/deadset/internal/report"
 )
 
