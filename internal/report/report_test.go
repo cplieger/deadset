@@ -14,7 +14,6 @@ func TestTheWithheldLineNamesEachCountItHolds(t *testing.T) {
 		want     string
 	}{
 		{name: "none", want: ""},
-		{name: "certain only", withheld: Withheld{Certain: 1}, want: ""},
 		{
 			name: "probable only", withheld: Withheld{Probable: 1},
 			want: "withheld by analysis.min_confidence: 1 probable, shown with analysis.min_confidence set to probable",

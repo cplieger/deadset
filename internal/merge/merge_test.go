@@ -592,7 +592,7 @@ func TestMergeRecomputesTheTotalsAndSumsTheCountsNoArrayHolds(t *testing.T) {
 	golang.Totals = report.Totals{SuppressionsInEffect: 2, ReasonsRecorded: 3, Withheld: report.Withheld{Probable: 1, Possible: 4}}
 	typescript := analyzerReport("deadset-ts", "ts")
 	typescript.Findings = []report.Finding{finding("deadset-ts/c-1", "web/a.ts", 1, "a")}
-	typescript.Totals = report.Totals{SuppressionsInEffect: 1, ReasonsRecorded: 4, Withheld: report.Withheld{Certain: 1, Possible: 2}}
+	typescript.Totals = report.Totals{SuppressionsInEffect: 1, ReasonsRecorded: 4, Withheld: report.Withheld{Possible: 2}}
 
 	merged, _ := mustMerge(t, inputs(golang, typescript))
 	want := report.Totals{
@@ -602,7 +602,7 @@ func TestMergeRecomputesTheTotalsAndSumsTheCountsNoArrayHolds(t *testing.T) {
 		SuppressionsInEffect: 3,
 		ReasonsRecorded:      7,
 		StaleSuppressions:    1,
-		Withheld:             report.Withheld{Certain: 1, Probable: 1, Possible: 6},
+		Withheld:             report.Withheld{Probable: 1, Possible: 6},
 	}
 	if merged.Totals != want {
 		t.Errorf("Merge() totals = %+v, want %+v", merged.Totals, want)

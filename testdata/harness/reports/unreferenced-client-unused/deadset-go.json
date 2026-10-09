@@ -1,9 +1,9 @@
 {
   "schema_version": "8.0.0",
-  "contract_version": "6.1.0",
+  "contract_version": "7.0.0",
   "analyzer": {
     "name": "deadset-go",
-    "version": "1.26.0",
+    "version": "1.28.0-dev.1",
     "languages": [
       "go"
     ],
@@ -11,9 +11,9 @@
       "8.0.0"
     ],
     "conformance": {
-      "corpus_version": "4.1.0",
+      "corpus_version": "5.0.0",
       "result": "pass",
-      "digest": "sha256:87ecb2221737c1b43c22e1e213b0a15eb11c675fcfea4d8eab8564cb270611b8"
+      "digest": "sha256:807af26a6fe3ff52de6e4fbef3c32ed7712c2808b0efd72bb55db13e5d1ec33a"
     }
   },
   "target": {

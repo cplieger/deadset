@@ -1,9 +1,9 @@
 {
   "schema_version": "8.0.0",
-  "contract_version": "6.1.0",
+  "contract_version": "7.0.0",
   "analyzer": {
     "name": "deadset-ts",
-    "version": "6.1.0",
+    "version": "7.0.0-dev.1",
     "languages": [
       "ts"
     ],
@@ -11,9 +11,9 @@
       "8.0.0"
     ],
     "conformance": {
-      "corpus_version": "4.1.0",
+      "corpus_version": "5.0.0",
       "result": "pass",
-      "digest": "sha256:167f770cdff2776fa7ab28b7ff6121c4d7bdb01d83c5ba0057d9303281614008"
+      "digest": "sha256:26c486907df44fb8eaf3f749f60a6010ac94e7cfeeda70c4aa406445193ab80a"
     }
   },
   "target": {
