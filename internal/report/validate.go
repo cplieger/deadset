@@ -342,6 +342,7 @@ func (t *Totals) validate() error {
 		atLeast("omitted", t.Omitted, 0),
 		at("withheld", first(
 			atLeast("certain", t.Withheld.Certain, 0),
+			atMost("certain", t.Withheld.Certain, 0),
 			atLeast("probable", t.Withheld.Probable, 0),
 			atLeast("possible", t.Withheld.Possible, 0),
 		)),
@@ -550,6 +551,14 @@ func atLeast(member string, value, minimum int) error {
 		return nil
 	}
 	return located(member, fmt.Errorf("%w: %d is below the minimum %d", errValue, value, minimum))
+}
+
+// atMost holds an integer member to a maximum.
+func atMost(member string, value, maximum int) error {
+	if value <= maximum {
+		return nil
+	}
+	return located(member, fmt.Errorf("%w: %d is above the maximum %d", errValue, value, maximum))
 }
 
 // required holds a required array to being present, which a nil slice is not.
