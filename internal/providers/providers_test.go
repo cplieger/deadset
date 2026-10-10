@@ -126,16 +126,12 @@ func TestSelect_carriesTheEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select(go) = error %v", err)
 	}
-	want := config.Provider{
-		Name: "other-go", Languages: []string{"go"}, Command: command,
-		Artifact: &config.Artifact{Source: "go:example.com/other/cmd/other-go", Version: "1.4.0", Digest: digest},
-	}
+	want := config.Provider{Name: "other-go", Languages: []string{"go"}, Command: command}
 	if len(got) != 1 {
 		t.Fatalf("Select(go) chose %v, want other-go alone", selection(got))
 	}
-	if e := got[0].Entry; e.Name != want.Name || e.Command != want.Command || !slices.Equal(e.Languages, want.Languages) ||
-		e.Artifact == nil || *e.Artifact != *want.Artifact {
-		t.Errorf("Select(go)[0].Entry = %+v (artifact %+v), want %+v (artifact %+v)", e, e.Artifact, want, *want.Artifact)
+	if e := got[0].Entry; e.Name != want.Name || e.Command != want.Command || !slices.Equal(e.Languages, want.Languages) {
+		t.Errorf("Select(go)[0].Entry = %+v, want %+v", e, want)
 	}
 }
 
@@ -205,8 +201,8 @@ func TestSelect_refusesALanguageNoEntryClaims(t *testing.T) {
 			if !ok {
 				t.Fatalf("Select(%v) = error %v, want a *config.Error", c.inScope, err)
 			}
-			if refused.Key != "providers.analyzers" {
-				t.Errorf("Select(%v) refusal names %q, want providers.analyzers", c.inScope, refused.Key)
+			if !strings.Contains(refused.Error(), "providers.analyzers") {
+				t.Errorf("Select(%v) refusal = %q, want the message to name providers.analyzers", c.inScope, refused.Error())
 			}
 			for _, language := range c.unclaimed {
 				if !strings.Contains(refused.Message, language) {

@@ -113,7 +113,6 @@ func unclaimedError(languages []string) *config.Error {
 		quoted[i] = strconv.Quote(language)
 	}
 	return &config.Error{
-		Key: listKey,
 		Message: fmt.Sprintf("%s holds no entry claiming %s, in scope for this run: "+
 			"add an entry claiming each, or leave them out of scope", listKey, strings.Join(quoted, ", ")),
 	}

@@ -51,10 +51,7 @@ func TestResolve_readsEachProviderEntry(t *testing.T) {
 			want: []config.Provider{
 				{Name: "deadset-go", Languages: []string{"go"}, Command: "/opt/deadset/bin/deadset-go"},
 				{Name: "deadset-ts", Languages: []string{"ts"}, Command: "deadset-ts"},
-				{
-					Name: "other-go", Languages: []string{"go", "ts"}, Command: "other-go",
-					Artifact: &config.Artifact{Source: "go:example.com/other/cmd/other-go", Version: "2.1.0-rc.1", Digest: testDigest},
-				},
+				{Name: "other-go", Languages: []string{"go", "ts"}, Command: "other-go"},
 			},
 		},
 	}
@@ -73,16 +70,10 @@ func TestResolve_readsEachProviderEntry(t *testing.T) {
 	}
 }
 
-// spellProviders renders a provider list with each artifact spelled out, which
-// a pointer printed with %v would hide.
 func spellProviders(list []config.Provider) string {
 	spelled := make([]string, len(list))
 	for i, p := range list {
-		spelled[i] = fmt.Sprintf("{%s %q %v", p.Name, p.Command, p.Languages)
-		if p.Artifact != nil {
-			spelled[i] += fmt.Sprintf(" %+v", *p.Artifact)
-		}
-		spelled[i] += "}"
+		spelled[i] = fmt.Sprintf("{%s %q %v}", p.Name, p.Command, p.Languages)
 	}
 	return "[" + strings.Join(spelled, " ") + "]"
 }

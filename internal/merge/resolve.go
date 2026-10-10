@@ -8,14 +8,14 @@ import (
 	"github.com/cplieger/deadset/internal/report"
 )
 
-// ErrUnresolvedEdge is a pending finding whose edge no input report evaluates
+// errUnresolvedEdge is a pending finding whose edge no input report evaluates
 // on any other side, so nothing in the merge can resolve it.
-var ErrUnresolvedEdge = errors.New("a pending finding's edge has no evaluation of its other side")
+var errUnresolvedEdge = errors.New("a pending finding's edge has no evaluation of its other side")
 
-// UnresolvedError is the first pending finding, in canonical order of the
+// unresolvedError is the first pending finding, in canonical order of the
 // findings, whose edge no input report evaluates on another side. It wraps
-// [ErrUnresolvedEdge].
-type UnresolvedError struct {
+// [errUnresolvedEdge].
+type unresolvedError struct {
 	Edge   string
 	Side   report.Side
 	Symbol string
@@ -30,13 +30,13 @@ type UnresolvedError struct {
 
 // Error names the edge, the pending side and its symbol, the report holding
 // the pending finding, and every report the merge searched.
-func (e *UnresolvedError) Error() string {
+func (e *unresolvedError) Error() string {
 	return fmt.Sprintf("merge: %s holds a pending finding on the %s side of edge %s (%s), and no report of %s evaluates another side of that edge",
 		e.Analyzer, e.Side, e.Edge, e.Symbol, strings.Join(e.Searched, ", "))
 }
 
-// Unwrap is [ErrUnresolvedEdge].
-func (e *UnresolvedError) Unwrap() error { return ErrUnresolvedEdge }
+// Unwrap is [errUnresolvedEdge].
+func (*unresolvedError) Unwrap() error { return errUnresolvedEdge }
 
 // componentKey names a component within the input report that carried it: the
 // analyzer of that report and the identifier the analyzer minted.
@@ -98,7 +98,7 @@ func (index edgeIndex) strongestOther(e *report.EdgeEvaluation, dropped map[comp
 
 // resolve decides every dead evaluation of the working set: a pending finding
 // whose edge no other side evaluates ends the merge with an
-// [*UnresolvedError]; the components rules 2 and 4 drop, run to a fixpoint,
+// [*unresolvedError]; the components rules 2 and 4 drop, run to a fixpoint,
 // leave the findings; every other pending finding is promoted and its
 // component joins the components paired with it; one stale-edge finding is
 // emitted per edge with a wholly absent side. The working set then holds no
@@ -145,12 +145,12 @@ func (r *records) resolve(inputs []Input, merger string) error {
 	return nil
 }
 
-func unresolved(e *report.EdgeEvaluation, inputs []Input) *UnresolvedError {
+func unresolved(e *report.EdgeEvaluation, inputs []Input) *unresolvedError {
 	searched := make([]string, len(inputs))
 	for i := range inputs {
 		searched[i] = inputs[i].Report.Analyzer.Name
 	}
-	return &UnresolvedError{Edge: e.Edge, Side: e.Side, Symbol: e.Symbol, Analyzer: e.Analyzer, Searched: searched}
+	return &unresolvedError{Edge: e.Edge, Side: e.Side, Symbol: e.Symbol, Analyzer: e.Analyzer, Searched: searched}
 }
 
 // deadEvaluations is every dead evaluation, in canonical order of the finding

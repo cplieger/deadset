@@ -49,9 +49,6 @@ type Description struct {
 
 	// SchemaVersionsAccepted is every report schema version the analyzer reads.
 	SchemaVersionsAccepted []string
-
-	// Languages is the languages the analyzer claims.
-	Languages []string
 }
 
 // HandshakeError is a handshake that admitted no analyzer.
@@ -63,10 +60,6 @@ type HandshakeError struct {
 
 	Analyzer string // the provider entry
 	Command  string // the executable the provider entry's command resolved to
-
-	// Exit is the describe verb's exit code, or -1 when it did not run or did
-	// not exit on its own.
-	Exit int
 }
 
 // Error renders the refusal as one line naming the entry and its command.
@@ -85,11 +78,11 @@ func (e *HandshakeError) Unwrap() error { return e.Err }
 // otherwise it returns a [*HandshakeError]. The verb's stderr goes to
 // req.Diagnostics, and the scope, configuration and report paths are not read.
 func Describe(ctx context.Context, req *Request, kept rundir.Entry, accepted []string) (*Description, error) {
-	refuse := func(exit int, err error) error {
-		return &HandshakeError{Err: err, Analyzer: req.Analyzer, Command: req.Command, Exit: exit}
+	refuse := func(err error) error {
+		return &HandshakeError{Err: err, Analyzer: req.Analyzer, Command: req.Command}
 	}
 	if err := resolved(req.Command); err != nil {
-		return nil, refuse(-1, err)
+		return nil, refuse(err)
 	}
 
 	var printed bytes.Buffer
@@ -99,25 +92,25 @@ func Describe(ctx context.Context, req *Request, kept rundir.Entry, accepted []s
 	cmd.Stderr = diagnostics
 	exit, runErr := wait(ctx, cmd, copied)
 	if cmd.Process == nil {
-		return nil, refuse(exit, runErr)
+		return nil, refuse(runErr)
 	}
 	keepErr := kept.WriteDescribe(printed.Bytes())
 	switch {
 	case runErr != nil || keepErr != nil:
-		return nil, refuse(exit, errors.Join(runErr, keepErr))
+		return nil, refuse(errors.Join(runErr, keepErr))
 	case exit != 0:
-		return nil, refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrDescribeExited))
+		return nil, refuse(fmt.Errorf("exited %d: %w", exit, ErrDescribeExited))
 	}
 
 	described, err := decodeDescription(printed.Bytes())
 	if err != nil {
-		return nil, refuse(exit, err)
+		return nil, refuse(err)
 	}
 	if described.Name != req.Analyzer {
-		return nil, refuse(exit, fmt.Errorf("%w: it names itself %q", ErrDescribedName, described.Name))
+		return nil, refuse(fmt.Errorf("%w: it names itself %q", ErrDescribedName, described.Name))
 	}
 	if err := admit(described, accepted); err != nil {
-		return nil, refuse(exit, err)
+		return nil, refuse(err)
 	}
 	return described, nil
 }
@@ -169,7 +162,7 @@ func decodeDescription(data []byte) (*Description, error) {
 	if described.SchemaVersionsAccepted, err = stringsAt(members["schema_versions_accepted"], "/schema_versions_accepted"); err != nil {
 		return nil, err
 	}
-	if described.Languages, err = stringsAt(members["languages"], "/languages"); err != nil {
+	if _, err = stringsAt(members["languages"], "/languages"); err != nil {
 		return nil, err
 	}
 	if raw, stated := members["conformance"]; stated {

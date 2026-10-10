@@ -356,7 +356,7 @@ func TestForError(t *testing.T) {
 	if !errors.Is(outside, detect.ErrFilter) {
 		t.Fatalf("Setup: Languages(a filter outside the target) = error %v, want detect.ErrFilter", outside)
 	}
-	refusal := &config.Error{Key: "reporters.fail_under", Message: "reporters.fail_under is not a key"}
+	refusal := &config.Error{Message: "reporters.fail_under is not a key"}
 	outputLost := &invoke.Error{
 		Err:      errors.New("copy what the analyzer printed: write /dev/full: no space left on device"),
 		Analyzer: "deadset-go",
@@ -411,7 +411,7 @@ func TestForErrorGivesUsageOnlyWhenEveryJoinedRefusalIsUsage(t *testing.T) {
 
 	goRefused, tsRefused := analyzerExited("deadset-go", verdict.Usage), analyzerExited("deadset-ts", verdict.Usage)
 	tsFailed := analyzerExited("deadset-ts", verdict.Failure)
-	configuration := &config.Error{Key: "ts.entry_files", Message: "ts.entry_files is not a list"}
+	configuration := &config.Error{Message: "ts.entry_files is not a list"}
 
 	for _, tc := range []struct {
 		name string

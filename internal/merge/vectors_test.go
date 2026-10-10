@@ -25,17 +25,17 @@ const vectorsDir = "vectors/merge"
 // reason its refusal names: every admission refusal, and the pending finding
 // no report resolves.
 var refusedCases = map[string]error{
-	"configuration-built-and-not-built": ErrEntryState,
-	"configuration-entries-differ":      ErrEntryIdentity,
-	"conformance-not-passed":            ErrConformance,
-	"consumer-entries-differ":           ErrEntryIdentity,
-	"consumer-loaded-and-unavailable":   ErrEntryState,
-	"findings-omitted":                  ErrOmitted,
-	"one-analyzer-name-twice":           ErrAnalyzerName,
-	"one-artifact-run-twice":            ErrAnalyzerName,
-	"pending-pair-unevaluated":          ErrUnresolvedEdge,
-	"schema-version-out-of-range":       ErrSchemaVersion,
-	"targets-differ":                    ErrTarget,
+	"configuration-built-and-not-built": errEntryState,
+	"configuration-entries-differ":      errEntryIdentity,
+	"conformance-not-passed":            errConformance,
+	"consumer-entries-differ":           errEntryIdentity,
+	"consumer-loaded-and-unavailable":   errEntryState,
+	"findings-omitted":                  errOmitted,
+	"one-analyzer-name-twice":           errAnalyzerName,
+	"one-artifact-run-twice":            errAnalyzerName,
+	"pending-pair-unevaluated":          errUnresolvedEdge,
+	"schema-version-out-of-range":       errSchemaVersion,
+	"targets-differ":                    errTarget,
 }
 
 // vectorCase is one case directory of vectors/merge, decoded.
@@ -114,7 +114,7 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		{
 			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "8.0.0"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*AdmissionError](err)
+				refused, ok := errors.AsType[*admissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
 					slices.Equal(refused.Accepted, []string{"8.0.0"})
 			},
@@ -122,58 +122,57 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		{
 			name: "conformance-not-passed", named: []string{"deadset-go"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*AdmissionError](err)
+				refused, ok := errors.AsType[*admissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.Result == report.ResultFail
 			},
 		},
 		{
 			name: "findings-omitted", named: []string{"deadset-go", "1"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*AdmissionError](err)
+				refused, ok := errors.AsType[*admissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.Omitted == 1
 			},
 		},
 		{
 			name: "targets-differ", named: []string{"deadset-go", "deadset-ts"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*TargetError](err)
+				refused, ok := errors.AsType[*targetError](err)
 				return ok && refused.Analyzers == [2]string{"deadset-go", "deadset-ts"} && refused.Targets[0] != refused.Targets[1]
 			},
 		},
 		{
 			name: "configuration-entries-differ", named: []string{"deadset-go", "example-go", "configurations"},
-			check: entryRefusal(ErrEntryIdentity, "configurations", "configurations"),
+			check: entryRefusal(errEntryIdentity, "configurations", "configurations"),
 		},
 		{
 			name: "consumer-entries-differ", named: []string{"consumers.loaded"},
-			check: entryRefusal(ErrEntryIdentity, "consumers.loaded", "consumers.loaded"),
+			check: entryRefusal(errEntryIdentity, "consumers.loaded", "consumers.loaded"),
 		},
 		{
 			name: "configuration-built-and-not-built", named: []string{"configurations", "configurations_not_built"},
 			check: func(err error) bool {
-				return entryRefusal(ErrEntryState, "configurations", "configurations_not_built")(err) ||
-					entryRefusal(ErrEntryState, "configurations_not_built", "configurations")(err)
+				return entryRefusal(errEntryState, "configurations", "configurations_not_built")(err) ||
+					entryRefusal(errEntryState, "configurations_not_built", "configurations")(err)
 			},
 		},
 		{
 			name: "consumer-loaded-and-unavailable", named: []string{"consumers.loaded", "consumers.unavailable"},
 			check: func(err error) bool {
-				return entryRefusal(ErrEntryState, "consumers.loaded", "consumers.unavailable")(err) ||
-					entryRefusal(ErrEntryState, "consumers.unavailable", "consumers.loaded")(err)
+				return entryRefusal(errEntryState, "consumers.loaded", "consumers.unavailable")(err) ||
+					entryRefusal(errEntryState, "consumers.unavailable", "consumers.loaded")(err)
 			},
 		},
 		{
 			name: "one-analyzer-name-twice", named: []string{"deadset-go"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*NameError](err)
-				return ok && refused.Name == "deadset-go" && refused.Versions[0] != refused.Versions[1] &&
-					refused.Digests[0] != refused.Digests[1]
+				refused, ok := errors.AsType[*nameError](err)
+				return ok && refused.Name == "deadset-go" && refused.Versions[0] != refused.Versions[1]
 			},
 		},
 		{
 			name: "pending-pair-unevaluated", named: []string{"wire/ServerEvent", "provides", "go://example.com/app/internal/wire#ServerEvent", "deadset-go"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*UnresolvedError](err)
+				refused, ok := errors.AsType[*unresolvedError](err)
 				return ok && refused.Edge == "wire/ServerEvent" && refused.Side == report.SideProvides &&
 					refused.Symbol == "go://example.com/app/internal/wire#ServerEvent" && refused.Analyzer == "deadset-go" &&
 					slices.Equal(refused.Searched, []string{"deadset-go"})
@@ -182,8 +181,8 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		{
 			name: "one-artifact-run-twice", named: []string{"deadset-go"},
 			check: func(err error) bool {
-				refused, ok := errors.AsType[*NameError](err)
-				return ok && refused.Name == "deadset-go" && refused.Digests[0] == refused.Digests[1]
+				refused, ok := errors.AsType[*nameError](err)
+				return ok && refused.Name == "deadset-go"
 			},
 		},
 	}
@@ -212,11 +211,11 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 	}
 }
 
-// entryRefusal is whether an error is an [*EntryError] for reason, naming the
+// entryRefusal is whether an error is an [*entryError] for reason, naming the
 // two arrays in that order.
 func entryRefusal(reason error, first, second string) func(error) bool {
 	return func(err error) bool {
-		refused, ok := errors.AsType[*EntryError](err)
+		refused, ok := errors.AsType[*entryError](err)
 		return ok && errors.Is(err, reason) && refused.Arrays == [2]string{first, second} && refused.ID != ""
 	}
 }

@@ -112,8 +112,8 @@ func TestDescribeAdmitsTheGoAnalyzer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Describe(%s) = %v, want it admitted", goAnalyzer, err)
 	}
-	if got.Name != goAnalyzer || !slices.Equal(got.Languages, []string{"go"}) {
-		t.Errorf("Describe(%s) = %+v, want the name %s and the language go", goAnalyzer, got, goAnalyzer)
+	if got.Name != goAnalyzer {
+		t.Errorf("Describe(%s) = %+v, want the name %s", goAnalyzer, got, goAnalyzer)
 	}
 	if !slices.Contains(got.SchemaVersionsAccepted, report.SchemaVersion) || got.Conformance.Result != report.ResultPass {
 		t.Errorf("Describe(%s) = %+v, want schema version %s read and a conformance pass", goAnalyzer, got, report.SchemaVersion)

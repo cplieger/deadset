@@ -56,7 +56,7 @@ func TestTheTypesDeclareEveryObjectTheSchemasDeclare(t *testing.T) {
 		findingSchema + "#/properties/symbol":                         reflect.TypeFor[Symbol](),
 		findingSchema + "#/properties/component":                      reflect.TypeFor[Component](),
 		findingSchema + "#/properties/details":                        reflect.TypeFor[Details](),
-		findingSchema + "#/properties/details/properties/entry":       reflect.TypeFor[Entry](),
+		findingSchema + "#/properties/details/properties/entry":       reflect.TypeFor[entry](),
 		findingSchema + "#/properties/details/properties/sides/items": reflect.TypeFor[EdgeSide](),
 	}
 	configurationArms := regexp.MustCompile(`#/properties/configurations(_not_built)?/items/oneOf/[01]$`)

@@ -36,13 +36,13 @@ type Caller struct {
 // record of every input under its analyzer's name, resolves every pending
 // finding, reports every stale edge, and orders the merged arrays by the
 // canonical key, inside the caller's versions and analyzer member. It modifies
-// none of its arguments. It returns no report with [ErrNoInput], an admission
-// refusal ([*AdmissionError] per refused input or one error for the first two
-// that cannot merge), or an [*UnresolvedError] for a pending finding no report
+// none of its arguments. It returns no report with [errNoInput], an admission
+// refusal ([*admissionError] per refused input or one error for the first two
+// that cannot merge), or an [*unresolvedError] for a pending finding no report
 // can resolve.
 func Merge(inputs []Input, accepted []string, caller *Caller) (*report.Report, error) {
 	if len(inputs) == 0 {
-		return nil, ErrNoInput
+		return nil, errNoInput
 	}
 	ordered := slices.Clone(inputs)
 	slices.SortFunc(ordered, compareInputs)
