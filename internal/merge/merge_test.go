@@ -268,8 +268,8 @@ func TestMergeLeavesItsInputsAsTheyWere(t *testing.T) {
 func TestMergeRefusesNoInput(t *testing.T) {
 	t.Parallel()
 
-	if merged, err := Merge(nil, accepted, &caller); merged != nil || !errors.Is(err, ErrNoInput) {
-		t.Errorf("Merge(nil) = %v, %v, want no report and ErrNoInput", merged, err)
+	if merged, err := Merge(nil, accepted, &caller); merged != nil || !errors.Is(err, errNoInput) {
+		t.Errorf("Merge(nil) = %v, %v, want no report and errNoInput", merged, err)
 	}
 }
 
@@ -285,7 +285,7 @@ func TestMergeNamesEveryRefusedInputInMergedFromOrder(t *testing.T) {
 	var messages []string
 	for _, order := range [][]*report.Report{{old, passing, failing}, {failing, old, passing}} {
 		merged, err := Merge(inputs(order...), accepted, &caller)
-		if merged != nil || !errors.Is(err, ErrSchemaVersion) || !errors.Is(err, ErrConformance) {
+		if merged != nil || !errors.Is(err, errSchemaVersion) || !errors.Is(err, errConformance) {
 			t.Fatalf("Merge(a schema refusal and a conformance refusal) = %v, %v, want no report and both refusals", merged, err)
 		}
 		messages = append(messages, err.Error())
@@ -307,7 +307,7 @@ func TestMergeRefusesAnUnacceptedSchemaVersionOnThatAlone(t *testing.T) {
 	old.Analyzer.Conformance.Result = report.ResultFail
 
 	_, err := Merge(inputs(old), accepted, &caller)
-	if !errors.Is(err, ErrSchemaVersion) || errors.Is(err, ErrConformance) {
+	if !errors.Is(err, errSchemaVersion) || errors.Is(err, errConformance) {
 		t.Errorf("Merge(an unaccepted version with a failed conformance) = %v, want the schema version refusal alone", err)
 	}
 }
@@ -321,9 +321,9 @@ func TestMergeRefusesInputsNamingDifferentTargets(t *testing.T) {
 
 	for _, order := range [][]*report.Report{{golang, typescript}, {typescript, golang}} {
 		merged, err := Merge(inputs(order...), accepted, &caller)
-		mismatch, ok := errors.AsType[*TargetError](err)
+		mismatch, ok := errors.AsType[*targetError](err)
 		if merged != nil || !ok {
-			t.Fatalf("Merge(two targets) = %v, %v, want no report and a *TargetError", merged, err)
+			t.Fatalf("Merge(two targets) = %v, %v, want no report and a *targetError", merged, err)
 		}
 		if mismatch.Analyzers != [2]string{"deadset-go", "deadset-ts"} || mismatch.Targets[1].Identity != "@example/app" {
 			t.Errorf("Merge(two targets) = %+v, want deadset-go's target, then deadset-ts's", mismatch)
@@ -491,19 +491,19 @@ func TestMergeRefusesTwoReportsDisagreeingOnAnID(t *testing.T) {
 		arrays             [2]string
 	}{
 		{
-			name: "platform-tags", reason: ErrEntryIdentity, arrays: [2]string{"configurations", "configurations"},
+			name: "platform-tags", reason: errEntryIdentity, arrays: [2]string{"configurations", "configurations"},
 			golang:     func(r *report.Report) { r.Configurations = []report.Configuration{platform("linux-amd64", "netgo")} },
 			typescript: func(r *report.Report) { r.Configurations = []report.Configuration{platform("linux-amd64")} },
 		},
 		{
-			name: "platform-and-project", reason: ErrEntryIdentity, arrays: [2]string{"configurations", "configurations"},
+			name: "platform-and-project", reason: errEntryIdentity, arrays: [2]string{"configurations", "configurations"},
 			golang: func(r *report.Report) { r.Configurations = []report.Configuration{platform("tsconfig.json")} },
 			typescript: func(r *report.Report) {
 				r.Configurations = []report.Configuration{{ID: "tsconfig.json", Project: "tsconfig.json"}}
 			},
 		},
 		{
-			name: "not-built-shapes", reason: ErrEntryIdentity, arrays: [2]string{"configurations_not_built", "configurations_not_built"},
+			name: "not-built-shapes", reason: errEntryIdentity, arrays: [2]string{"configurations_not_built", "configurations_not_built"},
 			golang: func(r *report.Report) {
 				r.ConfigurationsNotBuilt = []report.ConfigurationNotBuilt{{Configuration: platform("windows-amd64", "cgo"), Error: "no build"}}
 			},
@@ -512,19 +512,19 @@ func TestMergeRefusesTwoReportsDisagreeingOnAnID(t *testing.T) {
 			},
 		},
 		{
-			name: "loaded-paths", reason: ErrEntryIdentity, arrays: [2]string{"consumers.loaded", "consumers.loaded"},
+			name: "loaded-paths", reason: errEntryIdentity, arrays: [2]string{"consumers.loaded", "consumers.loaded"},
 			golang:     func(r *report.Report) { r.Consumers.Loaded = loaded("../cli") },
 			typescript: func(r *report.Report) { r.Consumers.Loaded = loaded("../other") },
 		},
 		{
-			name: "built-and-not-built", reason: ErrEntryState, arrays: [2]string{"configurations", "configurations_not_built"},
+			name: "built-and-not-built", reason: errEntryState, arrays: [2]string{"configurations", "configurations_not_built"},
 			golang: func(r *report.Report) {},
 			typescript: func(r *report.Report) {
 				r.ConfigurationsNotBuilt = []report.ConfigurationNotBuilt{{Configuration: platform("linux-amd64"), Error: "no build"}}
 			},
 		},
 		{
-			name: "unavailable-and-loaded", reason: ErrEntryState, arrays: [2]string{"consumers.unavailable", "consumers.loaded"},
+			name: "unavailable-and-loaded", reason: errEntryState, arrays: [2]string{"consumers.unavailable", "consumers.loaded"},
 			golang:     func(r *report.Report) { r.Consumers.Unavailable = unavailable },
 			typescript: func(r *report.Report) { r.Consumers.Loaded = loaded("../cli") },
 		},
@@ -538,9 +538,9 @@ func TestMergeRefusesTwoReportsDisagreeingOnAnID(t *testing.T) {
 			tc.typescript(typescript)
 			for _, order := range [][]*report.Report{{golang, typescript}, {typescript, golang}} {
 				merged, err := Merge(inputs(order...), accepted, &caller)
-				refused, ok := errors.AsType[*EntryError](err)
+				refused, ok := errors.AsType[*entryError](err)
 				if merged != nil || !ok || !errors.Is(err, tc.reason) {
-					t.Fatalf("Merge(%s) = %v, %v, want no report and an *EntryError for %v", tc.name, merged, err, tc.reason)
+					t.Fatalf("Merge(%s) = %v, %v, want no report and an *entryError for %v", tc.name, merged, err, tc.reason)
 				}
 				if refused.Analyzers != [2]string{"deadset-go", "deadset-ts"} || refused.Arrays != tc.arrays {
 					t.Errorf("Merge(%s) = %+v, want deadset-go then deadset-ts, in %q", tc.name, refused, tc.arrays)
@@ -563,9 +563,9 @@ func TestMergeRefusesTwoReportsOfOneAnalyzerName(t *testing.T) {
 
 	for _, order := range [][]*report.Report{{older, newer}, {newer, older}} {
 		merged, err := Merge(inputs(order...), accepted, &caller)
-		refused, ok := errors.AsType[*NameError](err)
+		refused, ok := errors.AsType[*nameError](err)
 		if merged != nil || !ok {
-			t.Fatalf("Merge(one name twice) = %v, %v, want no report and a *NameError", merged, err)
+			t.Fatalf("Merge(one name twice) = %v, %v, want no report and a *nameError", merged, err)
 		}
 		if refused.Name != "deadset-go" || refused.Versions != [2]string{"1.0.0", "1.1.0"} {
 			t.Errorf("Merge(one name twice) = %+v, want deadset-go at 1.0.0 and 1.1.0", refused)
@@ -620,9 +620,9 @@ func TestMergeRefusesAReportThatOmittedFindings(t *testing.T) {
 	whole := analyzerReport("deadset-ts", "ts")
 
 	merged, err := Merge(inputs(whole, capped), accepted, &caller)
-	refused, ok := errors.AsType[*AdmissionError](err)
-	if merged != nil || !ok || !errors.Is(err, ErrOmitted) {
-		t.Fatalf("Merge(a capped input) = %v, %v, want no report and an *AdmissionError for ErrOmitted", merged, err)
+	refused, ok := errors.AsType[*admissionError](err)
+	if merged != nil || !ok || !errors.Is(err, errOmitted) {
+		t.Fatalf("Merge(a capped input) = %v, %v, want no report and an *admissionError for errOmitted", merged, err)
 	}
 	if refused.Analyzer != "deadset-go" || refused.Omitted != 2 {
 		t.Errorf("Merge(a capped input) = %+v, want deadset-go refused on its 2 omitted findings", refused)

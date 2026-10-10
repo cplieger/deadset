@@ -33,17 +33,17 @@ var (
 var (
 	languages       = []string{"go", "ts"}
 	results         = []Result{ResultPass, ResultFail}
-	targetKinds     = []TargetKind{TargetApplication, TargetLibrary}
+	targetKinds     = []targetKind{TargetApplication, TargetLibrary}
 	consumerRoles   = []string{"consumer"}
 	sides           = []Side{SideProvides, SideUsedBy}
 	states          = []State{StateLive, StateDead, StateAbsent}
 	staleCodes      = []string{staleSuppressionCode}
 	mechanisms      = []string{"inline", "ignore", "baseline"}
-	noteKinds       = []NoteKind{NotePublishedPackage}
+	noteKinds       = []noteKind{NotePublishedPackage}
 	noteKeys        = []string{"roots.patterns"}
-	classes         = []Class{ClassCertain, ClassProbable, ClassPossible}
-	relations       = []Relation{RelationReferenceCounting, RelationReachability}
-	fixabilities    = []Fixability{FixabilityDeletable, FixabilityNarrowable, FixabilityManual, FixabilityNone}
+	classes         = []Class{ClassCertain, ClassProbable, classPossible}
+	relations       = []Relation{RelationReferenceCounting, relationReachability}
+	fixabilities    = []Fixability{FixabilityDeletable, fixabilityNarrowable, fixabilityManual, FixabilityNone}
 	severities      = []Severity{SeverityAllow, SeverityWarn, SeverityDeny}
 	visibilities    = []string{"file", "package", "module"}
 	dependencyKinds = []string{"require", "dependency", "dev-dependency", "peer-dependency"}
@@ -481,7 +481,7 @@ func (d *Details) validate() error {
 	)
 }
 
-func (e *Entry) validate() error {
+func (e *entry) validate() error {
 	if e == nil {
 		return nil
 	}

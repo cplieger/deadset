@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -94,14 +95,12 @@ func kept(t *testing.T, name string) rundir.Entry {
 	return entry
 }
 
-// handshakeRefusal is the *invoke.HandshakeError err carries, after checking
-// that err satisfies errors.Is(err, want) and that the verdict ends the run
-// with the failure code.
-func handshakeRefusal(t *testing.T, err, want error) *invoke.HandshakeError {
+// handshakeRefusal checks that err carries an *invoke.HandshakeError, satisfies
+// errors.Is(err, want) and ends the run with the failure code.
+func handshakeRefusal(t *testing.T, err, want error) {
 	t.Helper()
 
-	refused, ok := errors.AsType[*invoke.HandshakeError](err)
-	if !ok {
+	if _, ok := errors.AsType[*invoke.HandshakeError](err); !ok {
 		t.Fatalf("Describe() = %v, want an *invoke.HandshakeError", err)
 	}
 	if !errors.Is(err, want) {
@@ -110,7 +109,6 @@ func handshakeRefusal(t *testing.T, err, want error) *invoke.HandshakeError {
 	if code := verdict.ForError(err); code != verdict.Failure {
 		t.Errorf("verdict.ForError(%v) = %d, want %d", err, code, verdict.Failure)
 	}
-	return refused
 }
 
 // TestDescribeAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion pins the admitted
@@ -151,7 +149,6 @@ func TestDescribeAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion(t *testing.T) {
 				Version:                "1.20.0",
 				ContractVersion:        "3.2.0",
 				SchemaVersionsAccepted: c.want,
-				Languages:              []string{"go"},
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Describe() = %+v, want %+v", got, want)
@@ -203,10 +200,7 @@ func TestDescribeRefusesACommandItCannotRun(t *testing.T) {
 			if got != nil {
 				t.Errorf("Describe(command %s) = %+v, want no description", c.command, got)
 			}
-			refused := handshakeRefusal(t, err, c.want)
-			if refused.Exit != -1 {
-				t.Errorf("Describe(command %s) refused with exit %d, want -1", c.command, refused.Exit)
-			}
+			handshakeRefusal(t, err, c.want)
 			for _, named := range []string{"deadset-third-party", c.command} {
 				if !strings.Contains(err.Error(), named) {
 					t.Errorf("Describe(command %s) = %q, want the message to name %q", c.command, err, named)
@@ -315,8 +309,9 @@ func TestDescribeRefusesADescribeThatDoesNotExitClean(t *testing.T) {
 			if got != nil {
 				t.Errorf("Describe(a describe exiting %d) = %+v, want no description", exit, got)
 			}
-			if refused := handshakeRefusal(t, err, invoke.ErrDescribeExited); refused.Exit != exit {
-				t.Errorf("Describe(a describe exiting %d) refused with exit %d, want %d", exit, refused.Exit, exit)
+			handshakeRefusal(t, err, invoke.ErrDescribeExited)
+			if want := fmt.Sprintf("exited %d", exit); err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("Describe(a describe exiting %d) = %v, want the message to name %q", exit, err, want)
 			}
 			if keptBytes, _ := os.ReadFile(entry.Describe()); !bytes.Equal(keptBytes, printed) {
 				t.Errorf("Describe(a describe exiting %d) kept %q, want the bytes it printed", exit, keptBytes)
@@ -413,7 +408,7 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 				Digest: "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66",
 			},
 			Name: "deadset-go", Version: "1.21.0", ContractVersion: "7.0.0",
-			SchemaVersionsAccepted: []string{"8.0.0"}, Languages: []string{"go"},
+			SchemaVersionsAccepted: []string{"8.0.0"},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Describe(conformance-recorded.json) = %+v, want %+v", got, want)

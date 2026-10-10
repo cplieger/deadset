@@ -281,8 +281,8 @@ func TestMergeResolvesEveryPendingFindingByItsPairsState(t *testing.T) {
 		merged, err := Merge(inputs(reports...), accepted, &caller)
 		reordered, reorderedErr := Merge(inputs(shuffled...), accepted, &caller)
 		if unresolvable {
-			if !errors.Is(err, ErrUnresolvedEdge) || reorderedErr == nil || reorderedErr.Error() != err.Error() {
-				t.Fatalf("Merge(an unresolvable pending finding) = %v, and reordered %v, want one *UnresolvedError in both orders", err, reorderedErr)
+			if !errors.Is(err, errUnresolvedEdge) || reorderedErr == nil || reorderedErr.Error() != err.Error() {
+				t.Fatalf("Merge(an unresolvable pending finding) = %v, and reordered %v, want one *unresolvedError in both orders", err, reorderedErr)
 			}
 			return
 		}
