@@ -257,12 +257,12 @@ func malformed(label, path, format string, args ...any) *Error {
 	if path == "" {
 		return &Error{Message: label + ": " + detail}
 	}
-	return &Error{Key: path, Message: label + ": " + path + ": " + detail}
+	return &Error{Message: label + ": " + path + ": " + detail}
 }
 
 // duplicated refuses a key one object names twice, so neither value is chosen.
 func duplicated(label, path string) *Error {
-	return &Error{Key: path, Message: fmt.Sprintf("%s: key %q is written twice, so neither value is chosen", label, path)}
+	return &Error{Message: fmt.Sprintf("%s: key %q is written twice, so neither value is chosen", label, path)}
 }
 
 // unimplemented refuses a key the closed key list does not declare, with the reason
@@ -272,5 +272,5 @@ func unimplemented(label, path, reason string) *Error {
 	if reason != "" {
 		message += ": " + reason
 	}
-	return &Error{Key: path, Message: message}
+	return &Error{Message: message}
 }

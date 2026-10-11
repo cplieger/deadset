@@ -5,15 +5,15 @@
 // splits the result into the document each analyzer receives.
 //
 // The orchestrator reads the settings the Contract gives every product and the ones
-// it gives the orchestrator, and those are the fields of [Config]. A setting the
+// it gives the orchestrator, and those are the fields of [config]. A setting the
 // Contract gives every analyzer is checked here, because every analyzer reads it the
 // same way, and is otherwise only passed on. A key of a language's own section
 // belongs to that language's analyzer: its name is part of the closed key list, and
 // its value passes through unread.
 package config
 
-// Config is the part of the resolved configuration the orchestrator reads.
-type Config struct {
+// config is the part of the resolved configuration the orchestrator reads.
+type config struct {
 	// Languages is analysis.languages: the languages in scope, or none when the
 	// orchestrator detects them from the target tree.
 	Languages []string
@@ -29,7 +29,7 @@ type Config struct {
 // which of them fail the run.
 type Reporters struct {
 	Sort        Sort
-	Cascade     Cascade
+	Cascade     cascade
 	FailOn      Severity
 	Formats     []Format
 	MaxFindings int
@@ -52,7 +52,7 @@ type Format string
 // The formats.
 const (
 	FormatText     Format = "text"
-	FormatJSON     Format = "json"
+	formatJSON     Format = "json"
 	FormatGitHub   Format = "github"
 	FormatSARIF    Format = "sarif"
 	FormatTemplate Format = "template"
@@ -67,13 +67,13 @@ const (
 	SortSize     Sort = "size"
 )
 
-// Cascade is how much of a dead component a rendering lists.
-type Cascade string
+// cascade is how much of a dead component a rendering lists.
+type cascade string
 
 // The cascade renderings: roots lists a component's roots, full every member.
 const (
-	CascadeRoots Cascade = "roots"
-	CascadeFull  Cascade = "full"
+	cascadeRoots cascade = "roots"
+	CascadeFull  cascade = "full"
 )
 
 // Error is a configuration the orchestrator refuses: a document that is not one
@@ -81,10 +81,6 @@ const (
 // source supplied a required setting for, or a provider list in which no entry
 // claims a language in scope. Every refusal exits with the usage code.
 type Error struct {
-	// Key is the key or field the refusal names, spelled as the document spells
-	// it: the dotted path to a nested key, and an array entry's index in brackets
-	// after the array. It is empty when the refusal names no key.
-	Key     string
 	Message string
 }
 

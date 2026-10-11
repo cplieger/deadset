@@ -102,7 +102,6 @@ func (g *gathered) add(in *Input) {
 	g.conventions = append(g.conventions, r.ConventionsApplied...)
 	g.inEffect += r.Totals.SuppressionsInEffect
 	g.reasons += r.Totals.ReasonsRecorded
-	g.withheld.Certain += r.Totals.Withheld.Certain
 	g.withheld.Probable += r.Totals.Withheld.Probable
 	g.withheld.Possible += r.Totals.Withheld.Possible
 }

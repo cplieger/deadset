@@ -132,8 +132,8 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 			if !isRefusal {
 				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.document, err, c.at)
 			}
-			if refusal.Key != c.at || !strings.Contains(refusal.Message, c.at) {
-				t.Errorf("Resolve(%s) refused naming %q (%s), want %q", c.document, refusal.Key, refusal, c.at)
+			if !strings.Contains(refusal.Message, c.at) {
+				t.Errorf("Resolve(%s) = %q, want the message to name %q", c.document, refusal, c.at)
 			}
 		})
 	}
@@ -187,8 +187,8 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 			if !isRefusal {
 				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.document, err, c.at)
 			}
-			if refusal.Key != c.at || !strings.Contains(refusal.Message, c.at) {
-				t.Errorf("Resolve(%s) refused naming %q (%s), want %q", c.document, refusal.Key, refusal, c.at)
+			if !strings.Contains(refusal.Message, c.at) {
+				t.Errorf("Resolve(%s) = %q, want the message to name %q", c.document, refusal, c.at)
 			}
 		})
 	}
@@ -222,8 +222,8 @@ func TestResolve_requiresTheTargetKind(t *testing.T) {
 			if !isRefusal {
 				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming target.kind", c.name, err)
 			}
-			if refusal.Key != "target.kind" || !strings.Contains(refusal.Message, "target.kind") {
-				t.Errorf("Resolve(%s) refused naming %q (%s), want target.kind", c.name, refusal.Key, refusal)
+			if !strings.Contains(refusal.Message, "target.kind") {
+				t.Errorf("Resolve(%s) = %q, want the message to name target.kind", c.name, refusal)
 			}
 		})
 	}

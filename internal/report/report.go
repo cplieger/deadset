@@ -100,7 +100,7 @@ type InputReport struct {
 // Target is what a report is about. A merged report names the same target as
 // every report it merged.
 type Target struct {
-	Kind TargetKind `json:"kind"`
+	Kind targetKind `json:"kind"`
 
 	// Root is the directory the target was analyzed from, relative to the
 	// directory the run was invoked from: "." or a slash-separated path with no
@@ -112,13 +112,13 @@ type Target struct {
 	Identity string `json:"identity"`
 }
 
-// TargetKind says whether a target's callers are all in the analyzed graph.
-type TargetKind string
+// targetKind says whether a target's callers are all in the analyzed graph.
+type targetKind string
 
 // The kinds of target the configuration declares.
 const (
-	TargetApplication TargetKind = "application"
-	TargetLibrary     TargetKind = "library"
+	TargetApplication targetKind = "application"
+	TargetLibrary     targetKind = "library"
 )
 
 // Consumers is the consumer set an analysis loaded beside the target.
@@ -251,18 +251,18 @@ type TypeErrorSkip struct {
 // Note is one hint the analysis has about a run's setup. It is no finding:
 // nothing counts it and it fails no run.
 type Note struct {
-	Kind    NoteKind `json:"kind"`
+	Kind    noteKind `json:"kind"`
 	Path    string   `json:"path"`
 	Key     string   `json:"key"`
 	Message string   `json:"message"`
 }
 
-// NoteKind is what a note is about.
-type NoteKind string
+// noteKind is what a note is about.
+type noteKind string
 
 // NotePublishedPackage is a package of an application no other package of the
 // target imports and outside programs may import.
-const NotePublishedPackage NoteKind = "published-package"
+const NotePublishedPackage noteKind = "published-package"
 
 // UnansweredQuestion counts, for one configuration, the questions the analysis
 // asked its type checker that went unanswered and the declarations they held.
@@ -316,7 +316,7 @@ func (w *Withheld) Line() string {
 	for _, count := range []struct {
 		confidence Class
 		n          int
-	}{{ClassProbable, w.Probable}, {ClassPossible, w.Possible}} {
+	}{{ClassProbable, w.Probable}, {classPossible, w.Possible}} {
 		if count.n > 0 {
 			named = append(named, strconv.Itoa(count.n)+" "+string(count.confidence))
 			lowest = string(count.confidence)

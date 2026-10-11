@@ -11,25 +11,25 @@ import (
 	"github.com/cplieger/deadset/internal/report"
 )
 
-// ErrNoInput is a merge given no report to merge.
-var ErrNoInput = errors.New("merge: no input report")
+// errNoInput is a merge given no report to merge.
+var errNoInput = errors.New("merge: no input report")
 
 // The reasons an admission refusal names, one per admission rule. An
-// [*AdmissionError] wraps one of the first three, a [*TargetError] the fourth,
-// an [*EntryError] one of the next two and a [*NameError] the last.
+// [*admissionError] wraps one of the first three, a [*targetError] the fourth,
+// an [*entryError] one of the next two and a [*nameError] the last.
 var (
-	ErrSchemaVersion = errors.New("the report's schema version is outside the accepted range")
-	ErrConformance   = errors.New("the report's analyzer has no conformance pass")
-	ErrOmitted       = errors.New("the report omits findings its analysis produced")
-	ErrTarget        = errors.New("two reports name different targets")
-	ErrEntryIdentity = errors.New("two reports hold different entries under one id")
-	ErrEntryState    = errors.New("two reports place one id in two states")
-	ErrAnalyzerName  = errors.New("two reports carry one analyzer name")
+	errSchemaVersion = errors.New("the report's schema version is outside the accepted range")
+	errConformance   = errors.New("the report's analyzer has no conformance pass")
+	errOmitted       = errors.New("the report omits findings its analysis produced")
+	errTarget        = errors.New("two reports name different targets")
+	errEntryIdentity = errors.New("two reports hold different entries under one id")
+	errEntryState    = errors.New("two reports place one id in two states")
+	errAnalyzerName  = errors.New("two reports carry one analyzer name")
 )
 
-// AdmissionError is one input report the admission step refuses. Err is
-// [ErrSchemaVersion], [ErrConformance] or [ErrOmitted].
-type AdmissionError struct {
+// admissionError is one input report the admission step refuses. Err is
+// [errSchemaVersion], [errConformance] or [errOmitted].
+type admissionError struct {
 	Err error
 
 	// Analyzer is the refused report's analyzer name.
@@ -52,12 +52,12 @@ type AdmissionError struct {
 // Error names the analyzer and what the refusal reads: for a schema version
 // both versions, for a conformance block its result, and for an omission the
 // count.
-func (e *AdmissionError) Error() string {
+func (e *admissionError) Error() string {
 	switch {
-	case errors.Is(e.Err, ErrSchemaVersion):
+	case errors.Is(e.Err, errSchemaVersion):
 		return fmt.Sprintf("merge: %s writes schema version %s, and the merge accepts %s",
 			e.Analyzer, e.SchemaVersion, strings.Join(e.Accepted, ", "))
-	case errors.Is(e.Err, ErrOmitted):
+	case errors.Is(e.Err, errOmitted):
 		return fmt.Sprintf("merge: %s omitted %d findings from its report, and a merge reads every finding an analysis produced",
 			e.Analyzer, e.Omitted)
 	default:
@@ -66,34 +66,34 @@ func (e *AdmissionError) Error() string {
 }
 
 // Unwrap is the reason for the refusal.
-func (e *AdmissionError) Unwrap() error { return e.Err }
+func (e *admissionError) Unwrap() error { return e.Err }
 
-// TargetError is two input reports naming different targets, where a merged
+// targetError is two input reports naming different targets, where a merged
 // report names the one target every input names.
-type TargetError struct {
+type targetError struct {
 	Analyzers [2]string
 	Targets   [2]report.Target
 }
 
 // Error names both analyzers and the target each names.
-func (e *TargetError) Error() string {
+func (e *targetError) Error() string {
 	return fmt.Sprintf("merge: %s reports on target %s and %s on target %s, and a merge reads reports of one target",
 		e.Analyzers[0], describeTarget(e.Targets[0]), e.Analyzers[1], describeTarget(e.Targets[1]))
 }
 
-// Unwrap is [ErrTarget].
-func (e *TargetError) Unwrap() error { return ErrTarget }
+// Unwrap is [errTarget].
+func (*targetError) Unwrap() error { return errTarget }
 
 // describeTarget is a target as an error message names it.
 func describeTarget(t report.Target) string {
 	return fmt.Sprintf("%s %q at %q", t.Kind, t.Identity, t.Root)
 }
 
-// EntryError is two input reports that disagree on what one identifier of the
-// run names. Err is [ErrEntryIdentity] when both list the id in one array and
-// the entries differ in an identity member, and [ErrEntryState] when one lists
+// entryError is two input reports that disagree on what one identifier of the
+// run names. Err is [errEntryIdentity] when both list the id in one array and
+// the entries differ in an identity member, and [errEntryState] when one lists
 // it as built or loaded and the other as not built or unavailable.
-type EntryError struct {
+type entryError struct {
 	Err error
 
 	// Analyzers names the two reports, and Arrays the array of each that
@@ -104,8 +104,8 @@ type EntryError struct {
 }
 
 // Error names both reports, the id and the arrays holding it.
-func (e *EntryError) Error() string {
-	if errors.Is(e.Err, ErrEntryState) {
+func (e *entryError) Error() string {
+	if errors.Is(e.Err, errEntryState) {
 		return fmt.Sprintf("merge: %s lists %q in %s and %s lists it in %s, and one id of a run is in one state",
 			e.Analyzers[0], e.ID, e.Arrays[0], e.Analyzers[1], e.Arrays[1])
 	}
@@ -114,26 +114,25 @@ func (e *EntryError) Error() string {
 }
 
 // Unwrap is the reason for the refusal.
-func (e *EntryError) Unwrap() error { return e.Err }
+func (e *entryError) Unwrap() error { return e.Err }
 
-// NameError is two input reports carrying one analyzer name. The name prefixes
+// nameError is two input reports carrying one analyzer name. The name prefixes
 // every component id an analyzer mints and stamps every record a merge carries
 // from its report, so a merged report cannot tell the two apart, whatever their
 // versions and digests.
-type NameError struct {
+type nameError struct {
 	Name     string
 	Versions [2]string
-	Digests  [2]string
 }
 
 // Error names the analyzer and both versions.
-func (e *NameError) Error() string {
+func (e *nameError) Error() string {
 	return fmt.Sprintf("merge: two input reports carry the analyzer name %s, at versions %s and %s, and a merge reads one report per name",
 		e.Name, e.Versions[0], e.Versions[1])
 }
 
-// Unwrap is [ErrAnalyzerName].
-func (e *NameError) Unwrap() error { return ErrAnalyzerName }
+// Unwrap is [errAnalyzerName].
+func (*nameError) Unwrap() error { return errAnalyzerName }
 
 // admit runs the admission step over inputs in merged_from's order. Each
 // report is refused on its own first: its schema version, its conformance
@@ -176,16 +175,16 @@ func admit(ordered []Input, accepted []string) error {
 func admitOne(r *report.Report, accepted []string) error {
 	switch {
 	case !slices.Contains(accepted, r.SchemaVersion):
-		return &AdmissionError{
-			Err:           ErrSchemaVersion,
+		return &admissionError{
+			Err:           errSchemaVersion,
 			Analyzer:      r.Analyzer.Name,
 			SchemaVersion: r.SchemaVersion,
 			Accepted:      slices.Clone(accepted),
 		}
 	case r.Analyzer.Conformance.Result != report.ResultPass:
-		return &AdmissionError{Err: ErrConformance, Analyzer: r.Analyzer.Name, Result: r.Analyzer.Conformance.Result}
+		return &admissionError{Err: errConformance, Analyzer: r.Analyzer.Name, Result: r.Analyzer.Conformance.Result}
 	case r.Totals.Omitted != 0:
-		return &AdmissionError{Err: ErrOmitted, Analyzer: r.Analyzer.Name, Omitted: r.Totals.Omitted}
+		return &admissionError{Err: errOmitted, Analyzer: r.Analyzer.Name, Omitted: r.Totals.Omitted}
 	}
 	return nil
 }
@@ -195,13 +194,12 @@ func admitPair(a, b *Input, aEntries, bEntries *idEntries) error {
 	first, second := a.Report, b.Report
 	names := [2]string{first.Analyzer.Name, second.Analyzer.Name}
 	if first.Target != second.Target {
-		return &TargetError{Analyzers: names, Targets: [2]report.Target{first.Target, second.Target}}
+		return &targetError{Analyzers: names, Targets: [2]report.Target{first.Target, second.Target}}
 	}
 	if first.Analyzer.Name == second.Analyzer.Name {
-		return &NameError{
+		return &nameError{
 			Name:     first.Analyzer.Name,
 			Versions: [2]string{first.Analyzer.Version, second.Analyzer.Version},
-			Digests:  [2]string{a.Digest, b.Digest},
 		}
 	}
 	return collide(names, aEntries, bEntries)
@@ -261,8 +259,8 @@ func collide(names [2]string, a, b *idEntries) error {
 	for array := range idArrays {
 		for _, id := range sortedIDs(a[array]) {
 			if other, held := b[array][id]; held && other != a[array][id] {
-				return &EntryError{
-					Err: ErrEntryIdentity, Analyzers: names, ID: id,
+				return &entryError{
+					Err: errEntryIdentity, Analyzers: names, ID: id,
 					Arrays: [2]string{arrayNames[array], arrayNames[array]},
 				}
 			}
@@ -272,8 +270,8 @@ func collide(names [2]string, a, b *idEntries) error {
 		paired := pairedArray[array]
 		for _, id := range sortedIDs(a[array]) {
 			if _, held := b[paired][id]; held {
-				return &EntryError{
-					Err: ErrEntryState, Analyzers: names, ID: id,
+				return &entryError{
+					Err: errEntryState, Analyzers: names, ID: id,
 					Arrays: [2]string{arrayNames[array], arrayNames[paired]},
 				}
 			}

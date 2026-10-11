@@ -123,10 +123,10 @@ func keyList(contractVersion string) node {
 		{name: "reporters", kind: section, owner: everyProduct, children: []node{
 			{
 				name: "formats", kind: setting, owner: everyProduct,
-				fallback: raw(`["text"]`), check: list(1, oneOf(FormatText, FormatJSON, FormatGitHub, FormatSARIF, FormatTemplate)),
+				fallback: raw(`["text"]`), check: list(1, oneOf(FormatText, formatJSON, FormatGitHub, FormatSARIF, FormatTemplate)),
 			},
 			{name: "sort", kind: setting, owner: everyProduct, fallback: raw(`"position"`), check: oneOf(SortPosition, SortSize)},
-			{name: "cascade", kind: setting, owner: everyProduct, fallback: raw(`"roots"`), check: oneOf(CascadeRoots, CascadeFull)},
+			{name: "cascade", kind: setting, owner: everyProduct, fallback: raw(`"roots"`), check: oneOf(cascadeRoots, CascadeFull)},
 			{name: "max_findings", kind: setting, owner: everyProduct, fallback: raw(`0`), check: count},
 			{name: "fail_on", kind: setting, owner: everyProduct, fallback: raw(`"deny"`), check: oneOf(Allow, Warn, Deny)},
 		}},

@@ -107,6 +107,8 @@ type Positioned struct {
 // or a pointer) where the finding does not carry it, and the finding's code
 // decides which members it carries; a slice member that is present and empty
 // is a non-nil empty slice.
+//
+//nolint:govet // fieldalignment: the field order is the schema's member order, which the encoding writes
 type Details struct {
 	// NarrowerVisibility is "file", "package" or "module".
 	NarrowerVisibility string       `json:"narrower_visibility,omitzero"`
@@ -121,17 +123,22 @@ type Details struct {
 
 	// Mechanism is "inline", "ignore" or "baseline".
 	Mechanism string `json:"mechanism,omitzero"`
-	Entry     *Entry `json:"entry,omitzero"`
+	Entry     *entry `json:"entry,omitzero"`
 
 	Overlap          []string   `json:"overlap,omitzero"`
 	Edge             string     `json:"edge,omitzero"`
 	Sides            []EdgeSide `json:"sides,omitzero"`
 	RemovesLastUseOf []string   `json:"removes_last_use_of,omitzero"`
+
+	// NameLiteral is the first string literal spelling the subject's name, or a
+	// package-level constant's defined type's, carried only where it lowered the
+	// class to possible.
+	NameLiteral *Position `json:"name_literal,omitzero"`
 }
 
-// Entry is the suppression record a finding about one reports. A member is
+// entry is the suppression record a finding about one reports. A member is
 // empty exactly where the record lacks it.
-type Entry struct {
+type entry struct {
 	Code   string `json:"code"`
 	Symbol string `json:"symbol,omitzero"`
 	Path   string `json:"path,omitzero"`
@@ -154,7 +161,7 @@ type Class string
 const (
 	ClassCertain  Class = "certain"
 	ClassProbable Class = "probable"
-	ClassPossible Class = "possible"
+	classPossible Class = "possible"
 )
 
 // Relation is the liveness relation that decided a subject.
@@ -163,7 +170,7 @@ type Relation string
 // The liveness relations.
 const (
 	RelationReferenceCounting Relation = "reference-counting"
-	RelationReachability      Relation = "reachability"
+	relationReachability      Relation = "reachability"
 )
 
 // Fixability is what a maintainer does with a finding's subject.
@@ -172,8 +179,8 @@ type Fixability string
 // The fixabilities a finding carries.
 const (
 	FixabilityDeletable  Fixability = "deletable"
-	FixabilityNarrowable Fixability = "narrowable"
-	FixabilityManual     Fixability = "manual"
+	fixabilityNarrowable Fixability = "narrowable"
+	fixabilityManual     Fixability = "manual"
 	FixabilityNone       Fixability = "none"
 )
 

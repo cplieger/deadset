@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v6"
+	spec "github.com/cplieger/deadset-spec/v7"
 )
 
 // TestDecodeReadsEveryExampleReportBack decodes every report the Contract
@@ -277,6 +277,63 @@ func TestDecodeRefusesWhatEncodingJSONAdmits(t *testing.T) {
 	}
 }
 
+// TestDecodeHoldsANameLiteralToItsCodesAndItsClass reads the published
+// finding a name literal lowered, then edits it: the member is refused under a
+// code the name-literal rule does not list, on a finding at another class, and
+// at a position the position rules refuse.
+func TestDecodeHoldsANameLiteralToItsCodesAndItsClass(t *testing.T) {
+	t.Parallel()
+
+	const path = "vectors/sarif/name-literal-related-location/report.json"
+	valid := read(t, spec.Vectors, path)
+	decoded, err := Decode(valid)
+	if err != nil {
+		t.Fatalf("Decode(%s) = %v, want the report read", path, err)
+	}
+	want := &Position{Path: "registry.go", Line: 4, Column: 10, EndLine: 4}
+	if got := decoded.Findings[0].Details.NameLiteral; got == nil || *got != *want {
+		t.Errorf("Decode(%s) name_literal = %+v, want %+v", path, got, want)
+	}
+
+	for name, tt := range map[string]struct {
+		old, new    string
+		wantPointer string
+		wantReason  error
+	}{
+		"under a code the rule does not list": {
+			old: `"code": "DS1002"`, new: `"code": "DS1003"`,
+			wantPointer: "/findings/0/details/name_literal", wantReason: errForbidden,
+		},
+		"on a finding at another class": {
+			old: `"reachability_class": "possible"`, new: `"reachability_class": "certain"`,
+			wantPointer: "/findings/0/reachability_class", wantReason: errValue,
+		},
+		"at line zero": {
+			old: `"path": "registry.go",
+          "line": 4`, new: `"path": "registry.go",
+          "line": 0`,
+			wantPointer: "/findings/0/details/name_literal/line", wantReason: errValue,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			edited := strings.Replace(string(valid), tt.old, tt.new, 1)
+			if edited == string(valid) {
+				t.Fatalf("Setup: %q is not in the report", tt.old)
+			}
+			_, err := Decode([]byte(edited))
+			var refused *Error
+			if !errors.As(err, &refused) {
+				t.Fatalf("Decode(%s) = %v, want an *Error at %q", name, err, tt.wantPointer)
+			}
+			if refused.Pointer != tt.wantPointer || !errors.Is(err, tt.wantReason) {
+				t.Errorf("Decode(%s) = %v (at %q), want %v at %q", name, err, refused.Pointer, tt.wantReason, tt.wantPointer)
+			}
+		})
+	}
+}
+
 // TestEncodeRefusesAReportDecodeWouldRefuse pins that Encode holds a report to
 // the rules Decode applies and writes nothing when it refuses one.
 func TestEncodeRefusesAReportDecodeWouldRefuse(t *testing.T) {
@@ -369,6 +426,59 @@ func TestEncodeRefusesEveryNegativeCount(t *testing.T) {
 			var refused *Error
 			if !errors.As(err, &refused) || refused.Pointer != pointer || !errors.Is(err, errValue) {
 				t.Errorf("Encode(%s = -1) = %v, want %v at %q", pointer, err, errValue, pointer)
+			}
+		})
+	}
+}
+
+// TestEncodeRefusesEveryCountAboveItsSchemaMaximum sets each count of a valid
+// report's totals that the report schema gives a maximum to one above it, so
+// each is refused at its own pointer.
+func TestEncodeRefusesEveryCountAboveItsSchemaMaximum(t *testing.T) {
+	t.Parallel()
+
+	bounded := map[string]int64{}
+	var walk func(pointer string, node json.RawMessage)
+	walk = func(pointer string, node json.RawMessage) {
+		var keywords struct {
+			Maximum    *int64                     `json:"maximum"`
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		decodeSchema(t, node, &keywords)
+		if keywords.Maximum != nil {
+			bounded[pointer] = *keywords.Maximum
+		}
+		for name, child := range keywords.Properties {
+			walk(pointer+"/"+name, child)
+		}
+	}
+	var root struct {
+		Properties struct {
+			Totals json.RawMessage `json:"totals"`
+		} `json:"properties"`
+	}
+	decodeSchema(t, schemaOf(t, reportSchema), &root)
+	walk("/totals", root.Properties.Totals)
+	if len(bounded) == 0 {
+		t.Fatal("Setup: the report schema gives no count of totals a maximum")
+	}
+	for pointer, maximum := range bounded {
+		t.Run(strings.TrimPrefix(pointer, "/"), func(t *testing.T) {
+			t.Parallel()
+
+			decoded, err := Decode(read(t, spec.Vectors, "vectors/merge/one-report/inputs/00-go.json"))
+			if err != nil {
+				t.Fatalf("Setup: Decode(one-report input) = %v", err)
+			}
+			held := reflect.ValueOf(&decoded.Totals).Elem()
+			for segment := range strings.SplitSeq(strings.TrimPrefix(pointer, "/totals/"), "/") {
+				held = held.FieldByIndex(fieldNamed(t, held.Type(), segment))
+			}
+			held.SetInt(maximum + 1)
+			err = Encode(io.Discard, decoded)
+			var refused *Error
+			if !errors.As(err, &refused) || refused.Pointer != pointer || !errors.Is(err, errValue) {
+				t.Errorf("Encode(%s = %d) = %v, want %v at %q", pointer, maximum+1, err, errValue, pointer)
 			}
 		})
 	}

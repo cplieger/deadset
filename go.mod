@@ -3,6 +3,6 @@ module github.com/cplieger/deadset
 go 1.27.2
 
 require (
-	github.com/cplieger/deadset-spec/v6 v6.1.3
+	github.com/cplieger/deadset-spec/v7 v7.0.0
 	pgregory.net/rapid v1.3.0
 )

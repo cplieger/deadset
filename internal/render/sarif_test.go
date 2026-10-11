@@ -294,8 +294,9 @@ func TestSARIFHasTheMappingsStructure(t *testing.T) {
 }
 
 // A finding naming positions beyond its own carries a related location for
-// each, implementations then writes then the other members of its component,
-// numbered from one, and its message links every one.
+// each, implementations then writes then its name literal then the other
+// members of its component, numbered from one, and its message links every
+// one. relatedLocations reads no code, so one finding carries every list.
 func TestSARIFRelatesEveryPositionAFindingNames(t *testing.T) {
 	t.Parallel()
 
@@ -309,6 +310,7 @@ func TestSARIFRelatesEveryPositionAFindingNames(t *testing.T) {
 		Details: report.Details{
 			Implementations: []report.Positioned{{Ref: "ts://x#Impl", Position: at("src/impl.ts", 4, 1)}},
 			WritePositions:  []report.Position{at("src/features/tabs/index.ts", 1190, 9), at("src/features/tabs/index.ts", 1201, 9)},
+			NameLiteral:     new(at("src/registry.ts", 4, 10)),
 		},
 		Component: report.Component{Members: []report.Positioned{
 			{Ref: "ts://@example/app/src/features/tabs/index.ts#Tabs.cache", Position: at("src/features/tabs/index.ts", 12, 3)},
@@ -318,12 +320,13 @@ func TestSARIFRelatesEveryPositionAFindingNames(t *testing.T) {
 	related := relatedLocations(&found)
 	got := messageWithLinks(found.Message, related)
 	want := "private member is written and never read (see [implementation src/impl.ts:4:1](1), " +
-		"[write src/features/tabs/index.ts:1190:9](2), [write src/features/tabs/index.ts:1201:9](3), [member src/a b.ts:30:5](4))"
+		"[write src/features/tabs/index.ts:1190:9](2), [write src/features/tabs/index.ts:1201:9](3), [name src/registry.ts:4:10](4), " +
+		"[member src/a b.ts:30:5](5))"
 	if got != want {
 		t.Errorf("messageWithLinks(%s) =\n%s\nwant\n%s", found.Code, got, want)
 	}
-	if len(related) != 4 || related[3].ID != 4 || related[3].PhysicalLocation.ArtifactLocation.URI != "src/a%20b.ts" {
-		t.Errorf("relatedLocations(%s) = %+v, want four, numbered from one, the last at src/a%%20b.ts", found.Code, related)
+	if len(related) != 5 || related[4].ID != 5 || related[4].PhysicalLocation.ArtifactLocation.URI != "src/a%20b.ts" {
+		t.Errorf("relatedLocations(%s) = %+v, want five, numbered from one, the last at src/a%%20b.ts", found.Code, related)
 	}
 }
 

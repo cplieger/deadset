@@ -23,11 +23,11 @@ func TestMergeNamesTheFirstUnresolvedPendingFindingInCanonicalOrder(t *testing.T
 	typescript.EdgeEvaluations = []report.EdgeEvaluation{evaluation("wire/C", report.SideUsedBy, report.StateLive)}
 
 	merged, err := Merge(inputs(typescript, golang), accepted, &caller)
-	refused, ok := errors.AsType[*UnresolvedError](err)
-	if merged != nil || !ok || !errors.Is(err, ErrUnresolvedEdge) {
-		t.Fatalf("Merge(two unresolved pending findings) = %v, %v, want no report and an *UnresolvedError", merged, err)
+	refused, ok := errors.AsType[*unresolvedError](err)
+	if merged != nil || !ok || !errors.Is(err, errUnresolvedEdge) {
+		t.Fatalf("Merge(two unresolved pending findings) = %v, %v, want no report and an *unresolvedError", merged, err)
 	}
-	want := UnresolvedError{
+	want := unresolvedError{
 		Edge: "wire/B", Side: report.SideProvides, Symbol: "go://example.com/app#A", Analyzer: "deadset-go",
 		Searched: []string{"deadset-go", "deadset-ts"},
 	}

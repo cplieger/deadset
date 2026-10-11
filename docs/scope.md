@@ -17,7 +17,7 @@ deadset analyze --target=lib --scope=scope.json
 }
 ```
 
-The document is the scope document [deadset-spec](https://github.com/cplieger/deadset-spec/tree/v6.1.1) publishes in [`contract/scope.schema.json`](https://github.com/cplieger/deadset-spec/blob/v6.1.1/contract/scope.schema.json), the same one each analyzer's own `--scope` reads. A relative path is resolved against the directory that holds the document. Its target must be the directory `--target` names, or the run exits with 2. An optional `workspace` member names the `go.work` file through which the consumers resolve the target.
+The document is the scope document [deadset-spec](https://github.com/cplieger/deadset-spec/tree/v7.0.0) publishes in [`contract/scope.schema.json`](https://github.com/cplieger/deadset-spec/blob/v7.0.0/contract/scope.schema.json), the same one each analyzer's own `--scope` reads. A relative path is resolved against the directory that holds the document. Its target must be the directory `--target` names, or the run exits with 2. An optional `workspace` member names the `go.work` file through which the consumers resolve the target.
 
 ## How consumers reach the analyzers
 

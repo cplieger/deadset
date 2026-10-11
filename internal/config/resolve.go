@@ -25,7 +25,7 @@ type Resolved struct {
 	values     map[string]json.RawMessage
 	severity   map[string]json.RawMessage
 	provenance map[string]string
-	Config     Config
+	Config     config
 	keys       node
 }
 
@@ -219,7 +219,6 @@ func (r *Resolved) resolveSeverity(sources []source) {
 // the setting and what each source said about it.
 func missing(path string, in *Inputs) *Error {
 	return &Error{
-		Key: path,
 		Message: fmt.Sprintf("%s is not set, and it has no default and is never inferred: "+
 			"no flag supplies it, %s, and %s", path, searched(fromRepository, in.Repository), searched(fromCentral, in.Central)),
 	}
@@ -238,8 +237,8 @@ func searched(kind string, document Document) string {
 }
 
 // readConfig reads the settings the orchestrator reads out of the resolved values.
-func readConfig(values map[string]json.RawMessage) (Config, error) {
-	var c Config
+func readConfig(values map[string]json.RawMessage) (config, error) {
+	var c config
 	providers, providersErr := readProviders(values[providerListKey])
 	c.Providers = providers
 	err := errors.Join(

@@ -36,14 +36,15 @@ const (
 const (
 	labelImplementation = "implementation"
 	labelWrite          = "write"
+	labelName           = "name"
 	labelMember         = "member"
 
 	maxRelatedLocations = 100
 )
 
-// ErrUnplaced reports a merged record whose analyzer member names no report
+// errUnplaced reports a merged record whose analyzer member names no report
 // the merged report was merged from, which no run of the log holds.
-var ErrUnplaced = errors.New("render: a record names an analyzer the merged report was not merged from")
+var errUnplaced = errors.New("render: a record names an analyzer the merged report was not merged from")
 
 // Sources is what the SARIF rendering reads beside the report.
 type Sources struct {
@@ -141,12 +142,12 @@ func everyRecordPlaced(r *report.Report) error {
 	}
 	for i := range r.Findings {
 		if !placed(r.Findings[i].Analyzer) {
-			return fmt.Errorf("%w: a finding names %q", ErrUnplaced, r.Findings[i].Analyzer)
+			return fmt.Errorf("%w: a finding names %q", errUnplaced, r.Findings[i].Analyzer)
 		}
 	}
 	for i := range r.StaleSuppressions {
 		if !placed(r.StaleSuppressions[i].Analyzer) {
-			return fmt.Errorf("%w: a stale suppression names %q", ErrUnplaced, r.StaleSuppressions[i].Analyzer)
+			return fmt.Errorf("%w: a stale suppression names %q", errUnplaced, r.StaleSuppressions[i].Analyzer)
 		}
 	}
 	return nil
@@ -315,8 +316,9 @@ func listed(items []string) []string {
 }
 
 // relatedLocations is every position a finding names beyond its own, numbered
-// from one: its implementations, then its write positions, then the other
-// members of its component where it lists them, the first hundred of these.
+// from one: its implementations, then its write positions, then its name
+// literal, then the other members of its component where it lists them, the
+// first hundred of these.
 func relatedLocations(found *report.Finding) []sarifLocation {
 	var held []sarifLocation
 	add := func(label string, at *report.Position) {
@@ -334,6 +336,9 @@ func relatedLocations(found *report.Finding) []sarifLocation {
 	}
 	for i := range found.Details.WritePositions {
 		add(labelWrite, &found.Details.WritePositions[i])
+	}
+	if found.Details.NameLiteral != nil {
+		add(labelName, found.Details.NameLiteral)
 	}
 	for i := range found.Component.Members {
 		if member := &found.Component.Members[i]; !ownDeclaration(found, member) {
