@@ -277,6 +277,63 @@ func TestDecodeRefusesWhatEncodingJSONAdmits(t *testing.T) {
 	}
 }
 
+// TestDecodeHoldsANameLiteralToItsCodesAndItsClass reads the published
+// finding a name literal lowered, then edits it: the member is refused under a
+// code the name-literal rule does not list, on a finding at another class, and
+// at a position the position rules refuse.
+func TestDecodeHoldsANameLiteralToItsCodesAndItsClass(t *testing.T) {
+	t.Parallel()
+
+	const path = "vectors/sarif/name-literal-related-location/report.json"
+	valid := read(t, spec.Vectors, path)
+	decoded, err := Decode(valid)
+	if err != nil {
+		t.Fatalf("Decode(%s) = %v, want the report read", path, err)
+	}
+	want := &Position{Path: "registry.go", Line: 4, Column: 10, EndLine: 4}
+	if got := decoded.Findings[0].Details.NameLiteral; got == nil || *got != *want {
+		t.Errorf("Decode(%s) name_literal = %+v, want %+v", path, got, want)
+	}
+
+	for name, tt := range map[string]struct {
+		old, new    string
+		wantPointer string
+		wantReason  error
+	}{
+		"under a code the rule does not list": {
+			old: `"code": "DS1002"`, new: `"code": "DS1003"`,
+			wantPointer: "/findings/0/details/name_literal", wantReason: errForbidden,
+		},
+		"on a finding at another class": {
+			old: `"reachability_class": "possible"`, new: `"reachability_class": "certain"`,
+			wantPointer: "/findings/0/reachability_class", wantReason: errValue,
+		},
+		"at line zero": {
+			old: `"path": "registry.go",
+          "line": 4`, new: `"path": "registry.go",
+          "line": 0`,
+			wantPointer: "/findings/0/details/name_literal/line", wantReason: errValue,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			edited := strings.Replace(string(valid), tt.old, tt.new, 1)
+			if edited == string(valid) {
+				t.Fatalf("Setup: %q is not in the report", tt.old)
+			}
+			_, err := Decode([]byte(edited))
+			var refused *Error
+			if !errors.As(err, &refused) {
+				t.Fatalf("Decode(%s) = %v, want an *Error at %q", name, err, tt.wantPointer)
+			}
+			if refused.Pointer != tt.wantPointer || !errors.Is(err, tt.wantReason) {
+				t.Errorf("Decode(%s) = %v (at %q), want %v at %q", name, err, refused.Pointer, tt.wantReason, tt.wantPointer)
+			}
+		})
+	}
+}
+
 // TestEncodeRefusesAReportDecodeWouldRefuse pins that Encode holds a report to
 // the rules Decode applies and writes nothing when it refuses one.
 func TestEncodeRefusesAReportDecodeWouldRefuse(t *testing.T) {

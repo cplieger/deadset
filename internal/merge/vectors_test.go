@@ -112,11 +112,11 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		check func(error) bool
 	}{
 		{
-			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "8.0.0"},
+			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "8.1.0"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*admissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
-					slices.Equal(refused.Accepted, []string{"8.0.0"})
+					slices.Equal(refused.Accepted, []string{"8.1.0"})
 			},
 		},
 		{

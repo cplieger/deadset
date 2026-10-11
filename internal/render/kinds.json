@@ -1,5 +1,5 @@
 {
-  "description": "The issue-kind vocabulary. Every code is the prefix followed by four digits, assigned to at most one kind for the life of the space: a retired code stays retired and is listed here so re-use is checkable. `default_enabled` and `default_severity` are what a configuration overrides unless `fixed` is true; `max_class` caps the confidence a finding of the kind may carry; `fixability` says what a mechanical edit may do with the finding; `precondition` is a condition the analyzer checks before it reports; `derived_from` names the kinds a derived kind is computed from, the finding being reported once under the most specific code; `overlap` names, per language, the external linters or rules that report the same kind, with `[\"none known\"]` and `[\"not applicable\"]` as its two sentinel values. A retired row carries the code and the name of the kind that once held it. grammar/analysis.md states what the program, test code, the roots and a finding's reachability class are for every kind.",
+  "description": "The issue-kind vocabulary. Every code is the prefix followed by four digits, assigned to at most one kind for the life of the space: a retired code stays retired and is listed here so re-use is checkable. `default_enabled` and `default_severity` are what a configuration overrides unless `fixed` is true; `max_class` caps the confidence a finding of the kind may carry; `fixability` says what a mechanical edit may do with the finding; `finding_fixabilities`, present on a kind some of whose findings outside a generated file carry another fixability, lists each fixability a finding of the kind may carry in place of `fixability`, as grammar/analysis.md \"Fixability\" states which findings carry it, and a finding in a generated file carries none under every kind, which this field does not list; `precondition` is a condition the analyzer checks before it reports; `derived_from` names the kinds a derived kind is computed from, the finding being reported once under the most specific code; `overlap` names, per language, the external linters or rules that report the same kind, with `[\"none known\"]` and `[\"not applicable\"]` as its two sentinel values. A retired row carries the code and the name of the kind that once held it. grammar/analysis.md states what the program, test code, the roots and a finding's reachability class are for every kind.",
   "prefix": "DS",
   "languages": ["go", "ts"],
   "severities": ["allow", "warn", "deny"],
@@ -80,6 +80,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false
     },
     {
@@ -91,6 +92,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false
     },
     {
@@ -102,6 +104,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false,
       "precondition": "A TypeScript member that no value writes and nothing reads, whose type names a type parameter of its declaring interface, class or type alias, is not reported when every part of that declaration that names the type parameter is a member no value writes and nothing reads. TypeScript compares object types by their members, so such members are what make two instantiations of their type distinct types, and deleting them leaves the type parameter phantom and lets one instantiation stand for another. A member a value writes is decided by the rule of DS1301 instead, whatever its type names."
     },
@@ -114,6 +117,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false,
       "derived_from": ["DS1001", "DS1002", "DS1003"]
     },
@@ -126,6 +130,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false
     },
     {
@@ -137,6 +142,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false,
       "derived_from": ["DS1001", "DS1002", "DS1003"]
     },
@@ -150,7 +156,7 @@
       "max_class": "certain",
       "fixability": "narrowable",
       "fixed": false,
-      "precondition": "Closed world only. A Go main package, and an internal/ directory tree for importers outside its parent, are closed worlds whatever the configuration declares, because no other program can import them, so this finding is reported there always. A published package is a closed world only when the configuration declares the consumer set complete and every declared consumer loads. A library with no consumer loaded and no complete consumer set declared gets this finding on its internal/ tree and its main packages and never on its published API. A symbol the rule of DS1301 holds for is not reported under this code, whatever severity the configuration gives DS1301, because the write-only finding names the defect to fix first. A type that a parameter or a result of an exported function or method of its own package names is not reported when a reference from outside the package references that function or method, because the caller holds values of the type, and unexporting it would leave an exported signature naming a type its callers cannot name."
+      "precondition": "Closed world only. A Go main package, and an internal/ directory tree for importers outside its parent, are closed worlds whatever the configuration declares, because no other program can import them, so this finding is reported there always. A published package is a closed world only when the configuration declares the consumer set complete and every declared consumer loads. A library with no consumer loaded and no complete consumer set declared gets this finding on its internal/ tree and its main packages and never on its published API. A symbol the rule of DS1301 holds for is not reported under this code, whatever severity the configuration gives DS1301, because the write-only finding names the defect to fix first. A type that a parameter or a result of an exported function or method of its own package names is not reported when a reference from outside the package references that function or method, because the caller holds values of the type, and unexporting it would leave an exported signature naming a type its callers cannot name. A package-level declaration whose name a string literal spells carries the class grammar/analysis.md gives it."
     },
     {
       "code": "DS1102",
@@ -168,11 +174,12 @@
       "code": "DS1103",
       "name": "unreachable-export",
       "languages": ["go", "ts"],
-      "rule": "An unused exported symbol in a package or file no external code can import: an unused-exported candidate whose enclosing package or file is unimportable from outside, reported once under this code at the certain class, because unimportability is a property of the package graph rather than of the consumer set.",
+      "rule": "An unused exported symbol in a package or file no external code can import: an unused-exported candidate whose enclosing package or file is unimportable from outside, reported once under this code at the certain class, because unimportability is a property of the package graph rather than of the consumer set, except where the confidence rule of grammar/analysis.md gives a declaration a string literal spells the class possible.",
       "default_enabled": true,
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false,
       "derived_from": ["DS1001"]
     },
@@ -197,6 +204,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false
     },
     {
@@ -220,13 +228,14 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
-      "fixed": false
+      "fixed": false,
+      "precondition": "In a library, an assertion whose interface is published API, an exported interface of a package outside programs can import, has the reachability class possible, whatever consumers the run declares and loads. The assertion checks a promise the published API makes, that the type satisfies the published interface, and that promise is made to every program that imports the package, not only to the consumers the run declares. A loaded consumer that names the interface as a type uses it, and the assertion is not reported."
     },
     {
       "code": "DS1301",
       "name": "write-only-symbol",
       "languages": ["go", "ts"],
-      "rule": "A package-level or module-level variable, struct field, class member, type member or collection that production code writes and never reads. In production mode a read from a test file counts as no read. A write from a loaded consumer's code counts as a read, because the deletion the finding names would break a consumer the target does not own. A write in a consumer's test file counts as a read in the run that counts test references. It counts in a production sweep only where the configuration counts consumer tests as production. A comparison of struct values reads every field of the type: in Go, a value of a struct type used as an operand of `==` or `!=`, as a map key, or as a `switch` tag or `case` expression is a read of every field of that type, transitively through the fields of every struct type it holds, recorded at the comparison, because equality reads every field and a field that decides equality carries information. In Go a type argument the program instantiates a type parameter with, where the parameter's constraint is `comparable` or embeds it, is compared as an operand of `==` of that type is, recorded at the instantiation, so the struct values `slices.Equal`, `slices.Index` or `maps.Equal` compares have every field read. `reflect.DeepEqual` is not a comparison under this rule. In TypeScript a comparison of two object references reads no member, because `===` compares identity and never a member. In TypeScript a property of an object literal writes the member of the same name that the literal's contextual type declares, whether or not the compiler checks the literal for excess properties. Where that contextual type is a union or an intersection, the property writes the member of that name on each constituent that declares one. So a literal that a declaration annotates, a function returns, a call passes or a `satisfies` expression checks writes the members of the type it is given. A store through the value a field or a member holds reads that field or member rather than writing it, because the store lands in storage every other holder of the value reads. In Go that store is an assignment, an increment, a compound assignment or a `delete` whose target is reached through a struct field holding a map, a slice or a pointer. Examples are `s.f[k] = v`, `s.f.x = v` and `delete(s.f, k)`. The same store through a field holding an array or a struct is a store into the field itself. TypeScript holds every object by reference, so an element or property store through a member's value reads the member. The finding names each write position, so the deletion set is visible. Deleting the subject and its writes also deletes every declaration whose only uses they hold. Such a declaration is a type parameter of the subject's declaring type that the subject's type alone names, an import binding the writes alone use, or a declaration whose every use is in the type annotation of the subject or of another subject this rule reports, or in the writes those findings name. The finding's message names each such declaration, and no finding is reported about the declaration itself.",
+      "rule": "A package-level or module-level variable, struct field, class member, type member or collection that production code writes and never reads. In production mode a read from a test file counts as no read. A write from a loaded consumer's code counts as a read, because the deletion the finding names would break a consumer the target does not own. A write in a consumer's test file counts as a read in the run that counts test references. It counts in a production sweep only where the configuration counts consumer tests as production. A comparison of struct values reads every field of the type: in Go, a value of a struct type used as an operand of `==` or `!=`, as a map key, or as a `switch` tag or `case` expression is a read of every field of that type, transitively through the fields of every struct type it holds, recorded at the comparison, because equality reads every field and a field that decides equality carries information. In Go a type argument the program instantiates a type parameter with, where the parameter's constraint is `comparable` or embeds it, is compared as an operand of `==` of that type is, recorded at the instantiation, so the struct values `slices.Equal`, `slices.Index` or `maps.Equal` compares have every field read. `reflect.DeepEqual` is not a comparison under this rule. In Go, a conversion the compiler accepts between two struct types, or between two pointer types that are not named types and whose base types are struct types, reads every field of the two struct types where their struct type literals are distinct, recorded at the conversion, because the conversion is legal only while their fields are identical, ignoring tags, and so no field of either can be deleted alone. It reads in the same way every field of each pair of distinct struct type literals the identity of the two types compares in turn: through each field's type, and from there through the element, key, base, parameter and result types of the type literals it reaches, through the method signatures of an interface type literal, and through the type arguments of an instantiated generic type. A field reached there has no reference of its own, as grammar/symbol-ref.md states, so it is never a subject and those reads hold no finding back. It stops at a defined type, whose fields the conversion does not read, because a defined type is identical to itself whatever fields it declares. A pair whose two sides are one struct type literal, the two struct types themselves included, as where one type is declared from the other or the conversion is to the operand's own type, reads nothing, because a field deleted from that literal leaves both sides identical. Where the operand's type or the conversion's type is a type parameter, the struct type its constraint's core type is takes that side's place, and a type parameter operand reads in the same way the fields of each struct type argument an instantiation the program holds gives it, an instantiation made through another generic declaration's own type parameters included. A conversion to any other type, an interface type among them, reads no field under this rule. In TypeScript a comparison of two object references reads no member, because `===` compares identity and never a member. In TypeScript a property of an object literal writes the member of the same name that the literal's contextual type declares, whether or not the compiler checks the literal for excess properties. Where that contextual type is a union or an intersection, the property writes the member of that name on each constituent that declares one. So a literal that a declaration annotates, a function returns, a call passes or a `satisfies` expression checks writes the members of the type it is given. An object literal handed to a callee the target does not implement has its members read, as grammar/analysis.md states. A store through the value a field or a member holds reads that field or member rather than writing it, because the store lands in storage every other holder of the value reads. In Go that store is an assignment, an increment, a compound assignment or a `delete` whose target is reached through a struct field holding a map, a slice or a pointer. Examples are `s.f[k] = v`, `s.f.x = v` and `delete(s.f, k)`. The same store through a field holding an array or a struct is a store into the field itself. TypeScript holds every object by reference, so an element or property store through a member's value reads the member. The finding names each write position, so the deletion set is visible. Deleting the subject and its writes also deletes every declaration whose only uses they hold. Such a declaration is a type parameter of the subject's declaring type that the subject's type alone names, an import binding the writes alone use, or a declaration whose every use is in the type annotation of the subject or of another subject this rule reports, or in the writes those findings name. The finding's message names each such declaration, and no finding is reported about the declaration itself.",
       "default_enabled": true,
       "default_severity": "deny",
       "max_class": "certain",
@@ -242,6 +251,7 @@
       "default_severity": "deny",
       "max_class": "certain",
       "fixability": "deletable",
+      "finding_fixabilities": ["manual"],
       "fixed": false
     },
     {
@@ -260,7 +270,7 @@
       "code": "DS1501",
       "name": "file-never-built",
       "languages": ["go", "ts"],
-      "rule": "A source file no configuration in the build matrix builds. On the Go side the finding names the build constraint that excluded the file. A file whose build constraint is the ignore tag is never reported: the toolchain applies no build constraint to a file named on its own command line, so that tag is the toolchain's convention for a file built by hand. A file any other custom tag excludes is reported under a matrix the configuration declares complete, because completeness is the maintainer's assertion that the listed configurations are every one the target builds, and a configuration the maintainer builds by hand belongs in that list.",
+      "rule": "A source file no configuration in the build matrix builds. On the Go side the finding names the build constraint that excluded the file. A file whose build constraint holds only when the ignore tag is set is never reported, because grammar/analysis.md keeps such a file outside the analysis wherever no configuration builds it: the tag is the toolchain's convention for a file kept out of ordinary package builds unless a configuration explicitly satisfies the tag, and built by hand, the toolchain applying no build constraint to a file named on its own command line. A file any other custom tag excludes is reported under a matrix the configuration declares complete, because completeness is the maintainer's assertion that the listed configurations are every one the target builds, and a configuration the maintainer builds by hand belongs in that list.",
       "default_enabled": true,
       "default_severity": "deny",
       "max_class": "certain",
@@ -289,7 +299,7 @@
       "max_class": "certain",
       "fixability": "manual",
       "fixed": false,
-      "precondition": "On the Go side the rule is the semantics of `go mod tidy -diff` exactly: a requirement marked indirect is never reported, because it exists to pin a transitive version and removing it changes the build list. On the TypeScript side the import closure is the files of the run's projects, and a call of `import.meta.resolve` or of `require.resolve` in them, whatever `require` names, whose first argument is a string literal or a template literal with no substitution needs each dependency an import of that specifier needs. Three more dependencies are needed: one whose command a script entry or a workflow step runs, one that a string of a configuration file names, and one that a string names under a manifest key or a package key of an applied convention row, each as grammar/analysis.md states. A command no script entry and no workflow step runs needs nothing, and a peer the installed manifest of a needed dependency requires is needed only as any other dependency is, because the package manager installs a required peer itself. A dependency of a manifest whose directory holds source only in configurations the run lists in configurations_not_built is reported at the reachability class possible, because the source that may import it was not analyzed. An installed manifest is the package's manifest in the nearest node_modules directory at or above the target, and a dependency with none is decided by the import closure alone."
+      "precondition": "On the Go side the rule is the semantics of `go mod tidy -diff` exactly: a requirement marked indirect is never reported, because it exists to pin a transitive version and removing it changes the build list. On the TypeScript side the import closure is the files of the run's projects, and a call of `import.meta.resolve` or of `require.resolve` in them, whatever `require` names, whose first argument is a string literal or a template literal with no substitution needs each dependency an import of that specifier needs. Four more dependencies are needed: one whose command a script entry or a workflow step runs, one that a string of a configuration file names, and one that a string names under a manifest key or a package key of an applied convention row, each as grammar/analysis.md states, and one that a needed dependency names as a peer, as stated below. A command no script entry and no workflow step runs needs nothing. A declared dependency that the installed manifest of a needed declared dependency names in its peerDependencies is needed, and so on until no further dependency joins. A peer dependency is a package the needed dependency expects beside it at a version its manifest states, whether or not it imports the package, and the project's declaration is what keeps that package present at a version the project chooses, so removing the declaration can break the needed dependency where nothing the analysis reads imports the peer. A peer that peerDependenciesMeta marks optional is needed in the same way, because the needed dependency's manifest still names it as a package it works with, and a package manager may leave an optional peer out where the project does not declare it, so the project's declaration is what keeps it present for the needed dependency. A declared dependency that only dependencies nothing needs name as a peer is needed by nothing. A dependency of a manifest whose directory holds source only in configurations the run lists in configurations_not_built is reported at the reachability class possible, because the source that may import it was not analyzed. An installed manifest is the package's manifest in the nearest node_modules directory at or above the directory of the manifest that declares the dependency, and a dependency with none is decided by the import closure alone. On the TypeScript side, the dependencies judged are those of every manifest grammar/analysis.md says the analysis reads, a nested package's among them, each read against its own directory: a dependency is needed by a use written in a file at or below the directory of the manifest that declares it, by a use no one file holds, and as a peer of a needed dependency of the same manifest or of a manifest below it. A dependency a nested package's manifest declares whose installed manifest the analysis cannot find is not judged, because no run requires a nested package to be installed and its commands and peers cannot be read, while a workspace member's and the target's own are judged as above."
     },
     {
       "code": "DS1605",
@@ -329,7 +339,7 @@
       "code": "DS1703",
       "name": "stale-suppression",
       "languages": ["go", "ts"],
-      "rule": "A suppression that matches no current finding, at either mechanism and in the baseline alike. The run exits with the findings code when at least one is reported. The kind is fixed on at deny: no flag, no severity setting and no per-mechanism exception reduces it below a finding, and a configuration naming this code under a severity key is an unimplemented key.",
+      "rule": "A suppression record that is stale, as grammar/suppression.md defines it, at either mechanism and in the baseline alike. The run exits with the findings code when at least one is reported. The kind is fixed on at deny: no flag, no severity setting and no per-mechanism exception reduces it below a finding, and a configuration naming this code under a severity key is an unimplemented key.",
       "default_enabled": true,
       "default_severity": "deny",
       "max_class": "certain",
@@ -411,7 +421,7 @@
       "max_class": "certain",
       "fixability": "manual",
       "fixed": false,
-      "precondition": "The same free-signature rule as unused-parameter, plus a closed-world condition: every call site of the function must be in the loaded graph, because an unknown caller may consume the result, so the kind reports only for a function whose callers are all visible.",
+      "precondition": "The same free-signature rule as unused-parameter, plus a closed-world condition: every call site of the function must be in the loaded graph, because an unknown caller may consume the result, so the kind reports only for a function whose callers are all visible. A call that is the operand of an await expression written as a statement of its own uses a result whose type has a member named then, a promise or another thenable, because the caller sequences on it, and discards any other result. A call written as a statement of its own, or as the operand of void, discards its result whatever its type.",
       "overlap": {
         "go": ["unparam"],
         "ts": ["none known"]

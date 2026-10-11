@@ -48,6 +48,10 @@
       "result": "pass"
     },
     {
+      "case": "ignore-file-shared-by-two-languages",
+      "result": "pass"
+    },
+    {
       "case": "line-separators-escaped",
       "result": "pass"
     },

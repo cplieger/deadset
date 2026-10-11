@@ -107,6 +107,8 @@ type Positioned struct {
 // or a pointer) where the finding does not carry it, and the finding's code
 // decides which members it carries; a slice member that is present and empty
 // is a non-nil empty slice.
+//
+//nolint:govet // fieldalignment: the field order is the schema's member order, which the encoding writes
 type Details struct {
 	// NarrowerVisibility is "file", "package" or "module".
 	NarrowerVisibility string       `json:"narrower_visibility,omitzero"`
@@ -127,6 +129,11 @@ type Details struct {
 	Edge             string     `json:"edge,omitzero"`
 	Sides            []EdgeSide `json:"sides,omitzero"`
 	RemovesLastUseOf []string   `json:"removes_last_use_of,omitzero"`
+
+	// NameLiteral is the first string literal spelling the subject's name, or a
+	// package-level constant's defined type's, carried only where it lowered the
+	// class to possible.
+	NameLiteral *Position `json:"name_literal,omitzero"`
 }
 
 // entry is the suppression record a finding about one reports. A member is

@@ -62,7 +62,13 @@ var (
 		"parameter", "receiver", "result", "statement", "case", "store",
 		"file", "dependency", "module-directive", "suppression", "root", "configured-declaration", "edge",
 	}
-	relationFreeCodes = []string{"DS1101", "DS1102", "DS1104", "DS1204", "DS1301"}
+	relationFreeCodes = []string{unnecessaryExportCode, unnecessaryExposureCode, "DS1104", "DS1204", "DS1301"}
+)
+
+// The visibility candidates' codes, which several rules below list.
+const (
+	unnecessaryExportCode   = "DS1101"
+	unnecessaryExposureCode = "DS1102"
 )
 
 // staleSuppressionCode is the one code a stale-suppression record carries.
@@ -82,11 +88,11 @@ type detailBranch struct {
 }
 
 // detailBranches are the finding schema's per-code details rules, apart from
-// excluded_by, whose rule also reads the language, and removes_last_use_of,
-// whose rule reads the fixability.
+// excluded_by, whose rule also reads the language, removes_last_use_of, whose
+// rule reads the fixability, and name_literal, whose rule is checkNameLiteral.
 var detailBranches = []detailBranch{
 	{
-		member: "narrower_visibility", codes: []string{"DS1101", "DS1102", "DS1104"},
+		member: "narrower_visibility", codes: []string{unnecessaryExportCode, unnecessaryExposureCode, "DS1104"},
 		present: func(d *Details) bool { return d.NarrowerVisibility != "" },
 	},
 	{
@@ -130,6 +136,10 @@ var detailBranches = []detailBranch{
 // excludedByCode is the code whose details carry excluded_by, on a Go finding
 // alone.
 const excludedByCode = "DS1501"
+
+// nameLiteralCodes are the codes whose details may carry name_literal, the
+// codes the name-literal rule of grammar/analysis.md lists.
+var nameLiteralCodes = []string{"DS1001", "DS1002", "DS1004", "DS1006", unnecessaryExportCode, unnecessaryExposureCode, "DS1103"}
 
 // validate holds a report to every rule of the report and finding schemas
 // that a decode does not already enforce by reading the document, and to the
@@ -383,6 +393,7 @@ func (f *Finding) validate() error {
 		optionalMatch("analyzer", f.Analyzer, tokenPattern),
 		at("details", f.Details.validate()),
 		at("details", f.checkDetails()),
+		f.checkNameLiteral(),
 	)
 }
 
@@ -416,6 +427,20 @@ func (f *Finding) checkDetails() error {
 	}
 	if f.Details.RemovesLastUseOf != nil && f.Fixability != FixabilityDeletable {
 		return at("removes_last_use_of", fmt.Errorf("%w: only a deletable finding removes a dependency's last use, and this one is %s", errForbidden, f.Fixability))
+	}
+	return nil
+}
+
+// checkNameLiteral holds name_literal to the codes that may carry it, and a
+// finding carrying it to the class the literal lowered it to.
+func (f *Finding) checkNameLiteral() error {
+	switch {
+	case f.Details.NameLiteral == nil:
+		return nil
+	case !slices.Contains(nameLiteralCodes, f.Code):
+		return at("details", at("name_literal", fmt.Errorf("%w: %s carries no name_literal", errForbidden, f.Code)))
+	case f.ReachabilityClass != classPossible:
+		return at("reachability_class", fmt.Errorf("%w: a finding a name literal lowered is %s, and this one is %s", errValue, classPossible, f.ReachabilityClass))
 	}
 	return nil
 }
@@ -478,7 +503,17 @@ func (d *Details) validate() error {
 			return first(within("side", side.Side, sides), nonEmpty("symbol", side.Symbol), within("state", side.State, states))
 		}),
 		optionalList("removes_last_use_of", d.RemovesLastUseOf, nonEmptyItem),
+		optionalPosition("name_literal", d.NameLiteral),
 	)
+}
+
+// optionalPosition holds an optional position member to the position rules
+// where it is present.
+func optionalPosition(member string, p *Position) error {
+	if p == nil {
+		return nil
+	}
+	return at(member, p.validate())
 }
 
 func (e *entry) validate() error {
