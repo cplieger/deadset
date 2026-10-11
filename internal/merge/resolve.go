@@ -195,9 +195,9 @@ func dropComponents(dead []*report.EdgeEvaluation, index edgeIndex) map[componen
 // promotion is one pending finding resolution promoted, stamped with its
 // analyzer, with the edge side whose evaluation carried it.
 type promotion struct {
+	finding report.Finding
 	edge    string
 	side    report.Side
-	finding report.Finding
 }
 
 // unite joins the component of each promoted finding with the component of

@@ -408,7 +408,7 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 				Digest: "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66",
 			},
 			Name: "deadset-go", Version: "1.21.0", ContractVersion: "7.0.0",
-			SchemaVersionsAccepted: []string{"8.0.0"},
+			SchemaVersionsAccepted: []string{"8.1.0"},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Describe(conformance-recorded.json) = %+v, want %+v", got, want)

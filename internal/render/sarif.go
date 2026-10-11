@@ -36,6 +36,7 @@ const (
 const (
 	labelImplementation = "implementation"
 	labelWrite          = "write"
+	labelName           = "name"
 	labelMember         = "member"
 
 	maxRelatedLocations = 100
@@ -315,8 +316,9 @@ func listed(items []string) []string {
 }
 
 // relatedLocations is every position a finding names beyond its own, numbered
-// from one: its implementations, then its write positions, then the other
-// members of its component where it lists them, the first hundred of these.
+// from one: its implementations, then its write positions, then its name
+// literal, then the other members of its component where it lists them, the
+// first hundred of these.
 func relatedLocations(found *report.Finding) []sarifLocation {
 	var held []sarifLocation
 	add := func(label string, at *report.Position) {
@@ -334,6 +336,9 @@ func relatedLocations(found *report.Finding) []sarifLocation {
 	}
 	for i := range found.Details.WritePositions {
 		add(labelWrite, &found.Details.WritePositions[i])
+	}
+	if found.Details.NameLiteral != nil {
+		add(labelName, found.Details.NameLiteral)
 	}
 	for i := range found.Component.Members {
 		if member := &found.Component.Members[i]; !ownDeclaration(found, member) {

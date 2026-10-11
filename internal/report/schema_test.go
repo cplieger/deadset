@@ -256,10 +256,10 @@ func TestTheVocabulariesAreTheSchemas(t *testing.T) {
 
 // TestTheConditionalRulesAreTheSchemas pins the rules the two schemas state
 // under if: which code carries which details member, the language the
-// excluded_by rule reads, the fixability removes_last_use_of needs, the
-// subjects and codes that carry no liveness relation, the state that carries a
-// pending finding, and the one rule the report schema adds to a reported
-// finding.
+// excluded_by rule reads, the fixability removes_last_use_of needs, the codes
+// and the class name_literal needs, the subjects and codes that carry no
+// liveness relation, the state that carries a pending finding, and the one rule
+// the report schema adds to a reported finding.
 func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 	t.Parallel()
 
@@ -301,6 +301,14 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 					} `json:"if"`
 					Then detailsRule `json:"then"`
 				} `json:"allOf"`
+				If   detailsRule `json:"if"`
+				Then struct {
+					Properties struct {
+						ReachabilityClass struct {
+							Const string `json:"const"`
+						} `json:"reachability_class"`
+					} `json:"properties"`
+				} `json:"then"`
 				detailsRule
 			} `json:"then"`
 			Else struct {
@@ -308,6 +316,9 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 					Details struct {
 						Not struct {
 							Required []string `json:"required"`
+							AnyOf    []struct {
+								Required []string `json:"required"`
+							} `json:"anyOf"`
 						} `json:"not"`
 					} `json:"details"`
 				} `json:"properties"`
@@ -317,7 +328,7 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 	decodeSchema(t, schemaOf(t, findingSchema), &finding)
 
 	branches := map[string][]string{}
-	var excludedBy, removesLastUse, relationFree int
+	var excludedBy, removesLastUse, nameLiteral, relationFree int
 	for _, rule := range finding.AllOf {
 		codes := rule.If.Properties.Code.Enum
 		if rule.If.Properties.Code.Const != "" {
@@ -339,6 +350,16 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 				t.Errorf("the fixability rule admits %q only under %q, want removes_last_use_of only under deletable",
 					rule.Else.Properties.Details.Not.Required, rule.If.Properties.Fixability.Const)
 			}
+		case rule.Then.If.Properties.Details.Required != nil:
+			nameLiteral++
+			forbidden := rule.Else.Properties.Details.Not.AnyOf
+			if !slices.Equal(codes, nameLiteralCodes) ||
+				!slices.Equal(rule.Then.If.Properties.Details.Required, []string{"name_literal"}) ||
+				rule.Then.Then.Properties.ReachabilityClass.Const != string(classPossible) ||
+				len(forbidden) != 1 || !slices.Equal(forbidden[0].Required, []string{"name_literal"}) {
+				t.Errorf("the name_literal rule admits it under %q at the class %q, want it under %q at possible and forbidden elsewhere",
+					codes, rule.Then.Then.Properties.ReachabilityClass.Const, nameLiteralCodes)
+			}
 		case len(rule.If.AnyOf) == 2:
 			relationFree++
 			kinds := rule.If.AnyOf[0].Properties.Symbol.Properties.Kind.Enum
@@ -354,9 +375,9 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 			}
 		}
 	}
-	if excludedBy != 1 || removesLastUse != 1 || relationFree != 1 {
-		t.Errorf("the finding schema states %d excluded_by, %d removes_last_use_of and %d liveness rules, want one of each",
-			excludedBy, removesLastUse, relationFree)
+	if excludedBy != 1 || removesLastUse != 1 || nameLiteral != 1 || relationFree != 1 {
+		t.Errorf("the finding schema states %d excluded_by, %d removes_last_use_of, %d name_literal and %d liveness rules, want one of each",
+			excludedBy, removesLastUse, nameLiteral, relationFree)
 	}
 	pinned := map[string][]string{}
 	for _, branch := range detailBranches {

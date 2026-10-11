@@ -29,4 +29,4 @@ var SchemaVersions = []string{SchemaVersion}
 // SchemaVersion is the report schema version the types of this package model,
 // the latest of [SchemaVersions], and the version a report this module writes
 // names.
-const SchemaVersion = "8.0.0"
+const SchemaVersion = "8.1.0"
