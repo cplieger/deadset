@@ -45,14 +45,19 @@ type row struct {
 	markers    []string // any one puts the language in scope
 	extensions []string // source files, in scope alone unless companions is set
 	companions []string // one must also be present for a source file to count
+
+	// underscored marks a language whose toolchain builds nothing from a directory
+	// whose name opens with an underscore, so no file below one puts it in scope.
+	underscored bool
 }
 
 // table is every language detection recognizes.
 var table = []row{
 	{
-		language:   "go",
-		markers:    []string{"go.mod"},
-		extensions: []string{".go"},
+		language:    "go",
+		markers:     []string{"go.mod"},
+		extensions:  []string{".go"},
+		underscored: true,
 	},
 	{
 		language:   "ts",
@@ -151,7 +156,7 @@ func (c census) walk(start string) error {
 			}
 			return nil
 		}
-		c.record(d.Name())
+		c.record(d.Name(), underscored(start, p))
 		if c.complete() {
 			return fs.SkipAll
 		}
@@ -164,11 +169,27 @@ func skipped(name string) bool {
 	return strings.HasPrefix(name, ".") || slices.Contains(unscanned, name)
 }
 
-// record notes what one file name is to every row.
-func (c census) record(name string) {
+// underscored reports whether a directory between start and the file at p has a
+// name that opens with an underscore.
+func underscored(start, p string) bool {
+	rel, err := filepath.Rel(start, filepath.Dir(p))
+	if err != nil || rel == "." {
+		return false
+	}
+	return slices.ContainsFunc(strings.Split(filepath.ToSlash(rel), "/"), func(dir string) bool {
+		return strings.HasPrefix(dir, "_")
+	})
+}
+
+// record notes what one file name is to every row, a file below an underscored
+// directory to none of the rows that mark one.
+func (c census) record(name string, underscoredDir bool) {
 	ext := path.Ext(name)
 	for i := range table {
 		r, s := &table[i], &c[i]
+		if underscoredDir && r.underscored {
+			continue
+		}
 		s.marker = s.marker || matchesAny(r.markers, name)
 		s.source = s.source || slices.Contains(r.extensions, ext)
 		s.companion = s.companion || matchesAny(r.companions, name)

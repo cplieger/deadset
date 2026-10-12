@@ -320,8 +320,10 @@ func TestAnalyzeRefusesAScopeItCannotRoute(t *testing.T) {
 // A module the run loads in both languages is named in the run's scope
 // document by the module path of the Go module holding it, which is what every
 // analyzer's report of it then carries, unless the declared document names it;
-// a module the run loads in one language, and one no go.mod governs, is
-// named by nothing, and its analyzer's load names it.
+// a module the run loads in one language is named by nothing, and its
+// analyzer's load names it. A target the run loads in both languages that no
+// go.mod governs is named by its package.json, else ".", and a consumer no
+// go.mod governs by nothing.
 func TestAnalyzeNamesAModuleLoadedInBothLanguagesByItsGoModulePath(t *testing.T) {
 	t.Parallel()
 
@@ -360,16 +362,47 @@ func TestAnalyzeNamesAModuleLoadedInBothLanguagesByItsGoModulePath(t *testing.T)
 		{
 			name: "no-go-module",
 			setup: func(t *testing.T, _, target string) {
-				removeFile(t, filepath.Join(target, "go.mod"))
-				for above := filepath.Dir(target); ; above = filepath.Dir(above) {
-					if _, err := os.Stat(filepath.Join(above, "go.mod")); err == nil {
-						t.Skipf("the temporary directory %s is inside the module at %s", target, above)
-					}
-					if filepath.Dir(above) == above {
-						break
-					}
-				}
+				withoutGoModule(t, target)
 				writeFile(t, filepath.Join(target, "main.go"), []byte("package main\n"))
+			},
+			target: ".",
+		},
+		{
+			name: "no-go-module-named-package",
+			setup: func(t *testing.T, _, target string) {
+				withoutGoModule(t, target)
+				writeFile(t, filepath.Join(target, "main.go"), []byte("package main\n"))
+				writeFile(t, filepath.Join(target, "package.json"), []byte(`{"name": "@example/web"}`))
+			},
+			target: "@example/web",
+		},
+		{
+			name: "go-modules-below-the-target",
+			setup: func(t *testing.T, _, target string) {
+				withoutGoModule(t, target)
+				writeFile(t, filepath.Join(target, "server", "go.mod"), []byte("module example.com/server\n"))
+				writeFile(t, filepath.Join(target, "cli", "go.mod"), []byte("module example.com/cli\n"))
+				writeFile(t, filepath.Join(target, "package.json"), []byte(`{"name": "@example/web"}`))
+			},
+			target: "@example/web",
+		},
+		{
+			name: "consumer-with-no-go-module",
+			setup: func(t *testing.T, base, _ string) {
+				withoutGoModule(t, filepath.Join(base, "both"))
+				writeFile(t, filepath.Join(base, "both", "main.go"), []byte("package main\n"))
+				writeFile(t, filepath.Join(base, "both", "package.json"), []byte(`{"name": "@example/both"}`))
+			},
+			document: `{"target": {"path": "target"}, "consumers": [{"path": "both"}]}`,
+			target:   "example.com/app", ids: []string{""},
+		},
+		{
+			name:  "one-language-no-go-module",
+			flags: []string{"--languages=go"},
+			setup: func(t *testing.T, _, target string) {
+				withoutGoModule(t, target)
+				writeFile(t, filepath.Join(target, "server", "go.mod"), []byte("module example.com/server\n"))
+				writeFile(t, filepath.Join(target, "package.json"), []byte(`{"name": "@example/web"}`))
 			},
 		},
 	} {
@@ -392,6 +425,9 @@ func TestAnalyzeNamesAModuleLoadedInBothLanguagesByItsGoModulePath(t *testing.T)
 				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", c.name, got.code, verdict.Findings, got.stderr)
 			}
 			run := readScopeDocument(t, filepath.Join(runDir, "scope.json"))
+			if run.Target.Path != target {
+				t.Errorf("analyze(%s) wrote scope.json naming the target directory %s, want %s", c.name, run.Target.Path, target)
+			}
 			if run.Target.ID != c.target || !slices.Equal(consumerIDs(run), c.ids) {
 				t.Errorf("analyze(%s) wrote scope.json naming the target %q and the consumers %q, want %q and %q",
 					c.name, run.Target.ID, consumerIDs(run), c.target, c.ids)
@@ -420,6 +456,22 @@ func TestAnalyzeRefusesAMixedTargetWhoseGoModNamesNoModule(t *testing.T) {
 	for _, f := range []fake{goFake, tsFake} {
 		if _, err := os.Stat(f.ranIn); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("analyze ran the analyzer %s, want no analyzer run", f.command)
+		}
+	}
+}
+
+// withoutGoModule removes the go.mod a test's setup wrote in dir, skipping the
+// test where a directory above dir holds one, which would then govern dir.
+func withoutGoModule(t *testing.T, dir string) {
+	t.Helper()
+
+	removeFile(t, filepath.Join(dir, "go.mod"))
+	for above := filepath.Dir(dir); ; above = filepath.Dir(above) {
+		if _, err := os.Stat(filepath.Join(above, "go.mod")); err == nil {
+			t.Skipf("the temporary directory %s is inside the module at %s", dir, above)
+		}
+		if filepath.Dir(above) == above {
+			return
 		}
 	}
 }

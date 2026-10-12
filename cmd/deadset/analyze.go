@@ -23,6 +23,7 @@ import (
 	"github.com/cplieger/deadset/internal/gomod"
 	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/merge"
+	"github.com/cplieger/deadset/internal/pkgjson"
 	"github.com/cplieger/deadset/internal/present"
 	"github.com/cplieger/deadset/internal/providers"
 	"github.com/cplieger/deadset/internal/render"
@@ -300,7 +301,7 @@ func plan(declared *scope.Document, analyzers []providers.Analyzer, inScope []st
 		}
 		return relative
 	}
-	target, err := published(declared.Target, inScope)
+	target, err := targetName(declared.Target, inScope)
 	if err != nil {
 		return rundir.Scope{}, nil, err
 	}
@@ -354,6 +355,26 @@ func published(module scope.Module, languages []string) (string, error) {
 	}
 	return path, nil
 }
+
+// targetName is the name the target is written under: the one [published]
+// gives it, else, where the run loads it in more than one language, its
+// package name or [unnamed]. A target no go.mod governs may hold Go modules
+// below it, which the Go analyzer reports under this one name, so every
+// report of the target names it alike and the merge admits them.
+func targetName(target scope.Module, languages []string) (string, error) {
+	name, err := published(target, languages)
+	if err != nil || name != "" || len(languages) < 2 {
+		return name, err
+	}
+	if pkg, named := pkgjson.Name(target.Path); named {
+		return pkg, nil
+	}
+	return unnamed, nil
+}
+
+// unnamed is the name of a target that no go.mod governs and whose package.json
+// names no package, the one a TypeScript analysis gives it.
+const unnamed = "."
 
 // routeConsumers is one route per analyzer, handing it every consumer whose
 // languages, held, include one its entry claims in scope, and whether each

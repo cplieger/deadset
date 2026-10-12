@@ -53,7 +53,7 @@ The keys are those of the contract's [configuration schema](https://github.com/c
 
 ## How languages are detected
 
-With `analysis.languages` empty, deadset reads the names of the files under the target, never their contents. Go is in scope when the tree holds a `go.mod` or a `.go` file. TypeScript is in scope when it holds a `tsconfig*.json`, or a `.ts`, `.tsx`, `.mts` or `.cts` file together with a `package.json` anywhere in the tree. Directories named `node_modules`, `testdata` or `vendor`, and every directory whose name starts with a full stop, are skipped. A tree with no language in scope ends the run with exit code 2.
+With `analysis.languages` empty, deadset reads the names of the files under the target, never their contents. Go is in scope when the tree holds a `go.mod` or a `.go` file. TypeScript is in scope when it holds a `tsconfig*.json`, or a `.ts`, `.tsx`, `.mts` or `.cts` file together with a `package.json` anywhere in the tree. Directories named `node_modules`, `testdata` or `vendor`, and every directory whose name starts with a full stop, are skipped. A directory whose name starts with an underscore is skipped for Go alone, which builds nothing from one. A tree with no language in scope ends the run with exit code 2.
 
 ## The provider list
 
