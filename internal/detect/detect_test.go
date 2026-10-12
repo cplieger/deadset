@@ -124,6 +124,19 @@ func TestLanguages(t *testing.T) {
 			},
 			want: []string{"ts"},
 		},
+		"go module below an underscored directory": {
+			files: map[string]string{
+				"package.json": "{}", "tsconfig.json": "{}", "src/index.ts": "export {};\n",
+				"_tools/mod/go.mod": "module example.com/tools\n", "_tools/mod/main.go": goProgram,
+			},
+			want: []string{"ts"},
+		},
+		"typescript below an underscored directory": {
+			files: map[string]string{
+				"package.json": "{}", "_app/tsconfig.json": "{}", "_app/src/index.ts": "export {};\n",
+			},
+			want: []string{"ts"},
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -169,6 +182,11 @@ func TestLanguagesFilters(t *testing.T) {
 		"a skipped directory named outright": {
 			files:   map[string]string{"testdata/fixture/go.mod": "module example.com/fixture\n"},
 			filters: []string{"testdata"},
+			want:    []string{"go"},
+		},
+		"an underscored directory named outright": {
+			files:   map[string]string{"_tools/go.mod": "module example.com/tools\n"},
+			filters: []string{"_tools"},
 			want:    []string{"go"},
 		},
 	}

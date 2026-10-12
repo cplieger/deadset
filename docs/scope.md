@@ -27,11 +27,11 @@ The document is the scope document [deadset-spec](https://github.com/cplieger/de
 - The analyzers run in the deepest directory holding the target and every consumer. The merged report's `target.root`, and each consumer's path under `consumers.loaded`, are relative to that directory.
 - The run directory keeps the declared scope as `scope.json`. An analyzer handed only some of the consumers reads its own, `scope.<name>.json`.
 
-A target or consumer can hold both Go and TypeScript. When the scope document gives it no `id`, deadset names it by its Go module path in every report. The merge then reads the two analyzers' reports as one module.
+A target or consumer can hold both Go and TypeScript. When the scope document gives it no `id`, deadset names it by its Go module path in every report. A target that no `go.mod` governs, its Go modules in directories below it, is named by the `name` its `package.json` gives it, or `.` when it gives none. The merge then reads the two analyzers' reports as one module.
 
 ## What the findings mean
 
-With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`. The default minimum confidence, `probable`, leaves such a finding out, and `--min-confidence=possible` reports it. [Benchmarks](benchmarks.md#accuracy-of-each-confidence-level) gives the measured accuracy of each level. A Go workspace's other modules are consumers only when the scope document declares them.
+With every declared consumer loaded, a library's findings are `certain`. With no scope document the target is analyzed alone, and a finding about a library's published API is `possible`. The default minimum confidence, `probable`, leaves such a finding out, and `--min-confidence=possible` reports it. [Benchmarks](benchmarks.md#accuracy-of-each-confidence-level) gives the measured accuracy of each level. When no `go.mod` governs the target, every Go module below it is part of the target, except one inside a directory the Go analyzer skips, `vendor`, `testdata` and one whose name starts with `.` or `_` among them. A target with a `go.mod` at its root is that module, with the modules below it that its `go.work` lists. A Go module outside the target is a consumer only when the scope document declares it.
 
 ## Putting the consumers in place
 
