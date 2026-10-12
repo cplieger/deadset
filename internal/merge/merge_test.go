@@ -331,6 +331,130 @@ func TestMergeRefusesInputsNamingDifferentTargets(t *testing.T) {
 	}
 }
 
+// bothLanguages is a report of an analyzer claiming Go and TypeScript, whose
+// target gives Go the kind golang and TypeScript the kind typescript.
+func bothLanguages(name string, golang, typescript report.TargetKind) *report.Report {
+	r := analyzerReport(name, "go")
+	r.Analyzer.Languages = []string{"go", "ts"}
+	r.Target.Kind = golang
+	if golang != typescript {
+		r.Target.Kind = report.TargetMixed
+		r.Target.LanguageKinds = &report.LanguageKinds{Go: golang, TS: typescript}
+	}
+	return r
+}
+
+func TestMergeWritesTheKindTheInputsGiveEveryLanguage(t *testing.T) {
+	t.Parallel()
+
+	library := analyzerReport("deadset-ts", "ts")
+	library.Target.Kind = report.TargetLibrary
+	mixed := report.Target{
+		Kind: report.TargetMixed, LanguageKinds: &report.LanguageKinds{Go: report.TargetApplication, TS: report.TargetLibrary},
+		Root: ".", Identity: "example.com/app",
+	}
+	shared := report.Target{Kind: report.TargetApplication, Root: ".", Identity: "example.com/app"}
+	for name, tc := range map[string]struct {
+		reports []*report.Report
+		want    report.Target
+	}{
+		"one kind for both languages":      {[]*report.Report{analyzerReport("deadset-go", "go"), analyzerReport("deadset-ts", "ts")}, shared},
+		"a kind for each of two languages": {[]*report.Report{analyzerReport("deadset-go", "go"), library}, mixed},
+		"a mixed report and a report of one of its languages": {
+			[]*report.Report{bothLanguages("both", report.TargetApplication, report.TargetLibrary), library}, mixed,
+		},
+		"a report of both languages of one kind": {[]*report.Report{bothLanguages("both", report.TargetApplication, report.TargetApplication)}, shared},
+	} {
+		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
+			t.Parallel()
+
+			merged, _ := mustMerge(t, inputs(tc.reports...))
+			if !reflect.DeepEqual(merged.Target, tc.want) {
+				t.Errorf("Merge(%s).Target = %+v (%+v), want %+v (%+v)",
+					name, merged.Target, merged.Target.LanguageKinds, tc.want, tc.want.LanguageKinds)
+			}
+		})
+	}
+}
+
+func TestMergeRefusesAMixedReportWhoseKindsAreNotItsLanguages(t *testing.T) {
+	t.Parallel()
+
+	oneKind := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
+	oneKind.Target.LanguageKinds.TS = report.TargetApplication
+	leftOut := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
+	leftOut.Analyzer.Languages = []string{"go"}
+	unnamed := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
+	unnamed.Target.LanguageKinds = nil
+	for name, r := range map[string]*report.Report{
+		"one kind for both": oneKind, "a language the report does not cover": leftOut, "no language kinds": unnamed,
+	} {
+		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
+			t.Parallel()
+
+			merged, err := Merge(inputs(r), accepted, &caller)
+			refused, ok := errors.AsType[*languageKindsError](err)
+			if merged != nil || !ok || refused.Analyzer != "both" {
+				t.Errorf("Merge(%s) = %v, %v, want no report and a *languageKindsError naming both", name, merged, err)
+			}
+		})
+	}
+}
+
+func TestMergeRefusesTwoKindsOfOneLanguage(t *testing.T) {
+	t.Parallel()
+
+	library := analyzerReport("deadset-ts", "ts")
+	library.Target.Kind = report.TargetLibrary
+	both := bothLanguages("both", report.TargetApplication, report.TargetApplication)
+	mixed := bothLanguages("both", report.TargetLibrary, report.TargetApplication)
+	for name, tc := range map[string]struct {
+		reports  []*report.Report
+		language string
+	}{
+		"a string kind against a string kind":  {[]*report.Report{both, library}, "ts"},
+		"a mixed kind against a string kind":   {[]*report.Report{mixed, analyzerReport("deadset-go", "go")}, "go"},
+		"a mixed kind against the other order": {[]*report.Report{analyzerReport("deadset-go", "go"), mixed}, "go"},
+	} {
+		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
+			t.Parallel()
+
+			merged, err := Merge(inputs(tc.reports...), accepted, &caller)
+			refused, ok := errors.AsType[*kindClaimError](err)
+			if merged != nil || !ok || refused.Language != tc.language || refused.Kinds[0] == refused.Kinds[1] {
+				t.Errorf("Merge(%s) = %v, %v, want no report and a *kindClaimError naming %s", name, merged, err, tc.language)
+			}
+		})
+	}
+}
+
+// Two reports of one analyzer name, version and digest that differ in their
+// language kinds or their languages alone are refused with one error, in
+// whichever order the merge reads them.
+func TestMergeRefusesTwoReportsOfOneNameAlikeInEitherOrder(t *testing.T) {
+	t.Parallel()
+
+	swapped := bothLanguages("both", report.TargetLibrary, report.TargetApplication)
+	goOnly := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
+	goOnly.Analyzer.Languages = []string{"go"}
+	tsOnly := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
+	tsOnly.Analyzer.Languages = []string{"ts"}
+	for name, pair := range map[string][2]*report.Report{
+		"language kinds": {bothLanguages("both", report.TargetApplication, report.TargetLibrary), swapped},
+		"languages":      {goOnly, tsOnly},
+	} {
+		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
+			t.Parallel()
+
+			_, forward := Merge(inputs(pair[0], pair[1]), accepted, &caller)
+			_, backward := Merge(inputs(pair[1], pair[0]), accepted, &caller)
+			if forward == nil || backward == nil || forward.Error() != backward.Error() {
+				t.Errorf("Merge(two reports differing in their %s) = %v, and in the other order %v, want one refusal", name, forward, backward)
+			}
+		})
+	}
+}
+
 func TestMergeNamesTheCallerWithTheInputsLanguagesAndTheAcceptedVersions(t *testing.T) {
 	t.Parallel()
 

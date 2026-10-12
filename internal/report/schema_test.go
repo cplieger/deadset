@@ -34,6 +34,7 @@ func TestTheTypesDeclareEveryObjectTheSchemasDeclare(t *testing.T) {
 		reportSchema + "#/properties/analyzer/properties/conformance":              reflect.TypeFor[Conformance](),
 		reportSchema + "#/properties/merged_from/items":                            reflect.TypeFor[InputReport](),
 		reportSchema + "#/properties/target":                                       reflect.TypeFor[Target](),
+		reportSchema + "#/properties/target/properties/language_kinds":             reflect.TypeFor[LanguageKinds](),
 		reportSchema + "#/properties/consumers":                                    reflect.TypeFor[Consumers](),
 		reportSchema + "#/properties/consumers/properties/loaded/items":            reflect.TypeFor[LoadedConsumer](),
 		reportSchema + "#/properties/consumers/properties/unavailable/items":       reflect.TypeFor[UnavailableConsumer](),
@@ -130,9 +131,9 @@ func TestThePatternsAreTheSchemas(t *testing.T) {
 		reportSchema + "#/properties/edge_evaluations/items/properties/edge":                       edgePattern,
 		reportSchema + "#/properties/edge_evaluations/items/properties/analyzer":                   tokenPattern,
 		reportSchema + "#/properties/stale_suppressions/items/properties/entry/properties/code":    codePattern,
-		reportSchema + "#/properties/stale_suppressions/items/properties/entry/properties/path":    artifactPattern,
+		reportSchema + "#/properties/stale_suppressions/items/properties/entry/properties/path":    relativePattern,
 		reportSchema + "#/properties/stale_suppressions/items/properties/entry/properties/reason":  nonBlankPattern,
-		reportSchema + "#/properties/stale_suppressions/items/properties/position/properties/path": artifactPattern,
+		reportSchema + "#/properties/stale_suppressions/items/properties/position/properties/path": relativePattern,
 		reportSchema + "#/properties/stale_suppressions/items/properties/message":                  nonBlankPattern,
 		reportSchema + "#/properties/stale_suppressions/items/properties/analyzer":                 tokenPattern,
 		reportSchema + "#/properties/declared_gaps/items/properties/fixture":                       tokenPattern,
@@ -140,14 +141,14 @@ func TestThePatternsAreTheSchemas(t *testing.T) {
 		reportSchema + "#/properties/declared_gaps/items/properties/capability":                    capabilityPattern,
 		reportSchema + "#/properties/declared_gaps/items/properties/reason":                        nonBlankPattern,
 		reportSchema + "#/properties/declared_gaps/items/properties/analyzer":                      tokenPattern,
-		reportSchema + "#/properties/excluded_by_cgo/items":                                        artifactPattern,
+		reportSchema + "#/properties/excluded_by_cgo/items":                                        relativePattern,
 		reportSchema + "#/properties/test_file_rules/items/properties/rule":                        tokenPattern,
-		reportSchema + "#/properties/type_error_skips/items/properties/path":                       artifactPattern,
+		reportSchema + "#/properties/type_error_skips/items/properties/path":                       relativePattern,
 		reportSchema + "#/properties/type_error_skips/items/properties/message":                    oneLinePattern,
-		reportSchema + "#/properties/notes/items/properties/path":                                  artifactPattern,
+		reportSchema + "#/properties/notes/items/properties/path":                                  rootPattern,
 		reportSchema + "#/properties/notes/items/properties/message":                               oneLinePattern,
 		reportSchema + "#/properties/conventions_applied/items/properties/name":                    tokenPattern,
-		reportSchema + "#/properties/conventions_applied/items/properties/manifest":                artifactPattern,
+		reportSchema + "#/properties/conventions_applied/items/properties/manifest":                relativePattern,
 		findingSchema + "#/properties/code":                                                        codePattern,
 		findingSchema + "#/properties/kind":                                                        tokenPattern,
 		findingSchema + "#/properties/symbol/properties/name":                                      oneLinePattern,
@@ -206,6 +207,8 @@ func TestTheVocabulariesAreTheSchemas(t *testing.T) {
 		reportSchema + "#/properties/analyzer/properties/languages/items":                    languages,
 		reportSchema + "#/properties/analyzer/properties/conformance/properties/result":      names(results),
 		reportSchema + "#/properties/target/properties/kind":                                 names(targetKinds),
+		reportSchema + "#/properties/target/properties/language_kinds/properties/go":         names(languageKinds),
+		reportSchema + "#/properties/target/properties/language_kinds/properties/ts":         names(languageKinds),
 		reportSchema + "#/properties/consumers/properties/loaded/items/properties/role":      consumerRoles,
 		reportSchema + "#/properties/consumers/properties/unavailable/items/properties/role": consumerRoles,
 		reportSchema + "#/properties/edge_evaluations/items/properties/side":                 names(sides),
@@ -258,8 +261,9 @@ func TestTheVocabulariesAreTheSchemas(t *testing.T) {
 // under if: which code carries which details member, the language the
 // excluded_by rule reads, the fixability removes_last_use_of needs, the codes
 // and the class name_literal needs, the subjects and codes that carry no
-// liveness relation, the state that carries a pending finding, and the one rule
-// the report schema adds to a reported finding.
+// liveness relation, the state that carries a pending finding, the one rule
+// the report schema adds to a reported finding, and the kind that requires a
+// target's language kinds.
 func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 	t.Parallel()
 
@@ -412,6 +416,28 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 					} `json:"then"`
 				} `json:"items"`
 			} `json:"edge_evaluations"`
+			Target struct {
+				If struct {
+					Properties struct {
+						Kind struct {
+							Const string `json:"const"`
+						} `json:"kind"`
+					} `json:"properties"`
+				} `json:"if"`
+				Then struct {
+					Required []string `json:"required"`
+				} `json:"then"`
+				Else struct {
+					Not struct {
+						Required []string `json:"required"`
+					} `json:"not"`
+				} `json:"else"`
+				Properties struct {
+					LanguageKinds struct {
+						MinProperties *int `json:"minProperties"`
+					} `json:"language_kinds"`
+				} `json:"properties"`
+			} `json:"target"`
 		} `json:"properties"`
 	}
 	decodeSchema(t, schemaOf(t, reportSchema), &report)
@@ -422,6 +448,15 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 		!slices.Equal(evaluation.Then.Required, []string{"finding"}) {
 		t.Errorf("the report schema requires %q of an evaluation in the state %q, want a finding of a dead one",
 			evaluation.Then.Required, evaluation.If.Properties.State.Const)
+	}
+	if target := report.Properties.Target; target.If.Properties.Kind.Const != string(TargetMixed) ||
+		!slices.Equal(target.Then.Required, []string{"language_kinds"}) ||
+		!slices.Equal(target.Else.Not.Required, []string{"language_kinds"}) {
+		t.Errorf("the report schema requires %q of a target of the kind %q and forbids %q otherwise, want language_kinds required of a mixed one alone",
+			target.Then.Required, target.If.Properties.Kind.Const, target.Else.Not.Required)
+	}
+	if least := report.Properties.Target.Properties.LanguageKinds.MinProperties; least == nil || *least != 2 {
+		t.Errorf("the report schema bounds language_kinds at %v members, want at least 2, the bound the decode holds", least)
 	}
 }
 

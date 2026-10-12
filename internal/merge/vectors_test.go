@@ -25,17 +25,19 @@ const vectorsDir = "vectors/merge"
 // reason its refusal names: every admission refusal, and the pending finding
 // no report resolves.
 var refusedCases = map[string]error{
-	"configuration-built-and-not-built": errEntryState,
-	"configuration-entries-differ":      errEntryIdentity,
-	"conformance-not-passed":            errConformance,
-	"consumer-entries-differ":           errEntryIdentity,
-	"consumer-loaded-and-unavailable":   errEntryState,
-	"findings-omitted":                  errOmitted,
-	"one-analyzer-name-twice":           errAnalyzerName,
-	"one-artifact-run-twice":            errAnalyzerName,
-	"pending-pair-unevaluated":          errUnresolvedEdge,
-	"schema-version-out-of-range":       errSchemaVersion,
-	"targets-differ":                    errTarget,
+	"configuration-built-and-not-built":      errEntryState,
+	"configuration-entries-differ":           errEntryIdentity,
+	"conformance-not-passed":                 errConformance,
+	"consumer-entries-differ":                errEntryIdentity,
+	"consumer-loaded-and-unavailable":        errEntryState,
+	"findings-omitted":                       errOmitted,
+	"one-analyzer-name-twice":                errAnalyzerName,
+	"one-artifact-run-twice":                 errAnalyzerName,
+	"pending-pair-unevaluated":               errUnresolvedEdge,
+	"schema-version-out-of-range":            errSchemaVersion,
+	"target-kind-claims-differ":              errKindClaims,
+	"target-kinds-not-the-reports-languages": errLanguageKinds,
+	"targets-differ":                         errTarget,
 }
 
 // vectorCase is one case directory of vectors/merge, decoded.
@@ -112,11 +114,11 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		check func(error) bool
 	}{
 		{
-			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", "8.1.0"},
+			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", report.SchemaVersion},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*admissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
-					slices.Equal(refused.Accepted, []string{"8.1.0"})
+					slices.Equal(refused.Accepted, []string{report.SchemaVersion})
 			},
 		},
 		{
@@ -138,6 +140,21 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*targetError](err)
 				return ok && refused.Analyzers == [2]string{"deadset-go", "deadset-ts"} && refused.Targets[0] != refused.Targets[1]
+			},
+		},
+		{
+			name: "target-kind-claims-differ", named: []string{"deadset-go", "example-go", "go", "application", "library"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*kindClaimError](err)
+				return ok && refused.Analyzers == [2]string{"deadset-go", "example-go"} && refused.Language == "go" &&
+					refused.Kinds == [2]report.TargetKind{report.TargetApplication, report.TargetLibrary}
+			},
+		},
+		{
+			name: "target-kinds-not-the-reports-languages", named: []string{"deadset-go", "go application", "ts library"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*languageKindsError](err)
+				return ok && refused.Analyzer == "deadset-go" && slices.Equal(refused.Languages, []string{"go"})
 			},
 		},
 		{
@@ -227,9 +244,20 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 	t.Parallel()
 
 	plants := map[string]func(*report.Report) bool{
-		"analyzer version":     func(r *report.Report) bool { r.Analyzer.Version += "-x"; return true },
-		"merged_from digest":   func(r *report.Report) bool { r.MergedFrom[0].Digest = "sha256:" + strings.Repeat("0", 64); return true },
-		"target identity":      func(r *report.Report) bool { r.Target.Identity += "x"; return true },
+		"analyzer version":   func(r *report.Report) bool { r.Analyzer.Version += "-x"; return true },
+		"merged_from digest": func(r *report.Report) bool { r.MergedFrom[0].Digest = "sha256:" + strings.Repeat("0", 64); return true },
+		"target identity":    func(r *report.Report) bool { r.Target.Identity += "x"; return true },
+		"target kind": func(r *report.Report) bool {
+			switch kinds := r.Target.LanguageKinds; {
+			case kinds != nil:
+				kinds.Go, kinds.TS = kinds.TS, kinds.Go
+			case r.Target.Kind == report.TargetApplication:
+				r.Target.Kind = report.TargetLibrary
+			default:
+				r.Target.Kind = report.TargetApplication
+			}
+			return true
+		},
 		"a configuration's id": func(r *report.Report) bool { r.Configurations[0].ID += "x"; return true },
 		"a test file rule":     func(r *report.Report) bool { r.TestFileRules[0].Matched++; return true },
 		"totals.reasons":       func(r *report.Report) bool { r.Totals.ReasonsRecorded++; return true },

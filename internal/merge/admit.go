@@ -15,13 +15,16 @@ import (
 var errNoInput = errors.New("merge: no input report")
 
 // The reasons an admission refusal names, one per admission rule. An
-// [*admissionError] wraps one of the first three, a [*targetError] the fourth,
-// an [*entryError] one of the next two and a [*nameError] the last.
+// [*admissionError] wraps one of the first three, a [*languageKindsError] the
+// fourth, a [*targetError] the fifth, a [*kindClaimError] the sixth, an
+// [*entryError] one of the next two and a [*nameError] the last.
 var (
 	errSchemaVersion = errors.New("the report's schema version is outside the accepted range")
 	errConformance   = errors.New("the report's analyzer has no conformance pass")
 	errOmitted       = errors.New("the report omits findings its analysis produced")
+	errLanguageKinds = errors.New("the report's language kinds are not the kinds of its languages")
 	errTarget        = errors.New("two reports name different targets")
+	errKindClaims    = errors.New("two reports give one language two kinds")
 	errEntryIdentity = errors.New("two reports hold different entries under one id")
 	errEntryState    = errors.New("two reports place one id in two states")
 	errAnalyzerName  = errors.New("two reports carry one analyzer name")
@@ -68,8 +71,41 @@ func (e *admissionError) Error() string {
 // Unwrap is the reason for the refusal.
 func (e *admissionError) Unwrap() error { return e.Err }
 
-// targetError is two input reports naming different targets, where a merged
-// report names the one target every input names.
+// languageKindsError is an input report whose kind is mixed and whose
+// language kinds name other languages than the report covers, or one kind for
+// every language it covers.
+type languageKindsError struct {
+	Kinds     *report.LanguageKinds
+	Analyzer  string
+	Languages []string
+}
+
+// Error names the analyzer, its languages and the kinds it gives.
+func (e *languageKindsError) Error() string {
+	return fmt.Sprintf("merge: %s covers %s and names the language kinds %s, and a mixed kind names two kinds, one per language the report covers",
+		e.Analyzer, strings.Join(e.Languages, ", "), describeKinds(e.Kinds))
+}
+
+// Unwrap is [errLanguageKinds].
+func (*languageKindsError) Unwrap() error { return errLanguageKinds }
+
+// describeKinds is a target's language kinds as an error message names them.
+func describeKinds(kinds *report.LanguageKinds) string {
+	if kinds == nil {
+		return "of no language"
+	}
+	var named []string
+	if kinds.Go != "" {
+		named = append(named, "go "+string(kinds.Go))
+	}
+	if kinds.TS != "" {
+		named = append(named, "ts "+string(kinds.TS))
+	}
+	return strings.Join(named, ", ")
+}
+
+// targetError is two input reports naming different targets, a root or an
+// identity, where a merged report names the one target every input names.
 type targetError struct {
 	Analyzers [2]string
 	Targets   [2]report.Target
@@ -86,8 +122,25 @@ func (*targetError) Unwrap() error { return errTarget }
 
 // describeTarget is a target as an error message names it.
 func describeTarget(t report.Target) string {
-	return fmt.Sprintf("%s %q at %q", t.Kind, t.Identity, t.Root)
+	return fmt.Sprintf("%q at %q", t.Identity, t.Root)
 }
+
+// kindClaimError is two input reports giving one language two kinds, where
+// the reports of one target agree on each language's kind.
+type kindClaimError struct {
+	Analyzers [2]string
+	Language  string
+	Kinds     [2]report.TargetKind
+}
+
+// Error names both analyzers, the language and the kind each gives it.
+func (e *kindClaimError) Error() string {
+	return fmt.Sprintf("merge: %s gives the %s code of the target the kind %s and %s gives it %s, and the reports of one target agree on each language's kind",
+		e.Analyzers[0], e.Language, e.Kinds[0], e.Analyzers[1], e.Kinds[1])
+}
+
+// Unwrap is [errKindClaims].
+func (*kindClaimError) Unwrap() error { return errKindClaims }
 
 // entryError is two input reports that disagree on what one identifier of the
 // run names. Err is [errEntryIdentity] when both list the id in one array and
@@ -136,12 +189,12 @@ func (*nameError) Unwrap() error { return errAnalyzerName }
 
 // admit runs the admission step over inputs in merged_from's order. Each
 // report is refused on its own first: its schema version, its conformance
-// result and its omitted count. With no such refusal every two reports are
-// compared, and the first pair that cannot merge is refused: two targets, one
-// analyzer name, two entries under one id that differ, one id in two states.
-// Every refusal is in merged_from's order, and two reports of one name are
-// refused on the name before their entries are compared, so the error does not
-// depend on the order of the inputs.
+// result, its omitted count, its language kinds. Then the first pair that
+// cannot merge is refused: two targets, two kinds of one language, one analyzer
+// name, two entries under one id that differ, one id in two states. Every
+// refusal is in merged_from's order, and two reports of one name are refused on
+// the name before their entries are compared, so the error does not depend on
+// the order of the inputs.
 func admit(ordered []Input, accepted []string) error {
 	var refused []error
 	for i := range ordered {
@@ -185,16 +238,50 @@ func admitOne(r *report.Report, accepted []string) error {
 		return &admissionError{Err: errConformance, Analyzer: r.Analyzer.Name, Result: r.Analyzer.Conformance.Result}
 	case r.Totals.Omitted != 0:
 		return &admissionError{Err: errOmitted, Analyzer: r.Analyzer.Name, Omitted: r.Totals.Omitted}
+	case r.Target.Kind == report.TargetMixed && !coversItsLanguages(r):
+		return &languageKindsError{
+			Analyzer:  r.Analyzer.Name,
+			Kinds:     r.Target.LanguageKinds,
+			Languages: slices.Clone(r.Analyzer.Languages),
+		}
 	}
 	return nil
+}
+
+// coversItsLanguages reports whether a mixed report's language kinds name
+// exactly the languages the report covers, and not one kind for all of them.
+func coversItsLanguages(r *report.Report) bool {
+	kinds := r.Target.LanguageKinds
+	if kinds == nil {
+		return false
+	}
+	named := map[string]report.TargetKind{"go": kinds.Go, "ts": kinds.TS}
+	distinct := map[report.TargetKind]bool{}
+	for language, kind := range named {
+		if covered := slices.Contains(r.Analyzer.Languages, language); covered != (kind != "") {
+			return false
+		}
+		if kind != "" {
+			distinct[kind] = true
+		}
+	}
+	return len(distinct) > 1
 }
 
 // admitPair is the refusal of two reports that cannot merge, or nil.
 func admitPair(a, b *Input, aEntries, bEntries *idEntries) error {
 	first, second := a.Report, b.Report
 	names := [2]string{first.Analyzer.Name, second.Analyzer.Name}
-	if first.Target != second.Target {
+	if first.Target.Root != second.Target.Root || first.Target.Identity != second.Target.Identity {
 		return &targetError{Analyzers: names, Targets: [2]report.Target{first.Target, second.Target}}
+	}
+	for _, language := range first.Analyzer.Languages {
+		if !slices.Contains(second.Analyzer.Languages, language) {
+			continue
+		}
+		if kinds := [2]report.TargetKind{first.Target.Of(language), second.Target.Of(language)}; kinds[0] != kinds[1] {
+			return &kindClaimError{Analyzers: names, Language: language, Kinds: kinds}
+		}
 	}
 	if first.Analyzer.Name == second.Analyzer.Name {
 		return &nameError{
@@ -296,7 +383,22 @@ func compareInputs(a, b Input) int {
 		strings.Compare(string(a.Report.Analyzer.Conformance.Result), string(b.Report.Analyzer.Conformance.Result)),
 		cmp.Compare(a.Report.Totals.Omitted, b.Report.Totals.Omitted),
 		strings.Compare(string(a.Report.Target.Kind), string(b.Report.Target.Kind)),
+		compareLanguageKinds(a.Report.Target.LanguageKinds, b.Report.Target.LanguageKinds),
+		slices.Compare(a.Report.Analyzer.Languages, b.Report.Analyzer.Languages),
 		strings.Compare(a.Report.Target.Root, b.Report.Target.Root),
 		strings.Compare(a.Report.Target.Identity, b.Report.Target.Identity),
 	)
+}
+
+// compareLanguageKinds orders two targets' language kinds member by member, a
+// target without them ordered as one naming no language.
+func compareLanguageKinds(a, b *report.LanguageKinds) int {
+	var none report.LanguageKinds
+	if a == nil {
+		a = &none
+	}
+	if b == nil {
+		b = &none
+	}
+	return cmp.Or(strings.Compare(string(a.Go), string(b.Go)), strings.Compare(string(a.TS), string(b.TS)))
 }
