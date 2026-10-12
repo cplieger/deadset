@@ -23,9 +23,8 @@ var (
 	componentPattern  = regexp.MustCompile(`^[a-z][a-z0-9-]*/c-\d+$`)
 	gapSymbolPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 	capabilityPattern = regexp.MustCompile(`^(DS\d{4}|[a-z][a-z0-9]*(-[a-z0-9]+)*)$`)
-	artifactPattern   = regexp.MustCompile(`^(\.?[A-Za-z0-9_@-][A-Za-z0-9_@.-]*)(/\.?[A-Za-z0-9_@-][A-Za-z0-9_@.-]*)*$`)
-	relativePattern   = regexp.MustCompile(`^(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*$`)
-	rootPattern       = regexp.MustCompile(`^(?:\.|(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*)$`)
+	relativePattern   = regexp.MustCompile(`^(?:[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.\.[^/\x00-\x1f\x7f]+)(?:/(?:[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.\.[^/\x00-\x1f\x7f]+))*$`)
+	rootPattern       = regexp.MustCompile(`^(?:\.|(?:[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.\.[^/\x00-\x1f\x7f]+)(?:/(?:[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.\.[^/\x00-\x1f\x7f]+))*)$`)
 )
 
 // The closed vocabularies of the two schemas. A test pins every enumeration
@@ -33,7 +32,8 @@ var (
 var (
 	languages       = []string{"go", "ts"}
 	results         = []Result{ResultPass, ResultFail}
-	targetKinds     = []targetKind{TargetApplication, TargetLibrary}
+	targetKinds     = []TargetKind{TargetApplication, TargetLibrary, TargetMixed}
+	languageKinds   = []TargetKind{TargetApplication, TargetLibrary}
 	consumerRoles   = []string{"consumer"}
 	sides           = []Side{SideProvides, SideUsedBy}
 	states          = []State{StateLive, StateDead, StateAbsent}
@@ -165,7 +165,7 @@ func (r *Report) validate() error {
 		required("declared_gaps", r.DeclaredGaps),
 		listOf("declared_gaps", r.DeclaredGaps, false, (*DeclaredGap).validate),
 		required("excluded_by_cgo", r.ExcludedByCgo),
-		matchesEach("excluded_by_cgo", r.ExcludedByCgo, true, artifactPattern),
+		matchesEach("excluded_by_cgo", r.ExcludedByCgo, true, relativePattern),
 		required("test_file_rules", r.TestFileRules),
 		listOf("test_file_rules", r.TestFileRules, true, (*TestFileRule).validate),
 		required("type_error_skips", r.TypeErrorSkips),
@@ -207,9 +207,42 @@ func (m *InputReport) validate() error {
 func (t *Target) validate() error {
 	return first(
 		within("kind", t.Kind, targetKinds),
+		t.validateLanguageKinds(),
 		matches("root", t.Root, rootPattern),
 		nonEmpty("identity", t.Identity),
 	)
+}
+
+// validateLanguageKinds holds language_kinds to the schema: required under
+// the kind mixed and forbidden under every other, and naming at least two
+// languages, each an application or a library.
+func (t *Target) validateLanguageKinds() error {
+	kinds := t.LanguageKinds
+	switch {
+	case t.Kind != TargetMixed && kinds == nil:
+		return nil
+	case kinds == nil:
+		return at("language_kinds", errMissing)
+	case t.Kind != TargetMixed:
+		return at("language_kinds", errForbidden)
+	}
+	named := 0
+	for _, member := range []struct {
+		name string
+		kind TargetKind
+	}{{"go", kinds.Go}, {"ts", kinds.TS}} {
+		if member.kind == "" {
+			continue
+		}
+		named++
+		if err := within(member.name, member.kind, languageKinds); err != nil {
+			return at("language_kinds", err)
+		}
+	}
+	if named < 2 {
+		return at("language_kinds", fmt.Errorf("%w: it names %d languages, and a mixed kind names at least 2", errValue, named))
+	}
+	return nil
 }
 
 func (c *Configuration) validate() error {
@@ -275,11 +308,11 @@ func (s *StaleSuppression) validate() error {
 		within("mechanism", s.Mechanism, mechanisms),
 		at("entry", first(
 			matches("code", s.Entry.Code, codePattern),
-			matches("path", s.Entry.Path, artifactPattern),
+			matches("path", s.Entry.Path, relativePattern),
 			matches("reason", s.Entry.Reason, nonBlankPattern),
 		)),
 		at("position", first(
-			matches("path", s.Position.Path, artifactPattern),
+			matches("path", s.Position.Path, relativePattern),
 			atLeast("line", s.Position.Line, 1),
 			atLeast("column", s.Position.Column, 1),
 		)),
@@ -304,7 +337,7 @@ func (t *TestFileRule) validate() error {
 
 func (s *TypeErrorSkip) validate() error {
 	return first(
-		matches("path", s.Path, artifactPattern),
+		matches("path", s.Path, relativePattern),
 		atLeast("line", s.Line, 1),
 		matches("message", s.Message, oneLinePattern),
 	)
@@ -313,7 +346,7 @@ func (s *TypeErrorSkip) validate() error {
 func (n *Note) validate() error {
 	return first(
 		within("kind", n.Kind, noteKinds),
-		matches("path", n.Path, artifactPattern),
+		matches("path", n.Path, rootPattern),
 		within("key", n.Key, noteKeys),
 		matches("message", n.Message, oneLinePattern),
 	)
@@ -332,7 +365,7 @@ func (c *ConventionApplied) validate() error {
 		matches("name", c.Name, tokenPattern),
 		nonEmpty("package", c.Package),
 		nonEmpty("version", c.Version),
-		matches("manifest", c.Manifest, artifactPattern),
+		matches("manifest", c.Manifest, relativePattern),
 	)
 }
 

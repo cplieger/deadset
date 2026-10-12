@@ -194,6 +194,84 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 	}
 }
 
+// A target kind written per language is refused naming its first fault: an
+// undeclared member in the document's order, then a language left out, then a
+// language given a value that is not a kind, the languages in the Contract's
+// order. Each message names the source, the path and the values it admits.
+func TestResolve_refusesATargetKindAtItsFirstFault(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		kind     string
+		at       string
+		admitted string
+	}{
+		{name: "undeclared-members-in-document-order", kind: `{"zz": "library", "py": "library", "go": "application"}`, at: "target.kind.zz", admitted: `"go", "ts"`},
+		{name: "undeclared-after-a-refused-value", kind: `{"go": "service", "ts": "library", "py": "library"}`, at: "target.kind.py", admitted: `"go", "ts"`},
+		{name: "missing-after-a-refused-value", kind: `{"go": "service"}`, at: "target.kind.ts", admitted: `"go", "ts"`},
+		{name: "refused-values-in-the-contracts-order", kind: `{"ts": "service", "go": "service"}`, at: "target.kind.go", admitted: `"application", "library"`},
+		{name: "member-of-another-type", kind: `{"go": "application", "ts": 1}`, at: "target.kind.ts", admitted: `"application", "library"`},
+		{name: "string-outside-its-set", kind: `"service"`, at: "target.kind", admitted: `"application", "library"`},
+		{name: "number", kind: `1`, at: "target.kind", admitted: `"application", "library", or an object naming the kind of each of "go", "ts"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Resolve(fromRepository(`{"target": {"kind": ` + c.kind + `}}`))
+			refusal, isRefusal := errors.AsType[*config.Error](err)
+			if !isRefusal {
+				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.kind, err, c.at)
+			}
+			if named := strings.Contains(refusal.Message, ": "+c.at+": ") || strings.Contains(refusal.Message, `"`+c.at+`"`); !named {
+				t.Errorf("Resolve(%s) = %q, want the message to name %q", c.kind, refusal, c.at)
+			}
+			if !strings.HasPrefix(refusal.Message, "deadset.json: ") || !strings.Contains(refusal.Message, c.admitted) {
+				t.Errorf("Resolve(%s) = %q, want it to name deadset.json and the values %s", c.kind, refusal, c.admitted)
+			}
+		})
+	}
+}
+
+// Either shape of the target kind is one setting: the value of the
+// highest-ranked source naming it stands whole, as that source wrote it, under
+// one provenance entry, and every analyzer receives it so.
+func TestResolve_readsTheTargetKindInEitherShapeAsOneSetting(t *testing.T) {
+	t.Parallel()
+
+	r, err := config.Resolve(&config.Inputs{
+		ContractVersion: testContractVersion,
+		Repository:      config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": {"ts": "library", "go": "application"}}}`)},
+		Central:         config.Document{Path: "central.json", Data: []byte(`{"target": {"kind": "library"}}`)},
+	})
+	if err != nil {
+		t.Fatalf("Resolve(a per-language kind over a string) = error %v", err)
+	}
+	want := map[string]any{"kind": map[string]any{"ts": "library", "go": "application"}}
+	held := printed(t, r)
+	if got := held.Values["target"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("Print() target = %v, want %v", got, want)
+	}
+	if got := held.Provenance["target.kind"]; got != "repository: deadset.json" {
+		t.Errorf("Print() provenance of target.kind = %q, want the repository", got)
+	}
+	for name := range held.Provenance {
+		if strings.HasPrefix(name, "target.kind.") {
+			t.Errorf("Print() carries the provenance entry %q, want one for target.kind alone", name)
+		}
+	}
+	for _, languages := range [][]string{{"go"}, {"ts"}, {"go", "ts"}} {
+		document, err := r.Split(languages...)
+		if err != nil {
+			t.Fatalf("Split(%q) = error %v", languages, err)
+		}
+		if got := decodePrinted(t, document).Values["target"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("Split(%q) target = %v, want the whole value %v", languages, got, want)
+		}
+	}
+}
+
 // The target kind has no default and is never inferred, so a run whose sources
 // supply none is refused naming the field, whatever languages are in scope, and a
 // run whose central configuration alone supplies it resolves.

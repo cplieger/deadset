@@ -72,12 +72,12 @@ func keyList(contractVersion string) node {
 			fallback: quoted(contractVersion), check: matches(semanticVersion, "a semantic version"),
 		},
 		{name: "target", kind: section, owner: everyProduct, children: []node{
-			{name: "kind", kind: setting, owner: everyProduct, check: oneOf("application", "library")},
+			{name: "kind", kind: setting, owner: everyProduct, check: targetKind},
 		}},
 		{name: "analysis", kind: section, owner: everyProduct, children: []node{
 			{
 				name: languagesKey, kind: setting, owner: orchestrator,
-				fallback: raw(`[]`), check: list(0, oneOf("go", "ts")),
+				fallback: raw(`[]`), check: list(0, oneOf(contractLanguages...)),
 			},
 			{
 				name: "min_confidence", kind: setting, owner: everyAnalyzer,

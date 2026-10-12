@@ -53,13 +53,13 @@ func first(rejections ...*rejection) *rejection {
 // spellings the key list declares for contract_version, an exemption class name,
 // a component file's extension, and the compiler configuration file a project
 // entry of the build matrix names: a path below the target root whose segments
-// are joined by /, none of them empty, . or .., and none holding a backslash or a
-// line break.
+// are joined by /, none of them empty, . or .., and none holding a control
+// character.
 var (
 	semanticVersion    = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	exemptionClass     = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 	componentExtension = regexp.MustCompile(`^\.[A-Za-z0-9]+$`)
-	projectPath        = regexp.MustCompile(`^(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+)(?:/(?:[^/\\.\r\n][^/\\\r\n]*|\.[^/\\.\r\n][^/\\\r\n]*|\.\.[^/\\\r\n]+))*$`)
+	projectPath        = regexp.MustCompile(`^(?:[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.\.[^/\x00-\x1f\x7f]+)(?:/(?:[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.[^/.\x00-\x1f\x7f][^/\x00-\x1f\x7f]*|\.\.[^/\x00-\x1f\x7f]+))*$`)
 )
 
 // decoded decodes one JSON value into v and reports whether it could. It refuses
@@ -193,6 +193,82 @@ func required(object map[string]json.RawMessage, name string, check checker) *re
 	return check(value).under("." + name)
 }
 
+// contractLanguages are the languages the Contract declares, in the order
+// contract/kinds.json lists them, and targetKinds the kinds a target, or one
+// language of it, takes.
+var (
+	contractLanguages = []string{"go", "ts"}
+	targetKinds       = []string{"application", "library"}
+)
+
+// targetKind accepts the target kind: one kind for every language, or an object
+// naming the kind of each language. Of several faults in an object it names the
+// first member the key does not declare, in the document's order, then the
+// first language left out, then the first language given a value that is not a
+// kind, the languages in the Contract's order.
+func targetKind(value json.RawMessage) *rejection {
+	var one string
+	if decoded(value, &one) {
+		return kind(value)
+	}
+	names, object, isObject := documentMembers(value)
+	if !isObject {
+		return reject("want one of %s, or an object naming the kind of each of %s", spell(targetKinds), spell(contractLanguages))
+	}
+	for _, name := range names {
+		if !slices.Contains(contractLanguages, name) {
+			return &rejection{
+				at: "." + name, undeclared: true,
+				detail: "a target kind written per language names the kind of each of " + spell(contractLanguages),
+			}
+		}
+	}
+	for _, language := range contractLanguages {
+		if _, held := object[language]; !held {
+			return &rejection{
+				at:     "." + language,
+				detail: "is not set, and a target kind written per language names the kind of each of " + spell(contractLanguages),
+			}
+		}
+	}
+	for _, language := range contractLanguages {
+		if rejected := kind(object[language]); rejected != nil {
+			return rejected.under("." + language)
+		}
+	}
+	return nil
+}
+
+// kind accepts one target kind.
+func kind(value json.RawMessage) *rejection {
+	if _, rejected := text(value); rejected != nil {
+		return reject("want one of %s", spell(targetKinds))
+	}
+	return oneOf(targetKinds...)(value)
+}
+
+// documentMembers decodes an object value into its member names in the order
+// the document writes them and its members by name. A value the reader has
+// already refused a repeated member of names each member once.
+func documentMembers(value json.RawMessage) (names []string, object map[string]json.RawMessage, isObject bool) {
+	dec := json.NewDecoder(bytes.NewReader(value))
+	if open, err := dec.Token(); err != nil || open != json.Delim('{') {
+		return nil, nil, false
+	}
+	object = map[string]json.RawMessage{}
+	for dec.More() {
+		token, err := dec.Token()
+		name, isName := token.(string)
+		var member json.RawMessage
+		if err != nil || !isName || dec.Decode(&member) != nil {
+			return nil, nil, false
+		}
+		names = append(names, name)
+		object[name] = member
+	}
+	return names, object, true
+}
+
 // delimiterPair accepts the action delimiter pair: both members, because a pair
 // with one member set names no delimiters at all.
 func delimiterPair(value json.RawMessage) *rejection {
@@ -311,7 +387,7 @@ func provider(value json.RawMessage) (string, *rejection) {
 	}
 	rejected = first(
 		required(entry, "name", matches(analyzerName, "lowercase words joined by single hyphens")),
-		required(entry, languagesKey, list(1, oneOf("go", "ts"))),
+		required(entry, languagesKey, list(1, oneOf(contractLanguages...))),
 		required(entry, "command", nonEmpty),
 	)
 	acquirable := slices.ContainsFunc(acquisitionMembers, func(name string) bool { _, held := entry[name]; return held })

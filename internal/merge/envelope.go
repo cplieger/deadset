@@ -2,6 +2,7 @@ package merge
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 	"strings"
 
@@ -34,7 +35,7 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 			Conformance:            caller.Conformance,
 		},
 		MergedFrom:             held.mergedFrom,
-		Target:                 ordered[0].Report.Target,
+		Target:                 mergedTarget(ordered),
 		Configurations:         firstPerID(held.configurations, func(c *report.Configuration) string { return c.ID }),
 		ConfigurationsNotBuilt: firstPerID(held.notBuilt, func(c *report.ConfigurationNotBuilt) string { return c.ID }),
 		Consumers:              consumers,
@@ -59,6 +60,29 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 		}),
 		Totals: totals(carried, &held),
 	}
+}
+
+// mergedTarget is the root and the identity every input names, and the kind
+// the inputs give every language they cover: that kind where it is one kind
+// for all of them, and mixed with each language's kind otherwise. Admission
+// refused two inputs giving one language two kinds.
+func mergedTarget(ordered []Input) report.Target {
+	claimed := map[string]report.TargetKind{}
+	for i := range ordered {
+		r := ordered[i].Report
+		for _, language := range r.Analyzer.Languages {
+			claimed[language] = r.Target.Of(language)
+		}
+	}
+	first := ordered[0].Report.Target
+	target := report.Target{Root: first.Root, Identity: first.Identity}
+	if kinds := slices.Compact(slices.Sorted(maps.Values(claimed))); len(kinds) == 1 {
+		target.Kind = kinds[0]
+		return target
+	}
+	target.Kind = report.TargetMixed
+	target.LanguageKinds = &report.LanguageKinds{Go: claimed["go"], TS: claimed["ts"]}
+	return target
 }
 
 // gathered is every envelope member of every input that the merged envelope

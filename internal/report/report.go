@@ -97,10 +97,17 @@ type InputReport struct {
 	Digest  string `json:"digest"`
 }
 
-// Target is what a report is about. A merged report names the same target as
-// every report it merged.
+// Target is what a report is about. A merged report names the root and the
+// identity every report it merged names, and the kind each gives its
+// languages.
 type Target struct {
-	Kind targetKind `json:"kind"`
+	// Kind is the one kind of every language the report covers, or
+	// [TargetMixed] where they differ and LanguageKinds names each.
+	Kind TargetKind `json:"kind"`
+
+	// LanguageKinds is the kind of each language the report covers, present
+	// exactly when Kind is [TargetMixed].
+	LanguageKinds *LanguageKinds `json:"language_kinds,omitzero"`
 
 	// Root is the directory the target was analyzed from, relative to the
 	// directory the run was invoked from: "." or a slash-separated path with no
@@ -112,14 +119,38 @@ type Target struct {
 	Identity string `json:"identity"`
 }
 
-// targetKind says whether a target's callers are all in the analyzed graph.
-type targetKind string
+// TargetKind says whether a target's callers are all in the analyzed graph.
+type TargetKind string
 
-// The kinds of target the configuration declares.
+// The kinds of target the configuration declares, and the kind of a report
+// whose languages have different kinds.
 const (
-	TargetApplication targetKind = "application"
-	TargetLibrary     targetKind = "library"
+	TargetApplication TargetKind = "application"
+	TargetLibrary     TargetKind = "library"
+	TargetMixed       TargetKind = "mixed"
 )
+
+// LanguageKinds is the kind of each language of a target, a member per
+// language, empty where the report does not cover the language.
+type LanguageKinds struct {
+	Go TargetKind `json:"go,omitzero"`
+	TS TargetKind `json:"ts,omitzero"`
+}
+
+// Of is the kind t gives language: the language's member where the kind is
+// [TargetMixed], and the kind otherwise.
+func (t *Target) Of(language string) TargetKind {
+	if t.Kind != TargetMixed || t.LanguageKinds == nil {
+		return t.Kind
+	}
+	switch language {
+	case "go":
+		return t.LanguageKinds.Go
+	case "ts":
+		return t.LanguageKinds.TS
+	}
+	return ""
+}
 
 // Consumers is the consumer set an analysis loaded beside the target.
 //

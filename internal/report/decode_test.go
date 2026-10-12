@@ -253,6 +253,18 @@ func TestDecodeRefusesWhatEncodingJSONAdmits(t *testing.T) {
 			old: `"configurations": [`, new: `"configurations": [{"id": "linux-amd64", "os": "linux", "arch": "amd64", "tags": []}, `,
 			wantPointer: "/configurations/1", wantReason: errValue,
 		},
+		"a mixed kind naming one language": {
+			old: `"kind": "application",`, new: `"kind": "mixed", "language_kinds": {"go": "application"},`,
+			wantPointer: "/target/language_kinds", wantReason: errValue,
+		},
+		"a language kind outside the two kinds": {
+			old: `"kind": "application",`, new: `"kind": "mixed", "language_kinds": {"go": "application", "ts": "mixed"},`,
+			wantPointer: "/target/language_kinds/ts", wantReason: errValue,
+		},
+		"a language kind present with no value": {
+			old: `"kind": "application",`, new: `"kind": "mixed", "language_kinds": {"go": "application", "ts": ""},`,
+			wantPointer: "/target/language_kinds/ts", wantReason: errValue,
+		},
 		"a whole document that is not an object": {
 			old: string(valid), new: `null`,
 			wantPointer: "", wantReason: errValue,
@@ -272,6 +284,65 @@ func TestDecodeRefusesWhatEncodingJSONAdmits(t *testing.T) {
 			}
 			if refused.Pointer != tt.wantPointer || !errors.Is(err, tt.wantReason) {
 				t.Errorf("Decode(%s) = %v (at %q), want %v at %q", name, err, refused.Pointer, tt.wantReason, tt.wantPointer)
+			}
+		})
+	}
+}
+
+// TestDecodeAdmitsEveryPathTheContractSpells edits one valid report so that a
+// record path holds a route file's characters or a backslash and a note names
+// the target root, both admitted, and so that a path holds a control character
+// or steps out of the target, both refused at that path.
+func TestDecodeAdmitsEveryPathTheContractSpells(t *testing.T) {
+	t.Parallel()
+
+	valid := read(t, spec.Vectors, "vectors/merge/one-report/inputs/00-go.json")
+	quote := func(t *testing.T, s string) string {
+		t.Helper()
+		quoted, err := json.Marshal(s)
+		if err != nil {
+			t.Fatalf("Setup: json.Marshal(%q) = %v", s, err)
+		}
+		return string(quoted)
+	}
+	edit := func(t *testing.T, skip, notePath, cgo string) string {
+		t.Helper()
+		return strings.Replace(strings.Replace(string(valid),
+			`"type_error_skips": [],
+  "notes": [],`,
+			`"type_error_skips": [{"path": `+quote(t, skip)+`, "line": 1, "message": "x"}],
+  "notes": [{"kind": "published-package", "path": `+quote(t, notePath)+`, "key": "roots.patterns", "message": "x"}],`, 1),
+			`"excluded_by_cgo": []`, `"excluded_by_cgo": [`+quote(t, cgo)+`]`, 1)
+	}
+	for name, tt := range map[string]struct {
+		skip, note, cgo string
+		wantPointer     string
+	}{
+		"route files and a root note": {skip: "src/routes/(app)/+layout.svelte", note: ".", cgo: "pages/api/[...slug] $x é.go"},
+		"a note in a directory":       {skip: `src/legacy\panel.ts`, note: "packages/web", cgo: "a.go"},
+		"a tab in a path":             {skip: "src/a\tb.ts", note: ".", cgo: "a.go", wantPointer: "/type_error_skips/0/path"},
+		"a delete character":          {skip: "a.ts", note: ".", cgo: "a\x7fb.go", wantPointer: "/excluded_by_cgo/0"},
+		"a step out of the target":    {skip: "a/../b.ts", note: ".", cgo: "a.go", wantPointer: "/type_error_skips/0/path"},
+		"a note at dot slash":         {skip: "a.ts", note: "./", cgo: "a.go", wantPointer: "/notes/0/path"},
+		"a skip naming the root":      {skip: ".", note: ".", cgo: "a.go", wantPointer: "/type_error_skips/0/path"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			edited := edit(t, tt.skip, tt.note, tt.cgo)
+			if !strings.Contains(edited, `"published-package"`) || strings.Contains(edited, `"excluded_by_cgo": []`) {
+				t.Fatalf("Setup: the report's empty records moved")
+			}
+			_, err := Decode([]byte(edited))
+			if tt.wantPointer == "" {
+				if err != nil {
+					t.Errorf("Decode(%s) = %v, want the report admitted", name, err)
+				}
+				return
+			}
+			var refused *Error
+			if !errors.As(err, &refused) || refused.Pointer != tt.wantPointer || !errors.Is(err, errValue) {
+				t.Errorf("Decode(%s) = %v, want %v at %q", name, err, errValue, tt.wantPointer)
 			}
 		})
 	}

@@ -197,6 +197,71 @@ func schemaAt(t *testing.T, path string) (schemaKey, bool) {
 	return current, true
 }
 
+// The target kind's two shapes are the schema's: a string of the kinds the key
+// list checks, and an object naming each language contract/kinds.json lists, in
+// its order, each of those kinds.
+func TestTargetKind_takesTheSchemasTwoShapes(t *testing.T) {
+	t.Parallel()
+
+	data, err := spec.Contract.ReadFile("contract/config.schema.json")
+	if err != nil {
+		t.Fatalf("Setup: read contract/config.schema.json: %v", err)
+	}
+	type kindBranch struct {
+		Type       string          `json:"type"`
+		Enum       []string        `json:"enum"`
+		Required   []string        `json:"required"`
+		Properties json.RawMessage `json:"properties"`
+	}
+	var schema struct {
+		Properties struct {
+			Target struct {
+				Properties struct {
+					Kind struct {
+						OneOf []kindBranch `json:"oneOf"`
+					} `json:"kind"`
+				} `json:"properties"`
+			} `json:"target"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("Setup: decode contract/config.schema.json: %v", err)
+	}
+	kinds, err := spec.Contract.ReadFile("contract/kinds.json")
+	if err != nil {
+		t.Fatalf("Setup: read contract/kinds.json: %v", err)
+	}
+	var vocabulary struct {
+		Languages []string `json:"languages"`
+	}
+	if err := json.Unmarshal(kinds, &vocabulary); err != nil {
+		t.Fatalf("Setup: decode contract/kinds.json: %v", err)
+	}
+
+	branches := schema.Properties.Target.Properties.Kind.OneOf
+	if len(branches) != 2 || branches[0].Type != "string" || branches[1].Type != "object" {
+		t.Fatalf("target.kind takes %+v, want a string branch and then an object branch", branches)
+	}
+	if !slices.Equal(branches[0].Enum, targetKinds) {
+		t.Errorf("target.kind's string branch takes %q, want the key list's %q", branches[0].Enum, targetKinds)
+	}
+	names, members := orderedMembers(t, branches[1].Properties)
+	if !slices.Equal(contractLanguages, vocabulary.Languages) || !slices.Equal(names, contractLanguages) ||
+		!slices.Equal(branches[1].Required, contractLanguages) {
+		t.Errorf("target.kind's object branch declares %q and requires %q, want the key list's %q, kinds.json's %q",
+			names, branches[1].Required, contractLanguages, vocabulary.Languages)
+	}
+	for _, name := range names {
+		var member kindBranch
+		if err := json.Unmarshal(members[name], &member); err != nil {
+			t.Fatalf("Setup: decode target.kind.%s: %v", name, err)
+		}
+		if !slices.Equal(member.Enum, targetKinds) {
+			t.Errorf("target.kind.%s takes %q, want the key list's %q", name, member.Enum, targetKinds)
+		}
+	}
+}
+
 // Every flag supplies a setting the schema declares, so a flag name mapped to a
 // misspelled path cannot ship.
 func TestSettingFlags_supplyDeclaredSettings(t *testing.T) {
@@ -357,7 +422,8 @@ func TestPatterns_agreeWithTheSchema(t *testing.T) {
 				"properties", "project", "pattern"),
 			samples: []string{
 				"tsconfig.json", "packages/app/tsconfig.json", "./tsconfig.json", "../x", "a//b", "a/", "/a",
-				".a", "..a", "a\\b", "a/./b", "a/../b", "...", "a\nb",
+				".a", "..a", "a\\b", "a/./b", "a/../b", "...", "a\nb", "a\tb", "a\x7fb", "a\x00b",
+				"apps/(app)/+web/tsconfig.json", "a b/$x/[id]/tsconfig.json", "\u00e9/tsconfig.json",
 			},
 		},
 	}
