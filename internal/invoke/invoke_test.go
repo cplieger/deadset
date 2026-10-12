@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -190,6 +191,9 @@ func TestAnalyzeRefusesAFileAlreadyAtTheReportPath(t *testing.T) {
 	if _, err := os.Stat(analyzer.args); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after Analyze(over an existing report), Stat(%s) = %v, want the analyzer never run", analyzer.args, err)
 	}
+	if refused, _ := errors.AsType[*invoke.Error](err); refused == nil || refused.Exit != -1 {
+		t.Errorf("Analyze(over an existing report) = %v, want an *invoke.Error naming exit -1", err)
+	}
 }
 
 // TestAnalyzeRefusesAnAnalyzerItCannotRun pins that a command that cannot be
@@ -226,6 +230,9 @@ func TestAnalyzeRefusesACommandThatIsNotAnAbsolutePath(t *testing.T) {
 	}
 	if _, err := os.Stat(analyzer.args); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after Analyze(command %q), Stat(%s) = %v, want the analyzer never run", req.Command, analyzer.args, err)
+	}
+	if refused, _ := errors.AsType[*invoke.Error](err); refused == nil || refused.Exit != -1 {
+		t.Errorf("Analyze(command %q) = %v, want an *invoke.Error naming exit -1", req.Command, err)
 	}
 }
 
@@ -269,6 +276,9 @@ func TestAnalyzeInterruptsTheAnalyzerOfACancelledRun(t *testing.T) {
 	}
 	if _, err := os.Stat(interrupted); err != nil {
 		t.Errorf("after Analyze(a cancelled run), Stat(%s) = %v, want the analyzer to have received an interrupt", interrupted, err)
+	}
+	if refused, _ := errors.AsType[*invoke.Error](err); refused == nil || refused.Exit != -1 {
+		t.Errorf("Analyze(a cancelled run) = %v, want an *invoke.Error naming exit -1, the analyzer having exited 1 at the interrupt", err)
 	}
 }
 
@@ -348,5 +358,30 @@ func TestAnalyzeNamesTheWriteErrorWhenTheAnalyzerDiesOfIt(t *testing.T) {
 	}
 	if refused, _ := errors.AsType[*invoke.Error](err); refused == nil || refused.Exit != -1 {
 		t.Errorf("Analyze(an analyzer printing until its output is refused) = %v, want an *invoke.Error naming exit -1", err)
+	}
+}
+
+// TestAnalyzeRefusesARunWhoseOutputOutlivesTheAnalyzer pins that an analyzer
+// exiting with a verdict while a process it started still holds its output
+// open is refused once the grace for that output runs out, so a report whose
+// diagnostics may be cut short is never read. The grace is ten seconds.
+func TestAnalyzeRefusesARunWhoseOutputOutlivesTheAnalyzer(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	document := filepath.Join(dir, "written.json")
+	if err := os.WriteFile(document, published(t, oneReport), 0o600); err != nil {
+		t.Fatalf("Setup: write %s: %v", document, err)
+	}
+	analyzer := script(t, dir, "cp '"+document+"' \"$report\"\nsleep 12 &\nexit 0\n")
+	req := request(t, "deadset-go", analyzer.command)
+	req.Diagnostics = &bytes.Buffer{}
+
+	got, _, err := invoke.Analyze(t.Context(), &req)
+	if got != nil || !errors.Is(err, exec.ErrWaitDelay) {
+		t.Errorf("Analyze(an analyzer whose output outlives it) = %+v, %v, want no report and exec.ErrWaitDelay", got, err)
+	}
+	if refused, _ := errors.AsType[*invoke.Error](err); refused == nil || refused.Exit != 0 {
+		t.Errorf("Analyze(an analyzer whose output outlives it) = %v, want an *invoke.Error naming exit 0", err)
 	}
 }

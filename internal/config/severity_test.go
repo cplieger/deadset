@@ -1,10 +1,36 @@
 package config_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/cplieger/deadset/internal/config"
 )
+
+// A severity key naming a kind whose severity the Contract fixes is refused
+// naming every fixed code the key names, one on its own and several as a list.
+func TestResolve_refusingAFixedSeverityNamesEveryFixedCodeOfTheKey(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		key, names string
+	}{
+		{key: "DS1704", names: "the severity of DS1704, which"},
+		{key: "DS17", names: "the severity of DS1703, DS1704 and DS1706, which"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Parallel()
+
+			document := `{"target": {"kind": "library"}, "severity": {"` + tc.key + `": "warn"}}`
+			_, err := config.Resolve(fromRepository(document))
+			refusal, isRefusal := errors.AsType[*config.Error](err)
+			if !isRefusal || !strings.Contains(refusal.Message, tc.names) {
+				t.Errorf("Resolve(%s) = %v, want a *config.Error naming %q", document, err, tc.names)
+			}
+		})
+	}
+}
 
 // The severity a resolution sets for a code is its key for the code, then its
 // key for the code's family, and nothing when it names neither.
