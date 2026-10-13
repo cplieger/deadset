@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
+	spec "github.com/cplieger/deadset-spec/v8"
 )
 
 // TestDecodeReadsEveryExampleReportBack decodes every report the Contract

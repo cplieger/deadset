@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
+	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset/internal/invoke"
 	"github.com/cplieger/deadset/internal/report"
 	"github.com/cplieger/deadset/internal/rundir"
