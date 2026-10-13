@@ -15,7 +15,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // The document's fixed values: the schema it names, the format version, the

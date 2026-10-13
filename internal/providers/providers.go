@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/config"
+	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // listKey is the configuration setting that holds the provider list.

@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/merge"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/merge"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // harnessDir holds the harness archives and the result recorded over them.

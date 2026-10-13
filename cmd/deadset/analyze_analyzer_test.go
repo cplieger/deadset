@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // goAnalyzerOnPath skips a test of a real run when PATH holds no Go analyzer.

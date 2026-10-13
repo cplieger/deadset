@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/verdict"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // The analyzer reports the fakes write, each a published merge input.
@@ -296,6 +296,9 @@ func TestAnalyzeExitCodes(t *testing.T) {
 		setup func(t *testing.T) (target, runDir string, extra []string)
 		code  int
 		names []string
+
+		// absent is what stderr must not hold.
+		absent []string
 	}{
 		{
 			name: "findings-exit-code-off",
@@ -428,12 +431,29 @@ func TestAnalyzeExitCodes(t *testing.T) {
 		{
 			name: "analyzer-refusing-its-configuration",
 			setup: func(t *testing.T) (string, string, []string) {
-				f := fakeAnalyzer(t, "deadset-go", []string{"go"}, 2, "")
+				f := printingAnalyzer(t, "deadset-go", []string{"go"}, 2, "", "usage: deadset-go analyze --scope=FILE\n")
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, nil
 			},
-			code:  verdict.Usage,
-			names: []string{"deadset-go", "exited 2"},
+			code:   verdict.Usage,
+			names:  []string{"analyzer deadset-go", "exited 2, a usage or configuration error of the analyzer", "usage: deadset-go analyze"},
+			absent: []string{"usage: deadset analyze"},
+		},
+		{
+			name: "every-analyzer-refusing-its-configuration",
+			setup: func(t *testing.T) (string, string, []string) {
+				goFake := fakeAnalyzer(t, "deadset-go", []string{"go"}, 2, "")
+				tsFake := fakeAnalyzer(t, "deadset-ts", []string{"ts"}, 2, "")
+				target, runDir := goTarget(t, []provider{
+					{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}},
+					{Name: "deadset-ts", Command: tsFake.command, Languages: []string{"ts"}},
+				}, "")
+				writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
+				return target, runDir, nil
+			},
+			code:   verdict.Usage,
+			names:  []string{"analyzer deadset-go", "analyzer deadset-ts", "a usage or configuration error of the analyzer"},
+			absent: []string{"usage: deadset analyze"},
 		},
 		{
 			name: "analyzer-failing",
@@ -473,6 +493,11 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			for _, named := range c.names {
 				if !strings.Contains(got.stderr, named) {
 					t.Errorf("analyze(%s) stderr = %q, want it to name %s", c.name, got.stderr, named)
+				}
+			}
+			for _, held := range c.absent {
+				if strings.Contains(got.stderr, held) {
+					t.Errorf("analyze(%s) stderr = %q, want no %q", c.name, got.stderr, held)
 				}
 			}
 			produced := c.code == verdict.Clean || c.code == verdict.Findings

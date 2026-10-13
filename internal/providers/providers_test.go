@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/providers"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/providers"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // executable writes an executable file named name in dir and returns its path.

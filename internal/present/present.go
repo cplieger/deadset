@@ -10,9 +10,9 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/merge"
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/merge"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // Options is how one run shapes its merged report.

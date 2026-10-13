@@ -39,8 +39,9 @@ var (
 	states          = []State{StateLive, StateDead, StateAbsent}
 	staleCodes      = []string{staleSuppressionCode}
 	mechanisms      = []string{"inline", "ignore", "baseline"}
-	noteKinds       = []noteKind{NotePublishedPackage}
-	noteKeys        = []string{"roots.patterns"}
+	noteKinds       = []noteKind{NoteModuleNotLoaded, NotePublishedPackage, NoteUnmappedEntry}
+	noteKeys        = []string{"roots.patterns", "ts.entry_files"}
+	keylessNotes    = []noteKind{NoteModuleNotLoaded}
 	classes         = []Class{ClassCertain, ClassProbable, classPossible}
 	relations       = []Relation{RelationReferenceCounting, relationReachability}
 	fixabilities    = []Fixability{FixabilityDeletable, fixabilityNarrowable, fixabilityManual, FixabilityNone}
@@ -60,7 +61,7 @@ var (
 var (
 	relationFreeKinds = []string{
 		"parameter", "receiver", "result", "statement", "case", "store",
-		"file", "dependency", "module-directive", "suppression", "root", "configured-declaration", "edge",
+		"file", "import", "dependency", "module-directive", "suppression", "root", "configured-declaration", "edge",
 	}
 	relationFreeCodes = []string{unnecessaryExportCode, unnecessaryExposureCode, "DS1104", "DS1204", "DS1301"}
 )
@@ -347,9 +348,22 @@ func (n *Note) validate() error {
 	return first(
 		within("kind", n.Kind, noteKinds),
 		matches("path", n.Path, rootPattern),
-		within("key", n.Key, noteKeys),
+		n.validateKey(),
 		matches("message", n.Message, oneLinePattern),
 	)
+}
+
+// validateKey holds key to the schema: forbidden on a note of a kind no key
+// settles, and required on every other.
+func (n *Note) validateKey() error {
+	keyless := slices.Contains(keylessNotes, n.Kind)
+	switch {
+	case keyless && n.Key != "":
+		return at("key", fmt.Errorf("%w: a %s note names no key", errForbidden, n.Kind))
+	case !keyless && n.Key == "":
+		return at("key", fmt.Errorf("%w: a %s note names the key that settles it", errMissing, n.Kind))
+	}
+	return optionalWithin("key", n.Key, noteKeys)
 }
 
 func (q *UnansweredQuestion) validate() error {

@@ -6,11 +6,12 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
+	spec "github.com/cplieger/deadset-spec/v8"
 )
 
 // TestDecodeReadsEveryExampleReportBack decodes every report the Contract
@@ -343,6 +344,64 @@ func TestDecodeAdmitsEveryPathTheContractSpells(t *testing.T) {
 			var refused *Error
 			if !errors.As(err, &refused) || refused.Pointer != tt.wantPointer || !errors.Is(err, errValue) {
 				t.Errorf("Decode(%s) = %v, want %v at %q", name, err, errValue, tt.wantPointer)
+			}
+		})
+	}
+}
+
+// TestDecodeHoldsANoteKeyToItsKind edits one valid report to carry one note:
+// a module-not-loaded note names no key, and every other kind names one, and
+// an admitted note writes back the members it was read with.
+func TestDecodeHoldsANoteKeyToItsKind(t *testing.T) {
+	t.Parallel()
+
+	valid := read(t, spec.Vectors, "vectors/merge/one-report/inputs/00-go.json")
+	for name, tt := range map[string]struct {
+		note       string
+		wantReason error
+	}{
+		"a module not loaded":              {note: `{"kind": "module-not-loaded", "path": "tools", "message": "x"}`},
+		"an unmapped entry":                {note: `{"kind": "unmapped-entry", "path": ".", "key": "ts.entry_files", "message": "x"}`},
+		"a published package":              {note: `{"kind": "published-package", "path": "pkg", "key": "roots.patterns", "message": "x"}`},
+		"a module not loaded naming a key": {note: `{"kind": "module-not-loaded", "path": "tools", "key": "roots.patterns", "message": "x"}`, wantReason: errForbidden},
+		"an unmapped entry with no key":    {note: `{"kind": "unmapped-entry", "path": ".", "message": "x"}`, wantReason: errMissing},
+		"a published package with no key":  {note: `{"kind": "published-package", "path": "pkg", "message": "x"}`, wantReason: errMissing},
+		"a key outside the vocabulary":     {note: `{"kind": "unmapped-entry", "path": ".", "key": "ts.roots_complete", "message": "x"}`, wantReason: errValue},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			edited := strings.Replace(string(valid), `"notes": [],`, `"notes": [`+tt.note+`],`, 1)
+			if edited == string(valid) {
+				t.Fatalf("Setup: the report holds no empty notes array")
+			}
+			decoded, err := Decode([]byte(edited))
+			if tt.wantReason != nil {
+				var refused *Error
+				if !errors.As(err, &refused) || refused.Pointer != "/notes/0/key" || !errors.Is(err, tt.wantReason) {
+					t.Errorf("Decode(%s) = %v, want %v at /notes/0/key", tt.note, err, tt.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Decode(%s) = %v, want the note admitted", tt.note, err)
+			}
+			var written bytes.Buffer
+			if err := Encode(&written, decoded); err != nil {
+				t.Fatalf("Encode(%s) = %v, want the note written", tt.note, err)
+			}
+			var notes struct {
+				Notes []map[string]string `json:"notes"`
+			}
+			if err := json.Unmarshal(written.Bytes(), &notes); err != nil {
+				t.Fatalf("Setup: read the written report: %v", err)
+			}
+			var want map[string]string
+			if err := json.Unmarshal([]byte(tt.note), &want); err != nil {
+				t.Fatalf("Setup: read the note %s: %v", tt.note, err)
+			}
+			if len(notes.Notes) != 1 || !maps.Equal(notes.Notes[0], want) {
+				t.Errorf("Encode(%s) wrote the notes %v, want %v", tt.note, notes.Notes, want)
 			}
 		})
 	}

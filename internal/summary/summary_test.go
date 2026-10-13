@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/summary"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/summary"
 )
 
 // vector decodes one merged report of the published merge vectors, named by

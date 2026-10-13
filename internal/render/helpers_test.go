@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/report"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // mergedCase is one published merge case that produces a merged report: the

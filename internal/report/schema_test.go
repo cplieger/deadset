@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
+	spec "github.com/cplieger/deadset-spec/v8"
 )
 
 // The two schemas the types of this package mirror.
@@ -262,8 +262,8 @@ func TestTheVocabulariesAreTheSchemas(t *testing.T) {
 // excluded_by rule reads, the fixability removes_last_use_of needs, the codes
 // and the class name_literal needs, the subjects and codes that carry no
 // liveness relation, the state that carries a pending finding, the one rule
-// the report schema adds to a reported finding, and the kind that requires a
-// target's language kinds.
+// the report schema adds to a reported finding, the kind that requires a
+// target's language kinds, and the note kinds that name a key.
 func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 	t.Parallel()
 
@@ -416,6 +416,25 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 					} `json:"then"`
 				} `json:"items"`
 			} `json:"edge_evaluations"`
+			Notes struct {
+				Items struct {
+					AllOf []struct {
+						If struct {
+							Properties struct {
+								Kind struct {
+									Const string `json:"const"`
+								} `json:"kind"`
+							} `json:"properties"`
+						} `json:"if"`
+						Then struct {
+							Required []string `json:"required"`
+							Not      struct {
+								Required []string `json:"required"`
+							} `json:"not"`
+						} `json:"then"`
+					} `json:"allOf"`
+				} `json:"items"`
+			} `json:"notes"`
 			Target struct {
 				If struct {
 					Properties struct {
@@ -454,6 +473,29 @@ func TestTheConditionalRulesAreTheSchemas(t *testing.T) {
 		!slices.Equal(target.Else.Not.Required, []string{"language_kinds"}) {
 		t.Errorf("the report schema requires %q of a target of the kind %q and forbids %q otherwise, want language_kinds required of a mixed one alone",
 			target.Then.Required, target.If.Properties.Kind.Const, target.Else.Not.Required)
+	}
+	keyed, keyless := []string{}, []string{}
+	for _, rule := range report.Properties.Notes.Items.AllOf {
+		switch kind := rule.If.Properties.Kind.Const; {
+		case slices.Equal(rule.Then.Required, []string{"key"}):
+			keyed = append(keyed, kind)
+		case slices.Equal(rule.Then.Not.Required, []string{"key"}):
+			keyless = append(keyless, kind)
+		default:
+			t.Errorf("the report schema's note rule for the kind %q neither requires nor forbids key", kind)
+		}
+	}
+	var wantKeyed []string
+	for _, kind := range noteKinds {
+		if !slices.Contains(keylessNotes, kind) {
+			wantKeyed = append(wantKeyed, string(kind))
+		}
+	}
+	slices.Sort(wantKeyed)
+	if !slices.Equal(slices.Sorted(slices.Values(keyed)), wantKeyed) ||
+		!slices.Equal(slices.Sorted(slices.Values(keyless)), slices.Sorted(slices.Values(names(keylessNotes)))) {
+		t.Errorf("the report schema requires a note's key under the kinds %q and forbids it under %q, want %q and %q",
+			keyed, keyless, wantKeyed, keylessNotes)
 	}
 	if least := report.Properties.Target.Properties.LanguageKinds.MinProperties; least == nil || *least != 2 {
 		t.Errorf("the report schema bounds language_kinds at %v members, want at least 2, the bound the decode holds", least)

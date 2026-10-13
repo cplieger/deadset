@@ -1,6 +1,6 @@
 package render
 
-import "github.com/cplieger/deadset/internal/report"
+import "github.com/cplieger/deadset/v2/internal/report"
 
 // The SARIF document, one field per property the Contract's mapping emits, so
 // two renderings of one report are one byte sequence. A property the mapping

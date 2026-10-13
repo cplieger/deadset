@@ -4,10 +4,10 @@ import (
 	"slices"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/present"
-	"github.com/cplieger/deadset/internal/report"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/present"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // merged is the merged report a published merge case expects.

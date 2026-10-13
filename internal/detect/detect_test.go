@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/detect"
+	"github.com/cplieger/deadset/v2/internal/detect"
 )
 
 // tree writes files, keyed by slash-separated path, under a fresh directory and

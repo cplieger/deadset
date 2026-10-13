@@ -152,6 +152,7 @@ func keyList(contractVersion string) node {
 			{name: "injection_registrations", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{name: "lifecycle_contracts", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
 			{name: "serializers", kind: passThrough, owner: languageAnalyzer, fallback: raw(`[]`)},
+			{name: "roots_complete", kind: passThrough, owner: languageAnalyzer, fallback: raw(`false`), check: boolean},
 		}},
 		{name: provenanceSection, kind: annotations, owner: everyProduct},
 	}}

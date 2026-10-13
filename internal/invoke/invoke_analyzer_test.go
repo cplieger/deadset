@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/invoke"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/rundir"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/invoke"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
 // goAnalyzer is the first-party Go analyzer the tests of a real run look up on

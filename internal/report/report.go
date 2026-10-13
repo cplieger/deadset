@@ -284,16 +284,26 @@ type TypeErrorSkip struct {
 type Note struct {
 	Kind    noteKind `json:"kind"`
 	Path    string   `json:"path"`
-	Key     string   `json:"key"`
+	Key     string   `json:"key,omitzero"`
 	Message string   `json:"message"`
 }
 
 // noteKind is what a note is about.
 type noteKind string
 
-// NotePublishedPackage is a package of an application no other package of the
-// target imports and outside programs may import.
-const NotePublishedPackage noteKind = "published-package"
+const (
+	// NoteModuleNotLoaded is a Go module below the target root that the run
+	// dropped because it does not load.
+	NoteModuleNotLoaded noteKind = "module-not-loaded"
+
+	// NotePublishedPackage is a package of an application no other package of
+	// the target imports and outside programs may import.
+	NotePublishedPackage noteKind = "published-package"
+
+	// NoteUnmappedEntry is a manifest entry that reads back to no source file
+	// of the target.
+	NoteUnmappedEntry noteKind = "unmapped-entry"
+)
 
 // UnansweredQuestion counts, for one configuration, the questions the analysis
 // asked its type checker that went unanswered and the declarations they held.

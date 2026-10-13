@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 	"pgregory.net/rapid"
 )
 

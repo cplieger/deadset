@@ -7,7 +7,7 @@ package merge
 import (
 	"slices"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // Input is one analyzer report a merge reads, with the digest of the analyzer

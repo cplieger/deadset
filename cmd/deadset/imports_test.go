@@ -9,7 +9,7 @@ import (
 )
 
 // module is the path of this module.
-const module = "github.com/cplieger/deadset"
+const module = "github.com/cplieger/deadset/v2"
 
 // listedPackage is the part of a go list record the import graph is read from.
 type listedPackage struct {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/gomod"
+	"github.com/cplieger/deadset/v2/internal/gomod"
 )
 
 // writeFile writes one file a test's setup needs.

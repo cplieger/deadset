@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // The kind token and the confidence a stale suppression's text line carries:

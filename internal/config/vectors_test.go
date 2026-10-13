@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/verdict"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // publishedCases are the configuration cases the pinned Contract publishes. The

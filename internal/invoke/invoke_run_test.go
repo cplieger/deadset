@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/invoke"
+	"github.com/cplieger/deadset/v2/internal/invoke"
 )
 
 // refusals is every *invoke.Error the error Run returned joins, in order.

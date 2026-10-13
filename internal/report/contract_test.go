@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/report"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // TestTheVersionsAreThePinnedContracts pins the Contract version this module

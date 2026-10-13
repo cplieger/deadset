@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // caller is the merging product's facts the tests pass.
@@ -552,26 +552,30 @@ func TestMergeUnionsTheEnvelopeRecordsInTheGrammarsOrder(t *testing.T) {
 	note := func(path string) report.Note {
 		return report.Note{Kind: report.NotePublishedPackage, Path: path, Key: "roots.patterns", Message: "no package imports " + path}
 	}
+	notLoaded := report.Note{Kind: report.NoteModuleNotLoaded, Path: "tools", Message: "the module tools does not load"}
+	unmapped := func(entry string) report.Note {
+		return report.Note{Kind: report.NoteUnmappedEntry, Path: ".", Key: "ts.entry_files", Message: "the entry " + entry + " reads back to no source file"}
+	}
 	row := func(name, pkg, manifest string) report.ConventionApplied {
 		return report.ConventionApplied{Name: name, Package: pkg, Version: "2.1.0", Manifest: manifest}
 	}
 	golang := analyzerReport("deadset-go", "go")
 	golang.TypeErrorSkips = []report.TypeErrorSkip{{Path: "a.go", Line: 12, Message: "x"}, {Path: "b.go", Line: 1, Message: "y"}}
-	golang.Notes = []report.Note{note("z"), note("m")}
+	golang.Notes = []report.Note{note("z"), notLoaded, note("m")}
 	golang.UnansweredQuestions = []report.UnansweredQuestion{
 		{Configuration: "tsconfig.json", Questions: 3, Declarations: 2}, {Configuration: "x y", Questions: 1, Declarations: 1},
 	}
 	golang.ConventionsApplied = []report.ConventionApplied{row("b-rows", "@example/b", "web/package.json"), row("a-rows", "@example/a", "z/package.json")}
 	typescript := analyzerReport("deadset-ts", "ts")
 	typescript.TypeErrorSkips = []report.TypeErrorSkip{{Path: "a.go", Line: 9, Message: "z"}, {Path: "a.go", Line: 12, Message: "x"}}
-	typescript.Notes = []report.Note{note("a"), note("m")}
+	typescript.Notes = []report.Note{unmapped("dist/main.js"), note("a"), unmapped("dist/cli.js"), note("m")}
 	typescript.UnansweredQuestions = []report.UnansweredQuestion{
 		{Configuration: "tsconfig.json", Questions: 2, Declarations: 2}, {Configuration: "x", Questions: 1, Declarations: 0},
 	}
 	typescript.ConventionsApplied = []report.ConventionApplied{row("a-rows", "@example/z", "app/package.json"), row("b-rows", "@example/b", "web/package.json")}
 
 	wantSkips := []report.TypeErrorSkip{{Path: "a.go", Line: 9, Message: "z"}, {Path: "a.go", Line: 12, Message: "x"}, {Path: "b.go", Line: 1, Message: "y"}}
-	wantNotes := []report.Note{note("a"), note("m"), note("z")}
+	wantNotes := []report.Note{notLoaded, note("a"), note("m"), note("z"), unmapped("dist/cli.js"), unmapped("dist/main.js")}
 	wantQuestions := []report.UnansweredQuestion{
 		{Configuration: "tsconfig.json", Questions: 2, Declarations: 2},
 		{Configuration: "tsconfig.json", Questions: 3, Declarations: 2},
