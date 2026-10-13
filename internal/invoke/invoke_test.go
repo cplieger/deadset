@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cplieger/deadset/internal/invoke"
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/invoke"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // TestAnalyzeReadsTheReportOfEveryVerdict pins that each exit code that is a
@@ -80,7 +80,8 @@ func TestAnalyzeRunsTheAnalyzeVerbWithTheThreePaths(t *testing.T) {
 // TestAnalyzeReadsNoReportAfterAnExitThatCarriesNone pins that the exit code is
 // read before the report is opened: an analyzer that refused its invocation,
 // failed, or exited with a code the contract does not define is refused with
-// its code, and the truncated document it left is never decoded.
+// its code, and the truncated document it left is never decoded. Only exit 2
+// is named the analyzer's usage or configuration error.
 func TestAnalyzeReadsNoReportAfterAnExitThatCarriesNone(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +106,9 @@ func TestAnalyzeReadsNoReportAfterAnExitThatCarriesNone(t *testing.T) {
 			}
 			if refused.Analyzer != req.Analyzer || refused.Report != req.Report {
 				t.Errorf("Analyze() refused analyzer %q and report %q, want %q and %q", refused.Analyzer, refused.Report, req.Analyzer, req.Report)
+			}
+			if named := strings.Contains(err.Error(), "a usage or configuration error of the analyzer"); named != (exit == 2) {
+				t.Errorf("Analyze(an analyzer exiting %d) = %q, want it named a usage or configuration error: %t", exit, err, exit == 2)
 			}
 		})
 	}

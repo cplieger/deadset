@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
+	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // isRefusal reports whether err is a configuration the product refuses.

@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // key is the canonical key merge.md fixes for a finding, a stale suppression

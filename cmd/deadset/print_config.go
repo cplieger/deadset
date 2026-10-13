@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 func init() { register("print-config", runPrintConfig) }

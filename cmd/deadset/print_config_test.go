@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // targetHolding returns a target root holding repository as its repository

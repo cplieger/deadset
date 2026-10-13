@@ -12,7 +12,7 @@ import (
 	"text/template"
 	"text/template/parse"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // templateName is the name an error gives the user's template.

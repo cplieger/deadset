@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
+	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // mixedTarget is a target holding both languages, with a matrix for each, a

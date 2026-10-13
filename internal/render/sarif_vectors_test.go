@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/verdict"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 const sarifVectors = "vectors/sarif"

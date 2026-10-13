@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/merge"
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/merge"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // renderSARIF renders one merged case over its synthesized source tree.

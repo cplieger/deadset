@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
+	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // parseFlags parses args against the setting flags and one flag that supplies no

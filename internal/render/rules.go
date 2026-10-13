@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // vocabulary is the Contract's issue-kind vocabulary, a copy a test pins byte

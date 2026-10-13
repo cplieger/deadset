@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // envelope is the merged report: the ordered working set inside the envelope

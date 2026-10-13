@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 func TestMergeInterleavesTheLanguagesByPath(t *testing.T) {

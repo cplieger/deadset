@@ -9,10 +9,10 @@ import (
 	"slices"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/rundir"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
 // mixedTarget is a repository configuration for a target holding both languages.

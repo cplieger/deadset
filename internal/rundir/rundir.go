@@ -19,8 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // The files of a run directory that no provider entry keys.

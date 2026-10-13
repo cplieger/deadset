@@ -1,6 +1,6 @@
 package merge
 
-import "github.com/cplieger/deadset/internal/report"
+import "github.com/cplieger/deadset/v2/internal/report"
 
 // records is the merge's working set: every record of every input, each
 // carrying the name of the analyzer whose report held it, with nothing

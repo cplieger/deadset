@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/invoke"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/invoke"
 )
 
 // The report documents the fake analyzers write: one the Contract publishes,

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/pkgjson"
+	"github.com/cplieger/deadset/v2/internal/pkgjson"
 )
 
 // A package.json names its package by a non-empty string name member, and

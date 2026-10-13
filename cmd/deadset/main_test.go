@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // TestDispatch pins how a command line reaches a verb over a build whose only

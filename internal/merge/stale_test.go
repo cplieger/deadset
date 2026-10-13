@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // Each edge with a wholly absent side yields one stale-edge finding, numbered

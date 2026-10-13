@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
+	spec "github.com/cplieger/deadset-spec/v8"
 )
 
 // TestTheReportCodesAreTheContractsVerdicts pins the exit codes after which a

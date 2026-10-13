@@ -14,8 +14,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/rundir"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
 // scopeSchema is the Contract's schema of the scope document.

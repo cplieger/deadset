@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // targetUsage and centralUsage describe the two flags every verb that reads a

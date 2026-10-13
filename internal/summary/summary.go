@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // Write writes one line per analyzer r was merged from, naming its version and

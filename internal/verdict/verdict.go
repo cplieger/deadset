@@ -6,10 +6,10 @@ package verdict
 import (
 	"errors"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/detect"
-	"github.com/cplieger/deadset/internal/invoke"
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/detect"
+	"github.com/cplieger/deadset/v2/internal/invoke"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // The exit codes, one per row of the Contract's exit-code table. Usage and

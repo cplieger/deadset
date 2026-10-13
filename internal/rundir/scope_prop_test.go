@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/rundir"
+	"github.com/cplieger/deadset/v2/internal/rundir"
 	"pgregory.net/rapid"
 )
 

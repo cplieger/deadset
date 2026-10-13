@@ -18,20 +18,20 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/cplieger/deadset/internal/config"
-	"github.com/cplieger/deadset/internal/detect"
-	"github.com/cplieger/deadset/internal/gomod"
-	"github.com/cplieger/deadset/internal/invoke"
-	"github.com/cplieger/deadset/internal/merge"
-	"github.com/cplieger/deadset/internal/pkgjson"
-	"github.com/cplieger/deadset/internal/present"
-	"github.com/cplieger/deadset/internal/providers"
-	"github.com/cplieger/deadset/internal/render"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/rundir"
-	"github.com/cplieger/deadset/internal/scope"
-	"github.com/cplieger/deadset/internal/summary"
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/detect"
+	"github.com/cplieger/deadset/v2/internal/gomod"
+	"github.com/cplieger/deadset/v2/internal/invoke"
+	"github.com/cplieger/deadset/v2/internal/merge"
+	"github.com/cplieger/deadset/v2/internal/pkgjson"
+	"github.com/cplieger/deadset/v2/internal/present"
+	"github.com/cplieger/deadset/v2/internal/providers"
+	"github.com/cplieger/deadset/v2/internal/render"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/rundir"
+	"github.com/cplieger/deadset/v2/internal/scope"
+	"github.com/cplieger/deadset/v2/internal/summary"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 func init() { register("analyze", runAnalyze) }
@@ -120,7 +120,9 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "deadset: %v\n", err)
 		code = verdict.ForError(err)
-		if code == verdict.Usage {
+		// An analyzer's refusal is of its own command line, whose usage text it
+		// printed; this command's usage would name a mistake the user did not make.
+		if _, analyzer := errors.AsType[*invoke.Error](err); code == verdict.Usage && !analyzer {
 			a.set.Usage()
 		}
 	}

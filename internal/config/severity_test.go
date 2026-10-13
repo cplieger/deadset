@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/internal/config"
+	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // A severity key naming a kind whose severity the Contract fixes is refused

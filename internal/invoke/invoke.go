@@ -31,7 +31,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // interruptGrace is how long an analyzer has to exit after a cancelled run
@@ -42,6 +42,10 @@ const interruptGrace = 10 * time.Second
 // clean, findings and pending. Every other code ends the analyzer's run with
 // no report a reader may use.
 var reportCodes = []int{0, 1, 4}
+
+// usageExit is the exit code an analyzer returns when it refuses its
+// invocation or the configuration it was given.
+const usageExit = 2
 
 // The refusals an invocation makes, each carried by an [*Error].
 var (
@@ -136,6 +140,8 @@ func Analyze(ctx context.Context, req *Request) (*report.Report, int, error) {
 	switch {
 	case err != nil:
 		return refuse(exit, err)
+	case exit == usageExit:
+		return refuse(exit, fmt.Errorf("exited %d, a usage or configuration error of the analyzer: %w", exit, ErrExited))
 	case !slices.Contains(reportCodes, exit):
 		return refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrExited))
 	}

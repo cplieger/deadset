@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/report"
+	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // errNoInput is a merge given no report to merge.

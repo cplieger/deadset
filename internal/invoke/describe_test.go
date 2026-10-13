@@ -14,11 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	spec "github.com/cplieger/deadset-spec/v7"
-	"github.com/cplieger/deadset/internal/invoke"
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/rundir"
-	"github.com/cplieger/deadset/internal/verdict"
+	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset/v2/internal/invoke"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/rundir"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // accepted is the report schema range the handshake tests admit under.
@@ -404,11 +404,11 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 		}
 		want := &invoke.Description{
 			Conformance: &report.Conformance{
-				CorpusVersion: "5.2.0", Result: report.ResultPass,
+				CorpusVersion: "6.0.0", Result: report.ResultPass,
 				Digest: "sha256:cbf2fb667d665d638407a6248aadf286ce96fe7b1627aa081e856846871a6e66",
 			},
-			Name: "deadset-go", Version: "1.21.0", ContractVersion: "7.2.0",
-			SchemaVersionsAccepted: []string{"8.2.0"},
+			Name: "deadset-go", Version: "1.21.0", ContractVersion: "8.0.0",
+			SchemaVersionsAccepted: []string{"9.0.0"},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Describe(conformance-recorded.json) = %+v, want %+v", got, want)

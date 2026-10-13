@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/report"
-	"github.com/cplieger/deadset/internal/rundir"
+	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
 // The refusals a handshake makes, each carried by a [*HandshakeError].

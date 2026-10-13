@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // command is one verb of this command's surface and the line the usage text
