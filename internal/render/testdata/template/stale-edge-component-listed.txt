@@ -1,0 +1,4 @@
+analyzer deadset-go 1.0.0
+analyzer deadset-ts 1.0.0
+deadset-edges.json:1:1 DS1705 stale-cross-language-edge deny merge
+1 findings, 0 stale, 0 omitted

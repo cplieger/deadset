@@ -125,6 +125,18 @@ type sarifFingerprints struct {
 	DeadsetSymbolRef        string `json:"deadsetSymbolRef/v1"`
 }
 
+// sarifComponent is a finding's component with the members its report lists
+// for it, absent where the report lists none.
+//
+//nolint:govet // fieldalignment: the field order is the finding schema's member order
+type sarifComponent struct {
+	ID             string              `json:"id"`
+	Root           bool                `json:"root"`
+	SymbolCount    int                 `json:"symbol_count"`
+	DeletableLines int                 `json:"deletable_lines"`
+	Members        []report.Positioned `json:"members,omitzero"`
+}
+
 // sarifResultProperties is every member of a finding the mapping places
 // nowhere else, under its schema name; a member the finding omits is absent.
 //
@@ -137,7 +149,7 @@ type sarifResultProperties struct {
 	LivenessRelation  report.Relation   `json:"liveness_relation,omitzero"`
 	TestOnly          bool              `json:"test_only"`
 	Generated         bool              `json:"generated"`
-	Component         report.Component  `json:"component"`
+	Component         sarifComponent    `json:"component"`
 	RetainedBy        []string          `json:"retained_by"`
 	Configurations    []string          `json:"configurations"`
 	ConsumersLoaded   []string          `json:"consumers_loaded"`

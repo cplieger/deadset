@@ -361,6 +361,8 @@ func TestDecodeHoldsANoteKeyToItsKind(t *testing.T) {
 		wantReason error
 	}{
 		"a module not loaded":              {note: `{"kind": "module-not-loaded", "path": "tools", "message": "x"}`},
+		"a computed load":                  {note: `{"kind": "computed-load", "path": "src", "message": "x"}`},
+		"a computed load naming a key":     {note: `{"kind": "computed-load", "path": "src", "key": "ts.entry_files", "message": "x"}`, wantReason: errForbidden},
 		"an unmapped entry":                {note: `{"kind": "unmapped-entry", "path": ".", "key": "ts.entry_files", "message": "x"}`},
 		"a published package":              {note: `{"kind": "published-package", "path": "pkg", "key": "roots.patterns", "message": "x"}`},
 		"a module not loaded naming a key": {note: `{"kind": "module-not-loaded", "path": "tools", "key": "roots.patterns", "message": "x"}`, wantReason: errForbidden},

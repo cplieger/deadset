@@ -82,17 +82,18 @@ type Symbol struct {
 // Component is the dead component a finding's subject belongs to. ID carries
 // the minting analyzer's name as a prefix ("deadset-go/c-0007") and is compared
 // as bytes.
-//
-//nolint:govet // fieldalignment: the field order is the schema's member order, which the encoding writes
 type Component struct {
 	ID             string `json:"id"`
 	Root           bool   `json:"root"`
 	SymbolCount    int    `json:"symbol_count"`
 	DeletableLines int    `json:"deletable_lines"`
+}
 
-	// Members is the component's members where a report lists them, nil where
-	// it does not.
-	Members []Positioned `json:"members,omitzero"`
+// ComponentListing is the members of one component, which a report lists once
+// however many findings name the component.
+type ComponentListing struct {
+	ID      string       `json:"id"`
+	Members []Positioned `json:"members"`
 }
 
 // Positioned is one symbol a finding names beside its subject: its reference,

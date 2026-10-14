@@ -312,12 +312,12 @@ func TestSARIFRelatesEveryPositionAFindingNames(t *testing.T) {
 			WritePositions:  []report.Position{at("src/features/tabs/index.ts", 1190, 9), at("src/features/tabs/index.ts", 1201, 9)},
 			NameLiteral:     new(at("src/registry.ts", 4, 10)),
 		},
-		Component: report.Component{Members: []report.Positioned{
-			{Ref: "ts://@example/app/src/features/tabs/index.ts#Tabs.cache", Position: at("src/features/tabs/index.ts", 12, 3)},
-			{Ref: "ts://x#Helper", Position: at("src/a b.ts", 30, 5)},
-		}},
 	}
-	related := relatedLocations(&found)
+	members := []report.Positioned{
+		{Ref: "ts://@example/app/src/features/tabs/index.ts#Tabs.cache", Position: at("src/features/tabs/index.ts", 12, 3)},
+		{Ref: "ts://x#Helper", Position: at("src/a b.ts", 30, 5)},
+	}
+	related := relatedLocations(&found, members)
 	got := messageWithLinks(found.Message, related)
 	want := "private member is written and never read (see [implementation src/impl.ts:4:1](1), " +
 		"[write src/features/tabs/index.ts:1190:9](2), [write src/features/tabs/index.ts:1201:9](3), [name src/registry.ts:4:10](4), " +
@@ -339,7 +339,7 @@ func TestSARIFRelatesAtMostAHundredPositions(t *testing.T) {
 	for line := range 150 {
 		found.Details.WritePositions = append(found.Details.WritePositions, report.Position{Path: "a.go", Line: line + 1, Column: 1, EndLine: line + 1})
 	}
-	related := relatedLocations(&found)
+	related := relatedLocations(&found, nil)
 	if len(related) != maxRelatedLocations || related[99].PhysicalLocation.Region.StartLine != 100 {
 		t.Errorf("relatedLocations(150 writes) holds %d, want the first %d", len(related), maxRelatedLocations)
 	}

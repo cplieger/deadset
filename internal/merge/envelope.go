@@ -40,6 +40,7 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 		ConfigurationsNotBuilt: firstPerID(held.notBuilt, func(c *report.ConfigurationNotBuilt) string { return c.ID }),
 		Consumers:              consumers,
 		Findings:               carried.findings,
+		Components:             carried.components(),
 		EdgeEvaluations:        carried.evaluations,
 		StaleSuppressions:      carried.stale,
 		DeclaredGaps:           carried.gaps,
