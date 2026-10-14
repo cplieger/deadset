@@ -39,9 +39,9 @@ var (
 	states          = []State{StateLive, StateDead, StateAbsent}
 	staleCodes      = []string{staleSuppressionCode}
 	mechanisms      = []string{"inline", "ignore", "baseline"}
-	noteKinds       = []noteKind{NoteModuleNotLoaded, NotePublishedPackage, NoteUnmappedEntry}
+	noteKinds       = []noteKind{noteComputedLoad, NoteModuleNotLoaded, NotePublishedPackage, NoteUnmappedEntry}
 	noteKeys        = []string{"roots.patterns", "ts.entry_files"}
-	keylessNotes    = []noteKind{NoteModuleNotLoaded}
+	keylessNotes    = []noteKind{noteComputedLoad, NoteModuleNotLoaded}
 	classes         = []Class{ClassCertain, ClassProbable, classPossible}
 	relations       = []Relation{RelationReferenceCounting, relationReachability}
 	fixabilities    = []Fixability{FixabilityDeletable, fixabilityNarrowable, fixabilityManual, FixabilityNone}
@@ -159,6 +159,9 @@ func (r *Report) validate() error {
 		at("consumers", r.Consumers.validate()),
 		required("findings", r.Findings),
 		listOf("findings", r.Findings, false, (*Finding).validateReported),
+		listOf("components", r.Components, false, (*ComponentListing).validate),
+		distinctListings(r.Components),
+		listsEveryComponent(r),
 		required("edge_evaluations", r.EdgeEvaluations),
 		listOf("edge_evaluations", r.EdgeEvaluations, false, (*EdgeEvaluation).validate),
 		required("stale_suppressions", r.StaleSuppressions),
@@ -527,6 +530,59 @@ func (c *Component) validate() error {
 		matches("id", c.ID, componentPattern),
 		atLeast("symbol_count", c.SymbolCount, 1),
 		atLeast("deletable_lines", c.DeletableLines, 0),
+	)
+}
+
+// distinctListings holds a report to one listing per component.
+func distinctListings(listings []ComponentListing) error {
+	seen := make(map[string]int, len(listings))
+	for i := range listings {
+		if earlier, repeated := seen[listings[i].ID]; repeated {
+			return at("components", at(strconv.Itoa(i), fmt.Errorf("%w: the entry lists component %s, as entry %d does", errValue, listings[i].ID, earlier)))
+		}
+		seen[listings[i].ID] = i
+	}
+	return nil
+}
+
+// listsEveryComponent holds a report that lists components to one listing for each
+// component a finding or an edge evaluation's finding names, and none other.
+func listsEveryComponent(r *Report) error {
+	if r.Components == nil {
+		return nil
+	}
+	listed := make(map[string]bool, len(r.Components))
+	for i := range r.Components {
+		listed[r.Components[i].ID] = true
+	}
+	named := map[string]bool{}
+	for i := range r.Findings {
+		id := r.Findings[i].Component.ID
+		named[id] = true
+		if !listed[id] {
+			return at("findings", at(strconv.Itoa(i), fmt.Errorf("%w: the finding names component %s, which the components listing lacks", errValue, id)))
+		}
+	}
+	for i := range r.EdgeEvaluations {
+		if f := r.EdgeEvaluations[i].Finding; f != nil {
+			named[f.Component.ID] = true
+			if !listed[f.Component.ID] {
+				return at("edge_evaluations", at(strconv.Itoa(i), fmt.Errorf("%w: the finding names component %s, which the components listing lacks", errValue, f.Component.ID)))
+			}
+		}
+	}
+	for i := range r.Components {
+		if !named[r.Components[i].ID] {
+			return at("components", at(strconv.Itoa(i), fmt.Errorf("%w: the entry lists component %s, which no finding names", errValue, r.Components[i].ID)))
+		}
+	}
+	return nil
+}
+
+func (c *ComponentListing) validate() error {
+	return first(
+		matches("id", c.ID, componentPattern),
+		required("members", c.Members),
 		listOf("members", c.Members, true, (*Positioned).validate),
 	)
 }

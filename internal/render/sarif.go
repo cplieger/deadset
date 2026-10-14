@@ -202,11 +202,12 @@ func newRun(name, version, automation string, languages []string, totals *report
 // add appends a result for every finding and then every stale suppression of
 // r that the named analyzer carried, in r's order.
 func (u *run) add(r *report.Report, analyzer string, hashes *lineHashCache) error {
+	listed := r.ListedMembers()
 	for i := range r.Findings {
 		if r.Findings[i].Analyzer != analyzer {
 			continue
 		}
-		result, err := u.findingResult(&r.Findings[i], hashes)
+		result, err := u.findingResult(&r.Findings[i], listed[r.Findings[i].Component.ID], hashes)
 		if err != nil {
 			return err
 		}
@@ -237,8 +238,9 @@ func (u *run) ruleIndex(code string) (int, error) {
 // findingResult is one finding as a result: its rule, the level its severity
 // maps to, its message linking every related location, its own location, the
 // positions it names beyond its own, both fingerprints and the members the
-// mapping places nowhere else.
-func (u *run) findingResult(found *report.Finding, hashes *lineHashCache) (sarifResult, error) {
+// mapping places nowhere else. members is what the report lists for the
+// finding's component, nil where it lists nothing.
+func (u *run) findingResult(found *report.Finding, members []report.Positioned, hashes *lineHashCache) (sarifResult, error) {
 	at, err := u.ruleIndex(found.Code)
 	if err != nil {
 		return sarifResult{}, err
@@ -247,7 +249,7 @@ func (u *run) findingResult(found *report.Finding, hashes *lineHashCache) (sarif
 	if err != nil {
 		return sarifResult{}, err
 	}
-	related := relatedLocations(found)
+	related := relatedLocations(found, members)
 	return sarifResult{
 		RuleID:    found.Code,
 		RuleIndex: at,
@@ -268,12 +270,15 @@ func (u *run) findingResult(found *report.Finding, hashes *lineHashCache) (sarif
 			LivenessRelation:  found.LivenessRelation,
 			TestOnly:          found.TestOnly,
 			Generated:         found.Generated,
-			Component:         found.Component,
-			RetainedBy:        listed(found.RetainedBy),
-			Configurations:    listed(found.Configurations),
-			ConsumersLoaded:   listed(found.ConsumersLoaded),
-			Fixability:        found.Fixability,
-			Details:           found.Details,
+			Component: sarifComponent{
+				ID: found.Component.ID, Root: found.Component.Root, SymbolCount: found.Component.SymbolCount,
+				DeletableLines: found.Component.DeletableLines, Members: members,
+			},
+			RetainedBy:      listed(found.RetainedBy),
+			Configurations:  listed(found.Configurations),
+			ConsumersLoaded: listed(found.ConsumersLoaded),
+			Fixability:      found.Fixability,
+			Details:         found.Details,
 		},
 	}, nil
 }
@@ -317,9 +322,9 @@ func listed(items []string) []string {
 
 // relatedLocations is every position a finding names beyond its own, numbered
 // from one: its implementations, then its write positions, then its name
-// literal, then the other members of its component where it lists them, the
-// first hundred of these.
-func relatedLocations(found *report.Finding) []sarifLocation {
+// literal, then the other members of its component where the report lists
+// them, the first hundred of these.
+func relatedLocations(found *report.Finding, members []report.Positioned) []sarifLocation {
 	var held []sarifLocation
 	add := func(label string, at *report.Position) {
 		if len(held) < maxRelatedLocations {
@@ -340,8 +345,8 @@ func relatedLocations(found *report.Finding) []sarifLocation {
 	if found.Details.NameLiteral != nil {
 		add(labelName, found.Details.NameLiteral)
 	}
-	for i := range found.Component.Members {
-		if member := &found.Component.Members[i]; !ownDeclaration(found, member) {
+	for i := range members {
+		if member := &members[i]; !ownDeclaration(found, member) {
 			add(labelMember, &member.Position)
 		}
 	}

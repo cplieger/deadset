@@ -37,6 +37,12 @@ type Report struct {
 	// is not among them, and none names an exemption class in RetainedBy.
 	Findings []Finding `json:"findings"`
 
+	// Components lists, once, the members of each component a finding names,
+	// in the order of the first finding naming it, the findings an edge
+	// evaluation carries counted after Findings. It is nil on a report that
+	// does not list components in full.
+	Components []ComponentListing `json:"components,omitzero"`
+
 	// EdgeEvaluations holds one record per declared cross-language edge side an
 	// analyzer enumerated. A merged report holds no record whose state is dead.
 	EdgeEvaluations []EdgeEvaluation `json:"edge_evaluations"`
@@ -53,6 +59,16 @@ type Report struct {
 	UnansweredQuestions []UnansweredQuestion `json:"unanswered_questions"`
 	ConventionsApplied  []ConventionApplied  `json:"conventions_applied"`
 	Totals              Totals               `json:"totals"`
+}
+
+// ListedMembers is the members each listed component holds, by its identifier,
+// empty where the report lists no component.
+func (r *Report) ListedMembers() map[string][]Positioned {
+	members := make(map[string][]Positioned, len(r.Components))
+	for i := range r.Components {
+		members[r.Components[i].ID] = r.Components[i].Members
+	}
+	return members
 }
 
 // Analyzer is the product that wrote a report: an analyzer for a report of one
@@ -292,6 +308,10 @@ type Note struct {
 type noteKind string
 
 const (
+	// noteComputedLoad is a TypeScript load by a computed path the analysis
+	// cannot resolve.
+	noteComputedLoad noteKind = "computed-load"
+
 	// NoteModuleNotLoaded is a Go module below the target root that the run
 	// dropped because it does not load.
 	NoteModuleNotLoaded noteKind = "module-not-loaded"

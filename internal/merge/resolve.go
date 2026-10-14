@@ -131,7 +131,7 @@ func (r *records) resolve(inputs []Input, merger string) error {
 		promoted = append(promoted, promotion{finding: finding, edge: e.Edge, side: e.Side})
 		kept = append(kept, finding)
 	}
-	unite(kept, promoted)
+	r.renamed = unite(kept, promoted)
 	kept = append(kept, staleEdges(index, merger)...)
 	r.findings = kept
 
@@ -205,8 +205,9 @@ type promotion struct {
 // in canonical order. A joined component takes the identifier of the
 // component the visit reached first and the sums of the joined components'
 // symbol counts and deletable lines, and every finding of a joined component
-// is rewritten to it; each keeps its own root flag.
-func unite(findings []report.Finding, promoted []promotion) {
+// is rewritten to it; each keeps its own root flag. It returns the identifier
+// each reached component now carries.
+func unite(findings []report.Finding, promoted []promotion) map[componentKey]string {
 	var u unionFind
 	for i := range promoted {
 		p := &promoted[i]
@@ -227,6 +228,11 @@ func unite(findings []report.Finding, promoted []promotion) {
 			findings[i].Component.DeletableLines = c.DeletableLines
 		}
 	}
+	renamed := make(map[componentKey]string, len(joined))
+	for key, c := range joined {
+		renamed[key] = c.ID
+	}
+	return renamed
 }
 
 // unionFind is the components the union visit reached, in the order it

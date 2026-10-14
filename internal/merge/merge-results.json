@@ -4,6 +4,10 @@
   "result": "pass",
   "cases": [
     {
+      "case": "components-listed-and-joined",
+      "result": "pass"
+    },
+    {
       "case": "configuration-built-and-not-built",
       "result": "pass"
     },
@@ -93,6 +97,10 @@
     },
     {
       "case": "schema-version-out-of-range",
+      "result": "pass"
+    },
+    {
+      "case": "stale-edge-component-listed",
       "result": "pass"
     },
     {

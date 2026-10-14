@@ -6,6 +6,9 @@ import "github.com/cplieger/deadset/v2/internal/report"
 // carrying the name of the analyzer whose report held it, with nothing
 // deduplicated.
 type records struct {
+	// renamed is the identifier each component the union joined now carries.
+	renamed map[componentKey]string
+
 	findings []report.Finding
 	stale    []report.StaleSuppression
 	gaps     []report.DeclaredGap
@@ -15,6 +18,11 @@ type records struct {
 	// absent ones the merged report holds. A carried evaluation's finding is
 	// the input's own, so nothing writes through it.
 	evaluations []report.EdgeEvaluation
+
+	// listings is every component listing of every input, under the component
+	// it names in that input; lists records whether any input lists components.
+	listings []listing
+	lists    bool
 }
 
 // union carries every finding, stale suppression, declared gap and edge
@@ -35,6 +43,13 @@ func union(inputs []Input) *records {
 		carried.stale = carry(carried.stale, r.StaleSuppressions, func(s *report.StaleSuppression) { s.Analyzer = name })
 		carried.gaps = carry(carried.gaps, r.DeclaredGaps, func(g *report.DeclaredGap) { g.Analyzer = name })
 		carried.evaluations = carry(carried.evaluations, r.EdgeEvaluations, func(e *report.EdgeEvaluation) { e.Analyzer = name })
+		carried.lists = carried.lists || r.Components != nil
+		for j := range r.Components {
+			carried.listings = append(carried.listings, listing{
+				component: componentKey{analyzer: name, id: r.Components[j].ID},
+				members:   r.Components[j].Members,
+			})
+		}
 	}
 	return carried
 }
