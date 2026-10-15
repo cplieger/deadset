@@ -40,7 +40,7 @@ const (
 // Code is the exit code of a run whose report is r, under the failing severity
 // failOn and the switch exitCode. A pending finding outranks everything else; a
 // stale suppression yields Findings whatever any finding's severity and failOn
-// are; a finding yields Findings when [Fails] says its severity fails the run.
+// are; a finding yields Findings when [Failing] says its severity fails the run.
 // The counts come from r's totals rather than its arrays, so a report whose
 // finding list a maximum finding count bounded keeps the whole run's verdict.
 func Code(r *report.Report, failOn config.Severity, exitCode Switch) int {
@@ -61,16 +61,16 @@ func Code(r *report.Report, failOn config.Severity, exitCode Switch) int {
 // Failing reports whether any finding the counts hold fails a run whose
 // failing severity is failOn.
 func Failing(counts *report.BySeverity, failOn config.Severity) bool {
-	return (counts.Deny > 0 && Fails(report.SeverityDeny, failOn)) ||
-		(counts.Warn > 0 && Fails(report.SeverityWarn, failOn)) ||
-		(counts.Allow > 0 && Fails(report.SeverityAllow, failOn))
+	return (counts.Deny > 0 && fails(report.SeverityDeny, failOn)) ||
+		(counts.Warn > 0 && fails(report.SeverityWarn, failOn)) ||
+		(counts.Allow > 0 && fails(report.SeverityAllow, failOn))
 }
 
-// Fails reports whether a finding of the given severity fails a run whose
+// fails reports whether a finding of the given severity fails a run whose
 // failing severity is failOn: whether severity is at or above it, in the order
 // allow, warn, deny. A failOn outside the three severities is deny, the
 // configuration's default.
-func Fails(severity report.Severity, failOn config.Severity) bool {
+func fails(severity report.Severity, failOn config.Severity) bool {
 	return rank(severity) >= rank(report.Severity(failOn))
 }
 

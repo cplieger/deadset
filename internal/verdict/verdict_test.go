@@ -254,9 +254,9 @@ func TestCodeOffIsCleanWhateverTheVerdict(t *testing.T) {
 	}
 }
 
-// TestFails pins the order of the three severities against every failing
+// TestFailing pins the order of the three severities against every failing
 // severity, and that a failing severity outside them is deny.
-func TestFails(t *testing.T) {
+func TestFailing(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -276,8 +276,17 @@ func TestFails(t *testing.T) {
 		{severity: report.SeverityWarn, failOn: "", want: false},
 		{severity: report.SeverityDeny, failOn: "", want: true},
 	} {
-		if got := verdict.Fails(tc.severity, tc.failOn); got != tc.want {
-			t.Errorf("Fails(%q, %q) = %t, want %t", tc.severity, tc.failOn, got, tc.want)
+		counts := report.BySeverity{}
+		switch tc.severity {
+		case report.SeverityDeny:
+			counts.Deny = 1
+		case report.SeverityWarn:
+			counts.Warn = 1
+		default:
+			counts.Allow = 1
+		}
+		if got := verdict.Failing(&counts, tc.failOn); got != tc.want {
+			t.Errorf("Failing(one %q finding, %q) = %t, want %t", tc.severity, tc.failOn, got, tc.want)
 		}
 	}
 }

@@ -1,8 +1,8 @@
 // Package summary renders what a run prints about its merged report beside the
 // report itself: one text line per finding and per stale suppression, the
 // analyzers the merge read, one summary line over every language the run
-// covered, the remediation of a failing finding, and one workflow annotation
-// per finding and per stale suppression.
+// covered, the remediation of a failing finding, and the workflow annotations of
+// the merged report.
 package summary
 
 import (
@@ -11,9 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/report"
-	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // Write writes one line per analyzer r was merged from, naming its version and
@@ -59,17 +57,18 @@ func listed(names []string) string {
 // code a stale-suppression record carries.
 const staleSuppressionKind = "stale-suppression"
 
-// Annotations writes one GitHub workflow command per finding of r and one per
-// stale suppression, each naming the file, line, column and last line of its
-// record, titled with the code and the kind, and carrying the record's message.
-// A record that fails the run under failOn is an error, which a stale
-// suppression always is; a warn finding that does not is a warning, and an
-// allow finding that does not is a notice.
-func Annotations(w io.Writer, r *report.Report, failOn config.Severity) error {
+// Annotations writes the workflow commands the contract's annotations grammar
+// states for r: one per finding at the command its severity alone names, deny an
+// error, warn a warning and allow a notice; then one error per stale suppression,
+// one warning per type-error skip and one warning per note. A finding and a stale
+// suppression name the file, line, column and last line of the record and are
+// titled with the code and the kind, a skip names its file and line, and a note
+// the directory it is about, titled with its kind.
+func Annotations(w io.Writer, r *report.Report) error {
 	var text strings.Builder
 	for i := range r.Findings {
 		found := &r.Findings[i]
-		annotate(&text, commandOf(found.Severity, failOn), &found.Position, found.Code+" "+found.Kind, found.Message)
+		annotate(&text, commandOf(found.Severity), &found.Position, found.Code+" "+found.Kind, found.Message)
 	}
 	for i := range r.StaleSuppressions {
 		stale := &r.StaleSuppressions[i]
@@ -79,17 +78,32 @@ func Annotations(w io.Writer, r *report.Report, failOn config.Severity) error {
 		}
 		annotate(&text, "error", &at, stale.Code+" "+staleSuppressionKind, stale.Message)
 	}
+	for _, skip := range r.TypeErrorSkips {
+		fmt.Fprintf(&text, "::warning file=%s,line=%d,title=%s::%s\n",
+			propertyEscapes.Replace(skip.Path), skip.Line, propertyEscapes.Replace(typeErrorSkipTitle),
+			dataEscapes.Replace(typeErrorSkipMessage+skip.Message))
+	}
+	for _, note := range r.Notes {
+		fmt.Fprintf(&text, "::warning file=%s,title=%s::%s\n",
+			propertyEscapes.Replace(note.Path), propertyEscapes.Replace(string(note.Kind)), dataEscapes.Replace(note.Message))
+	}
 	_, err := io.WriteString(w, text.String())
 	return err
 }
 
+// The title and the message prefix of a type-error skip's annotation.
+const (
+	typeErrorSkipTitle   = "type error skipped"
+	typeErrorSkipMessage = "the analysis did not evaluate the function or statement holding this type error: "
+)
+
 // commandOf is the workflow command a finding of the given severity is
-// annotated with under failOn.
-func commandOf(severity report.Severity, failOn config.Severity) string {
-	switch {
-	case verdict.Fails(severity, failOn):
+// annotated with.
+func commandOf(severity report.Severity) string {
+	switch severity {
+	case report.SeverityDeny:
 		return "error"
-	case severity == report.SeverityWarn:
+	case report.SeverityWarn:
 		return "warning"
 	default:
 		return "notice"

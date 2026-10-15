@@ -57,8 +57,8 @@ const (
 
 // renderings is every format rendered on stdout, each mapped to what writes
 // it there.
-var renderings = map[config.Format]func(io.Writer, *report.Report, config.Severity) error{
-	config.FormatText:   func(w io.Writer, r *report.Report, _ config.Severity) error { return summary.Text(w, r) },
+var renderings = map[config.Format]func(io.Writer, *report.Report) error{
+	config.FormatText:   summary.Text,
 	config.FormatGitHub: summary.Annotations,
 }
 
@@ -600,7 +600,7 @@ func (a *analysis) print(r *report.Report, reporters *config.Reporters, written 
 	var out strings.Builder
 	for _, format := range reporters.Formats {
 		if write := renderings[format]; write != nil {
-			if err := write(&out, r, reporters.FailOn); err != nil {
+			if err := write(&out, r); err != nil {
 				return err
 			}
 		}

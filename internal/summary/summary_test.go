@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
-	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/report"
 	"github.com/cplieger/deadset/v2/internal/summary"
 )
@@ -29,12 +28,12 @@ func vector(t *testing.T, name string) *report.Report {
 	return r
 }
 
-// annotations is every line Annotations writes for r under failOn.
-func annotations(t *testing.T, r *report.Report, failOn config.Severity) []string {
+// annotations is every line Annotations writes for r.
+func annotations(t *testing.T, r *report.Report) []string {
 	t.Helper()
 
 	var written strings.Builder
-	if err := summary.Annotations(&written, r, failOn); err != nil {
+	if err := summary.Annotations(&written, r); err != nil {
 		t.Fatalf("Annotations = error %v", err)
 	}
 	return strings.SplitAfter(written.String(), "\n")[:strings.Count(written.String(), "\n")]
@@ -42,12 +41,12 @@ func annotations(t *testing.T, r *report.Report, failOn config.Severity) []strin
 
 // annotation is the one line Annotations writes for a report holding one
 // record.
-func annotation(t *testing.T, r *report.Report, failOn config.Severity) string {
+func annotation(t *testing.T, r *report.Report) string {
 	t.Helper()
 
-	lines := annotations(t, r, failOn)
+	lines := annotations(t, r)
 	if len(lines) != 1 {
-		t.Fatalf("Annotations(a report holding one record, %s) = %q, want one line", failOn, lines)
+		t.Fatalf("Annotations(a report holding one record) = %q, want one line", lines)
 	}
 	return lines[0]
 }
@@ -125,10 +124,10 @@ func TestWriteNamesEachCountInItsOwnColumn(t *testing.T) {
 	}
 }
 
-// TestAnnotationsWriteOneErrorPerFailingRecord pins one error annotation per
-// deny finding and per stale suppression, and nothing else, over published
-// merged reports.
-func TestAnnotationsWriteOneErrorPerFailingRecord(t *testing.T) {
+// TestAnnotationsWriteOneLinePerRecord pins one error annotation per deny
+// finding and per stale suppression, and nothing else, over published merged
+// reports.
+func TestAnnotationsWriteOneLinePerRecord(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -160,49 +159,62 @@ func TestAnnotationsWriteOneErrorPerFailingRecord(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := annotations(t, vector(t, tc.name), config.Deny)
+			got := annotations(t, vector(t, tc.name))
 			if strings.Join(got, "") != strings.Join(tc.want, "") {
-				t.Errorf("Annotations(%s, deny) =\n%s\nwant\n%s", tc.name, strings.Join(got, ""), strings.Join(tc.want, ""))
+				t.Errorf("Annotations(%s) =\n%s\nwant\n%s", tc.name, strings.Join(got, ""), strings.Join(tc.want, ""))
 			}
 		})
 	}
 }
 
-// TestAnnotationsCommandFollowsTheFailingSeverity pins that a finding is an
-// error exactly when it fails the run, and otherwise a warning for warn and a
-// notice for allow, while a stale suppression is an error under every failing
-// severity.
-func TestAnnotationsCommandFollowsTheFailingSeverity(t *testing.T) {
+// TestAnnotationsCommandFollowsTheSeverityAlone pins that a finding is an error
+// for deny, a warning for warn and a notice for allow, and a stale suppression
+// an error.
+func TestAnnotationsCommandFollowsTheSeverityAlone(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		severity report.Severity
-		failOn   config.Severity
 		want     string
 	}{
-		{severity: report.SeverityDeny, failOn: config.Deny, want: "::error "},
-		{severity: report.SeverityWarn, failOn: config.Deny, want: "::warning "},
-		{severity: report.SeverityWarn, failOn: config.Warn, want: "::error "},
-		{severity: report.SeverityAllow, failOn: config.Warn, want: "::notice "},
-		{severity: report.SeverityAllow, failOn: config.Allow, want: "::error "},
+		{severity: report.SeverityDeny, want: "::error "},
+		{severity: report.SeverityWarn, want: "::warning "},
+		{severity: report.SeverityAllow, want: "::notice "},
 	} {
-		t.Run(string(tc.severity)+"_under_"+string(tc.failOn), func(t *testing.T) {
+		t.Run(string(tc.severity), func(t *testing.T) {
 			t.Parallel()
 
 			r := vector(t, "one-report")
 			r.Findings[0].Severity = tc.severity
-			if got := annotation(t, r, tc.failOn); !strings.HasPrefix(got, tc.want) {
-				t.Errorf("Annotations(one-report with a %s finding, %s) = %q, want a line starting %q",
-					tc.severity, tc.failOn, got, tc.want)
+			if got := annotation(t, r); !strings.HasPrefix(got, tc.want) {
+				t.Errorf("Annotations(one-report with a %s finding) = %q, want a line starting %q", tc.severity, got, tc.want)
 			}
 		})
 	}
 
-	stale := vector(t, "stale-suppression-carried")
-	for _, failOn := range []config.Severity{config.Allow, config.Warn, config.Deny} {
-		if got := annotation(t, stale, failOn); !strings.HasPrefix(got, "::error ") {
-			t.Errorf("Annotations(stale-suppression-carried, %s) = %q, want a line starting %q", failOn, got, "::error ")
-		}
+	if got := annotation(t, vector(t, "stale-suppression-carried")); !strings.HasPrefix(got, "::error ") {
+		t.Errorf("Annotations(stale-suppression-carried) = %q, want a line starting %q", got, "::error ")
+	}
+}
+
+// TestAnnotationsWarnOfEachTypeErrorSkipAndNote pins one warning per type-error
+// skip at its file and line and one per note at its directory, after the
+// findings.
+func TestAnnotationsWarnOfEachTypeErrorSkipAndNote(t *testing.T) {
+	t.Parallel()
+
+	r := vector(t, "one-report")
+	r.TypeErrorSkips = []report.TypeErrorSkip{{Path: "app/main.go", Line: 9, Message: "undefined: missing"}}
+	r.Notes = []report.Note{{Kind: report.NoteModuleNotLoaded, Path: "tools", Message: "the module, at tools, did not load"}}
+
+	got := annotations(t, r)
+	want := []string{
+		"::warning file=app/main.go,line=9,title=type error skipped::" +
+			"the analysis did not evaluate the function or statement holding this type error: undefined: missing\n",
+		"::warning file=tools,title=" + string(report.NoteModuleNotLoaded) + "::the module, at tools, did not load\n",
+	}
+	if len(got) != 3 || strings.Join(got[1:], "") != strings.Join(want, "") {
+		t.Errorf("Annotations(one-report with a skip and a note) =\n%s\nwant the finding, then\n%s", strings.Join(got, ""), strings.Join(want, ""))
 	}
 }
 
@@ -218,7 +230,7 @@ func TestAnnotationsEscapeWhatWouldEndAPropertyOrTheLine(t *testing.T) {
 
 	want := "::error file=odd%3Aname%2Cdir/100%25.go,line=41,col=6,endLine=48," +
 		"title=DS1002 kind%3Awith%2Cseparators::100%25 unreferenced, line%0D%0Abreak\n"
-	if got := annotation(t, r, config.Deny); got != want {
+	if got := annotation(t, r); got != want {
 		t.Errorf("Annotations(a finding whose values hold separators) = %q, want %q", got, want)
 	}
 }
@@ -254,7 +266,7 @@ func TestTheStaleSuppressionTitleIsTheContractsKindName(t *testing.T) {
 		t.Fatalf("Setup: contract/kinds.json holds no live row for %s", code)
 	}
 
-	if got, want := annotation(t, stale, config.Deny), ",title="+code+" "+name+"::"; !strings.Contains(got, want) {
+	if got, want := annotation(t, stale), ",title="+code+" "+name+"::"; !strings.Contains(got, want) {
 		t.Errorf("Annotations(stale-suppression-carried) = %q, want it to carry %q", got, want)
 	}
 }
