@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // member is the positioned symbol of the function finding names at path and line.

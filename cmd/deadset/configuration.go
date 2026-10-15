@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/report"
 	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
@@ -45,7 +45,7 @@ func resolveConfiguration(set *flag.FlagSet, target, central string) (*config.Re
 		return nil, "", err
 	}
 	resolved, err := config.Resolve(&config.Inputs{
-		ContractVersion: report.ContractVersion,
+		ContractVersion: vocab.ContractVersion,
 		Repository:      repository,
 		Central:         centralDocument,
 		Flags:           flags,

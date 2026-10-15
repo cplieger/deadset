@@ -64,7 +64,7 @@ A Go type that only its generated TypeScript client uses has no reference in Go.
 }
 ```
 
-deadset reports the pair only when both sides are unused. A TypeScript file whose leading comments mark it generated keeps every declaration in it, so set `analysis.generated_files` to `include` in `deadset.json` for deadset to judge the generated side. An edge whose side neither analyzer finds is reported as `DS1705`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v8.0.0/docs/edges.md) describes the format.
+deadset reports the pair only when both sides are unused. A TypeScript file whose leading comments mark it generated keeps every declaration in it, so set `analysis.generated_files` to `include` in `deadset.json` for deadset to judge the generated side. An edge whose side neither analyzer finds is reported as `DS9005`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v8.0.0/docs/edges.md) describes the format.
 
 ### Checking a library against its consumers
 

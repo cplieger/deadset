@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // publishedCases are the configuration cases the pinned Contract publishes. The
@@ -159,8 +159,8 @@ func assertRefused(t *testing.T, name string, expected []byte, err error) {
 	if !isRefusal {
 		t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", name, err, want.Names)
 	}
-	if want.ExitCode != verdict.Usage {
-		t.Errorf("case %s expects exit code %d, and every *config.Error exits with %d", name, want.ExitCode, verdict.Usage)
+	if want.ExitCode != vocab.ExitUsage {
+		t.Errorf("case %s expects exit code %d, and every *config.Error exits with %d", name, want.ExitCode, vocab.ExitUsage)
 	}
 	if !strings.Contains(refusal.Error(), want.Names) {
 		t.Errorf("Resolve(%s) = %q, want the message to name %q", name, refusal, want.Names)

@@ -43,7 +43,7 @@
       "symbol": "go://example.com/server/internal/wire#ServerEvent",
       "state": "dead",
       "finding": {
-        "code": "DS1103",
+        "code": "DS1101",
         "kind": "unreachable-export",
         "language": "go",
         "position": {

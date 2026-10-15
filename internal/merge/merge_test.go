@@ -11,20 +11,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // caller is the merging product's facts the tests pass.
 var caller = Caller{
-	SchemaVersion:   report.SchemaVersion,
-	ContractVersion: report.ContractVersion,
+	SchemaVersion:   vocab.SchemaVersion,
+	ContractVersion: vocab.ContractVersion,
 	Name:            "deadset",
 	Version:         "1.2.3",
 	Conformance:     report.Conformance{CorpusVersion: "1.0.0", Result: report.ResultPass, Digest: digest("f")},
 }
 
 // accepted is the schema versions the tests admit.
-var accepted = []string{report.SchemaVersion}
+var accepted = []string{vocab.SchemaVersion}
 
 func digest(hex string) string { return "sha256:" + strings.Repeat(hex, 64) }
 
@@ -32,16 +33,16 @@ func digest(hex string) string { return "sha256:" + strings.Repeat(hex, 64) }
 // built configuration and no record.
 func analyzerReport(name, language string) *report.Report {
 	return &report.Report{
-		SchemaVersion:   report.SchemaVersion,
-		ContractVersion: report.ContractVersion,
+		SchemaVersion:   vocab.SchemaVersion,
+		ContractVersion: vocab.ContractVersion,
 		Analyzer: report.Analyzer{
 			Name:                   name,
 			Version:                "1.0.0",
-			Languages:              []string{language},
-			SchemaVersionsAccepted: []string{report.SchemaVersion},
+			Languages:              []vocab.Language{vocab.Language(language)},
+			SchemaVersionsAccepted: []string{vocab.SchemaVersion},
 			Conformance:            report.Conformance{CorpusVersion: "1.0.0", Result: report.ResultPass, Digest: digest("a")},
 		},
-		Target:                 report.Target{Kind: report.TargetApplication, Root: ".", Identity: "example.com/app"},
+		Target:                 report.Target{Kind: report.TargetKindApplication, Root: ".", Identity: "example.com/app"},
 		Configurations:         []report.Configuration{platform("linux-amd64")},
 		ConfigurationsNotBuilt: []report.ConfigurationNotBuilt{},
 		Consumers:              report.Consumers{Loaded: []report.LoadedConsumer{}, Unavailable: []report.UnavailableConsumer{}},
@@ -72,25 +73,25 @@ func finding(component, path string, line int, name string) report.Finding {
 	return report.Finding{
 		Code:              "DS1002",
 		Kind:              "unused-unexported",
-		Language:          language,
+		Language:          vocab.Language(language),
 		Position:          report.Position{Path: path, Line: line, Column: 6, EndLine: line + 4},
 		Symbol:            report.Symbol{Ref: language + "://example.com/app#" + name, Kind: "function", Name: name, SizeLines: 5},
-		ReachabilityClass: report.ClassCertain,
-		Confidence:        report.ClassCertain,
+		ReachabilityClass: vocab.Certain,
+		Confidence:        vocab.Certain,
 		LivenessRelation:  report.RelationReferenceCounting,
 		Component:         report.Component{ID: component, Root: true, SymbolCount: 1, DeletableLines: 5},
 		RetainedBy:        []string{},
 		Configurations:    []string{"linux-amd64"},
 		ConsumersLoaded:   []string{},
-		Fixability:        report.FixabilityDeletable,
-		Severity:          report.SeverityDeny,
+		Fixability:        vocab.Deletable,
+		Severity:          vocab.Deny,
 		Message:           "unexported function has no reference in the target",
 	}
 }
 
 func stale(path string, line int, symbol string) report.StaleSuppression {
 	return report.StaleSuppression{
-		Code:      "DS1703",
+		Code:      "DS9003",
 		Mechanism: "ignore",
 		Entry:     report.SuppressionEntry{Code: "DS1001", Path: "main.go", Reason: "kept for the next release"},
 		Position:  report.SuppressionPosition{Path: path, Line: line, Column: 5},
@@ -291,7 +292,7 @@ func TestMergeNamesEveryRefusedInputInMergedFromOrder(t *testing.T) {
 		messages = append(messages, err.Error())
 	}
 	want := "merge: alpha-ts has no conformance pass: its conformance result is \"fail\"\n" +
-		"merge: zeta-go writes schema version 1.0.0, and the merge accepts " + report.SchemaVersion
+		"merge: zeta-go writes schema version 1.0.0, and the merge accepts " + vocab.SchemaVersion
 	for _, got := range messages {
 		if got != want {
 			t.Errorf("Merge() error = %q, want %q whatever the input order", got, want)
@@ -335,11 +336,11 @@ func TestMergeRefusesInputsNamingDifferentTargets(t *testing.T) {
 // target gives Go the kind golang and TypeScript the kind typescript.
 func bothLanguages(name string, golang, typescript report.TargetKind) *report.Report {
 	r := analyzerReport(name, "go")
-	r.Analyzer.Languages = []string{"go", "ts"}
+	r.Analyzer.Languages = []vocab.Language{vocab.Go, vocab.TS}
 	r.Target.Kind = golang
 	if golang != typescript {
-		r.Target.Kind = report.TargetMixed
-		r.Target.LanguageKinds = &report.LanguageKinds{Go: golang, TS: typescript}
+		r.Target.Kind = report.TargetKindMixed
+		r.Target.LanguageKinds = map[vocab.Language]report.TargetKind{vocab.Go: golang, vocab.TS: typescript}
 	}
 	return r
 }
@@ -348,12 +349,12 @@ func TestMergeWritesTheKindTheInputsGiveEveryLanguage(t *testing.T) {
 	t.Parallel()
 
 	library := analyzerReport("deadset-ts", "ts")
-	library.Target.Kind = report.TargetLibrary
+	library.Target.Kind = report.TargetKindLibrary
 	mixed := report.Target{
-		Kind: report.TargetMixed, LanguageKinds: &report.LanguageKinds{Go: report.TargetApplication, TS: report.TargetLibrary},
+		Kind: report.TargetKindMixed, LanguageKinds: map[vocab.Language]report.TargetKind{vocab.Go: report.TargetKindApplication, vocab.TS: report.TargetKindLibrary},
 		Root: ".", Identity: "example.com/app",
 	}
-	shared := report.Target{Kind: report.TargetApplication, Root: ".", Identity: "example.com/app"}
+	shared := report.Target{Kind: report.TargetKindApplication, Root: ".", Identity: "example.com/app"}
 	for name, tc := range map[string]struct {
 		reports []*report.Report
 		want    report.Target
@@ -361,9 +362,9 @@ func TestMergeWritesTheKindTheInputsGiveEveryLanguage(t *testing.T) {
 		"one kind for both languages":      {[]*report.Report{analyzerReport("deadset-go", "go"), analyzerReport("deadset-ts", "ts")}, shared},
 		"a kind for each of two languages": {[]*report.Report{analyzerReport("deadset-go", "go"), library}, mixed},
 		"a mixed report and a report of one of its languages": {
-			[]*report.Report{bothLanguages("both", report.TargetApplication, report.TargetLibrary), library}, mixed,
+			[]*report.Report{bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary), library}, mixed,
 		},
-		"a report of both languages of one kind": {[]*report.Report{bothLanguages("both", report.TargetApplication, report.TargetApplication)}, shared},
+		"a report of both languages of one kind": {[]*report.Report{bothLanguages("both", report.TargetKindApplication, report.TargetKindApplication)}, shared},
 	} {
 		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
 			t.Parallel()
@@ -380,11 +381,11 @@ func TestMergeWritesTheKindTheInputsGiveEveryLanguage(t *testing.T) {
 func TestMergeRefusesAMixedReportWhoseKindsAreNotItsLanguages(t *testing.T) {
 	t.Parallel()
 
-	oneKind := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
-	oneKind.Target.LanguageKinds.TS = report.TargetApplication
-	leftOut := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
-	leftOut.Analyzer.Languages = []string{"go"}
-	unnamed := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
+	oneKind := bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary)
+	oneKind.Target.LanguageKinds[vocab.TS] = report.TargetKindApplication
+	leftOut := bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary)
+	leftOut.Analyzer.Languages = []vocab.Language{vocab.Go}
+	unnamed := bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary)
 	unnamed.Target.LanguageKinds = nil
 	for name, r := range map[string]*report.Report{
 		"one kind for both": oneKind, "a language the report does not cover": leftOut, "no language kinds": unnamed,
@@ -405,9 +406,9 @@ func TestMergeRefusesTwoKindsOfOneLanguage(t *testing.T) {
 	t.Parallel()
 
 	library := analyzerReport("deadset-ts", "ts")
-	library.Target.Kind = report.TargetLibrary
-	both := bothLanguages("both", report.TargetApplication, report.TargetApplication)
-	mixed := bothLanguages("both", report.TargetLibrary, report.TargetApplication)
+	library.Target.Kind = report.TargetKindLibrary
+	both := bothLanguages("both", report.TargetKindApplication, report.TargetKindApplication)
+	mixed := bothLanguages("both", report.TargetKindLibrary, report.TargetKindApplication)
 	for name, tc := range map[string]struct {
 		reports  []*report.Report
 		language string
@@ -421,7 +422,7 @@ func TestMergeRefusesTwoKindsOfOneLanguage(t *testing.T) {
 
 			merged, err := Merge(inputs(tc.reports...), accepted, &caller)
 			refused, ok := errors.AsType[*kindClaimError](err)
-			if merged != nil || !ok || refused.Language != tc.language || refused.Kinds[0] == refused.Kinds[1] {
+			if merged != nil || !ok || string(refused.Language) != tc.language || refused.Kinds[0] == refused.Kinds[1] {
 				t.Errorf("Merge(%s) = %v, %v, want no report and a *kindClaimError naming %s", name, merged, err, tc.language)
 			}
 		})
@@ -434,13 +435,13 @@ func TestMergeRefusesTwoKindsOfOneLanguage(t *testing.T) {
 func TestMergeRefusesTwoReportsOfOneNameAlikeInEitherOrder(t *testing.T) {
 	t.Parallel()
 
-	swapped := bothLanguages("both", report.TargetLibrary, report.TargetApplication)
-	goOnly := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
-	goOnly.Analyzer.Languages = []string{"go"}
-	tsOnly := bothLanguages("both", report.TargetApplication, report.TargetLibrary)
-	tsOnly.Analyzer.Languages = []string{"ts"}
+	swapped := bothLanguages("both", report.TargetKindLibrary, report.TargetKindApplication)
+	goOnly := bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary)
+	goOnly.Analyzer.Languages = []vocab.Language{vocab.Go}
+	tsOnly := bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary)
+	tsOnly.Analyzer.Languages = []vocab.Language{vocab.TS}
 	for name, pair := range map[string][2]*report.Report{
-		"language kinds": {bothLanguages("both", report.TargetApplication, report.TargetLibrary), swapped},
+		"language kinds": {bothLanguages("both", report.TargetKindApplication, report.TargetKindLibrary), swapped},
 		"languages":      {goOnly, tsOnly},
 	} {
 		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
@@ -474,19 +475,22 @@ func TestMergeNamesTheCallerWithTheInputsLanguagesAndTheAcceptedVersions(t *test
 	want := report.Analyzer{
 		Name:                   "deadset",
 		Version:                "1.2.3",
-		Languages:              []string{"go", "ts"},
+		Languages:              []vocab.Language{vocab.Go, vocab.TS},
 		SchemaVersionsAccepted: accepted,
 		Conformance:            caller.Conformance,
 	}
 	if !reflect.DeepEqual(merged.Analyzer, want) {
 		t.Errorf("Merge() analyzer = %+v, want %+v", merged.Analyzer, want)
 	}
-	wantFrom := []report.InputReport{
-		{Name: "deadset-go", Version: "1.0.0", Digest: in[2].Digest},
-		{Name: "deadset-ts", Version: "2.0.0", Digest: in[0].Digest},
-		{Name: "example-go", Version: "1.10.0", Digest: in[1].Digest},
+	from := func(at int) report.InputReport {
+		r := in[at].Report
+		return report.InputReport{Name: r.Analyzer.Name, Version: r.Analyzer.Version, Digest: in[at].Digest, Languages: r.Analyzer.Languages, Totals: r.Totals}
 	}
-	if !slices.Equal(merged.MergedFrom, wantFrom) {
+	wantFrom := []report.InputReport{from(2), from(0), from(1)}
+	if names := []string{wantFrom[0].Name, wantFrom[1].Name, wantFrom[2].Name}; !slices.Equal(names, []string{"deadset-go", "deadset-ts", "example-go"}) {
+		t.Fatalf("Setup: the inputs are %q, want deadset-go, deadset-ts and example-go", names)
+	}
+	if !reflect.DeepEqual(merged.MergedFrom, wantFrom) {
 		t.Errorf("Merge() merged_from = %+v, want %+v", merged.MergedFrom, wantFrom)
 	}
 	if merged.SchemaVersion != "6.1.0" || merged.ContractVersion != "3.9.0" {
@@ -550,11 +554,11 @@ func TestMergeUnionsTheEnvelopeRecordsInTheGrammarsOrder(t *testing.T) {
 	t.Parallel()
 
 	note := func(path string) report.Note {
-		return report.Note{Kind: report.NotePublishedPackage, Path: path, Key: "roots.patterns", Message: "no package imports " + path}
+		return report.Note{Kind: report.NoteKindPublishedPackage, Path: path, Key: "roots.patterns", Message: "no package imports " + path}
 	}
-	notLoaded := report.Note{Kind: report.NoteModuleNotLoaded, Path: "tools", Message: "the module tools does not load"}
+	notLoaded := report.Note{Kind: report.NoteKindModuleNotLoaded, Path: "tools", Message: "the module tools does not load"}
 	unmapped := func(entry string) report.Note {
-		return report.Note{Kind: report.NoteUnmappedEntry, Path: ".", Key: "ts.entry_files", Message: "the entry " + entry + " reads back to no source file"}
+		return report.Note{Kind: report.NoteKindUnmappedEntry, Path: ".", Key: "ts.entry_files", Message: "the entry " + entry + " reads back to no source file"}
 	}
 	row := func(name, pkg, manifest string) report.ConventionApplied {
 		return report.ConventionApplied{Name: name, Package: pkg, Version: "2.1.0", Manifest: manifest}
@@ -714,7 +718,7 @@ func TestMergeRecomputesTheTotalsAndSumsTheCountsNoArrayHolds(t *testing.T) {
 	member := finding("deadset-go/c-1", "store.go", 20, "c")
 	member.Component.Root = false
 	warned := finding("deadset-go/c-2", "store.go", 30, "d")
-	warned.Severity = report.SeverityWarn
+	warned.Severity = vocab.Warn
 	golang.Findings = []report.Finding{shared, second, member, warned}
 	golang.StaleSuppressions = []report.StaleSuppression{stale("deadset-ignore.json", 4, "go://example.com/app#x")}
 	golang.Totals = report.Totals{SuppressionsInEffect: 2, ReasonsRecorded: 3, Withheld: report.Withheld{Probable: 1, Possible: 4}}

@@ -23,7 +23,7 @@
             "side": "provides",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "state": "dead",
-            "code": "DS1103"
+            "code": "DS1101"
           }
         ]
       },
@@ -79,7 +79,7 @@
             "side": "provides",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "state": "dead",
-            "code": "DS1103"
+            "code": "DS1101"
           }
         ]
       },
@@ -104,7 +104,7 @@
         "pending": 0,
         "findings": [
           {
-            "code": "DS1103",
+            "code": "DS1101",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "component": "deadset-go/c-1"
           },
@@ -140,7 +140,7 @@
             "side": "provides",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "state": "dead",
-            "code": "DS1101"
+            "code": "DS1501"
           }
         ]
       },
@@ -196,7 +196,7 @@
             "side": "provides",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "state": "dead",
-            "code": "DS1101"
+            "code": "DS1501"
           }
         ]
       },
@@ -221,7 +221,7 @@
         "pending": 0,
         "findings": [
           {
-            "code": "DS1101",
+            "code": "DS1501",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "component": "deadset-go/c-1"
           },
@@ -379,7 +379,7 @@
             "side": "provides",
             "symbol": "go://example.com/server/internal/wire#ServerEvent",
             "state": "dead",
-            "code": "DS1101"
+            "code": "DS1501"
           }
         ]
       },

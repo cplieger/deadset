@@ -15,14 +15,15 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/invoke"
-	"github.com/cplieger/deadset/v2/internal/report"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // accepted is the report schema range the handshake tests admit under.
-var accepted = []string{report.SchemaVersion}
+var accepted = []string{vocab.SchemaVersion}
 
 // digest is a conformance digest of the shape the Contract states.
 var digest = "sha256:" + strings.Repeat("0a", 32)
@@ -45,7 +46,7 @@ func describedMembers() []string {
 		`"name": "deadset-go"`,
 		`"version": "1.20.0"`,
 		`"contract_version": "3.2.0"`,
-		`"schema_versions_accepted": ["` + report.SchemaVersion + `"]`,
+		`"schema_versions_accepted": ["` + vocab.SchemaVersion + `"]`,
 		`"languages": ["go"]`,
 		`"conformance": {"corpus_version": "1.9.0", "result": "pass", "digest": "` + digest + `"}`,
 	}
@@ -106,8 +107,8 @@ func handshakeRefusal(t *testing.T, err, want error) {
 	if !errors.Is(err, want) {
 		t.Errorf("Describe() = %v, want an error satisfying errors.Is(err, %v)", err, want)
 	}
-	if code := verdict.ForError(err); code != verdict.Failure {
-		t.Errorf("verdict.ForError(%v) = %d, want %d", err, code, verdict.Failure)
+	if code := verdict.ForError(err); code != vocab.ExitFailure {
+		t.Errorf("verdict.ForError(%v) = %d, want %d", err, code, vocab.ExitFailure)
 	}
 }
 
@@ -125,8 +126,8 @@ func TestDescribeAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion(t *testing.T) {
 		versions string
 		want     []string
 	}{
-		{name: "one-version", versions: `["` + report.SchemaVersion + `"]`, want: []string{report.SchemaVersion}},
-		{name: "one-of-several", versions: `["5.0.0", "` + report.SchemaVersion + `"]`, want: []string{"5.0.0", report.SchemaVersion}},
+		{name: "one-version", versions: `["` + vocab.SchemaVersion + `"]`, want: []string{vocab.SchemaVersion}},
+		{name: "one-of-several", versions: `["5.0.0", "` + vocab.SchemaVersion + `"]`, want: []string{"5.0.0", vocab.SchemaVersion}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -285,7 +286,7 @@ func TestDescribeRefusesASchemaVersionOutsideTheRange(t *testing.T) {
 		t.Errorf("Describe(an analyzer reading 5.0.0 and 6.1.0) = %+v, want no description", got)
 	}
 	handshakeRefusal(t, err, invoke.ErrSchemaVersion)
-	for _, named := range []string{"deadset-go", "5.0.0, 6.1.0", report.SchemaVersion} {
+	for _, named := range []string{"deadset-go", "5.0.0, 6.1.0", vocab.SchemaVersion} {
 		if !strings.Contains(err.Error(), named) {
 			t.Errorf("Describe(an analyzer reading 5.0.0 and 6.1.0) = %q, want the message to name %q", err, named)
 		}
@@ -398,7 +399,7 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 
 		printed := publishedExample(t, "examples/describe/conformance-recorded.json")
 		req := request(t, "deadset-go", describer(t, 0, printed).command)
-		got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), report.SchemaVersions)
+		got, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), vocab.SchemaVersions())
 		if err != nil {
 			t.Fatalf("Describe(conformance-recorded.json) = %v, want the analyzer admitted", err)
 		}
@@ -419,7 +420,7 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 
 		printed := publishedExample(t, "examples/describe/conformance-not-recorded.json")
 		req := request(t, "deadset-ts", describer(t, 0, printed).command)
-		_, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), report.SchemaVersions)
+		_, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), vocab.SchemaVersions())
 		handshakeRefusal(t, err, invoke.ErrNoConformancePass)
 	})
 
@@ -429,7 +430,7 @@ func TestDescribeReadsThePublishedDescribeDocuments(t *testing.T) {
 
 			printed := publishedExample(t, "examples/negatives/"+row.file)
 			req := request(t, "deadset-go", describer(t, 0, printed).command)
-			_, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), report.SchemaVersions)
+			_, err := invoke.Describe(t.Context(), &req, kept(t, req.Analyzer), vocab.SchemaVersions())
 			handshakeRefusal(t, err, invoke.ErrDescription)
 			if !strings.Contains(err.Error(), row.pointer+": ") {
 				t.Errorf("Describe(%s) = %q, want the message to name the value at %s", row.file, err, row.pointer)

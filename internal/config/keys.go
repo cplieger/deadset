@@ -1,6 +1,10 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/cplieger/deadset-spec/v8/vocab"
+)
 
 // owner is the product a key belongs to, which decides the analyzers its value is
 // handed to.
@@ -81,7 +85,7 @@ func keyList(contractVersion string) node {
 			},
 			{
 				name: "min_confidence", kind: setting, owner: everyAnalyzer,
-				fallback: raw(`"probable"`), check: oneOf("certain", "probable", "possible"),
+				fallback: raw(`"probable"`), check: oneOf(vocab.Classes()...),
 			},
 			{
 				name: "generated_files", kind: setting, owner: everyAnalyzer,
@@ -123,12 +127,12 @@ func keyList(contractVersion string) node {
 		{name: "reporters", kind: section, owner: everyProduct, children: []node{
 			{
 				name: "formats", kind: setting, owner: everyProduct,
-				fallback: raw(`["text"]`), check: list(1, oneOf(FormatText, formatJSON, FormatGitHub, FormatSARIF, FormatTemplate)),
+				fallback: raw(`["text"]`), check: list(1, oneOf(vocab.Formats()...)),
 			},
 			{name: "sort", kind: setting, owner: everyProduct, fallback: raw(`"position"`), check: oneOf(SortPosition, SortSize)},
 			{name: "cascade", kind: setting, owner: everyProduct, fallback: raw(`"roots"`), check: oneOf(cascadeRoots, CascadeFull)},
 			{name: "max_findings", kind: setting, owner: everyProduct, fallback: raw(`0`), check: count},
-			{name: "fail_on", kind: setting, owner: everyProduct, fallback: raw(`"deny"`), check: oneOf(Allow, Warn, Deny)},
+			{name: "fail_on", kind: setting, owner: everyProduct, fallback: raw(`"deny"`), check: oneOf(vocab.Severities()...)},
 		}},
 		{name: "providers", kind: section, owner: orchestrator, children: []node{
 			{

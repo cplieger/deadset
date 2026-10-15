@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/report"
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // goAnalyzerOnPath skips a test of a real run when PATH holds no Go analyzer.
@@ -58,9 +58,9 @@ func TestAnalyzeRunsTheGoAnalyzerOverAGoModule(t *testing.T) {
 		name, source, line string
 		code               int
 	}{
-		{name: "clean", source: "package main\n\nfunc main() { used() }\n\nfunc used() {}\n", code: verdict.Clean},
+		{name: "clean", source: "package main\n\nfunc main() { used() }\n\nfunc used() {}\n", code: vocab.ExitClean},
 		{
-			name: "dead-function", source: "package main\n\nfunc main() {}\n\nfunc unused() {}\n", code: verdict.Findings,
+			name: "dead-function", source: "package main\n\nfunc main() {}\n\nfunc unused() {}\n", code: vocab.ExitFindings,
 			line: "main.go:5:6: function unused: unexported function has no reference in the target [certain] (DS1002)\n",
 		},
 	} {
@@ -110,8 +110,8 @@ func TestAnalyzeOverTheHarnessGoHalfLeavesThePendingEdgeUnresolved(t *testing.T)
 			target := filepath.Join(base, "target")
 			extractArchive(t, archive, target)
 			got := analyze(t, target, filepath.Join(base, "run"), "--languages=go")
-			if got.code != verdict.Failure {
-				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", archive, got.code, verdict.Failure, got.stderr)
+			if got.code != vocab.ExitFailure {
+				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", archive, got.code, vocab.ExitFailure, got.stderr)
 			}
 			for _, named := range []string{"wire/ServerEvent", "provides", "go://example.com/server/internal/wire#ServerEvent", "deadset-go"} {
 				if !strings.Contains(got.stderr, named) {
@@ -194,13 +194,13 @@ func harnessView(r *report.Report, code int) *mergedRun {
 	}
 	for i := range r.Findings {
 		f := &r.Findings[i]
-		run.Findings = append(run.Findings, mergedFinding{Code: f.Code, Symbol: f.Symbol.Ref, Component: f.Component.ID})
+		run.Findings = append(run.Findings, mergedFinding{Code: string(f.Code), Symbol: f.Symbol.Ref, Component: f.Component.ID})
 	}
 	for i := range r.EdgeEvaluations {
 		e := &r.EdgeEvaluations[i]
 		code := ""
 		if e.Finding != nil {
-			code = e.Finding.Code
+			code = string(e.Finding.Code)
 		}
 		run.Evaluations = append(run.Evaluations, mergedEvaluation{Edge: e.Edge, Side: string(e.Side), Symbol: e.Symbol, State: string(e.State), Code: code})
 	}
@@ -301,8 +301,8 @@ func TestAnalyzeRendersTheGoAnalyzersFindingAsTheGoAnalyzerDoes(t *testing.T) {
 	template := filepath.Join(t.TempDir(), "report.tmpl")
 	writeFile(t, template, []byte("{{range .findings}}{{.code}} {{.analyzer}} {{.position.path}}:{{.position.line}}\n{{end}}"))
 	got := analyze(t, target, runDir, "--formats=sarif,template", "--template="+template)
-	if got.code != verdict.Findings {
-		t.Fatalf("analyze = %d, want %d\nstdout: %s\nstderr: %s", got.code, verdict.Findings, got.stdout, got.stderr)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze = %d, want %d\nstdout: %s\nstderr: %s", got.code, vocab.ExitFindings, got.stdout, got.stderr)
 	}
 	rendered, err := os.ReadFile(filepath.Join(runDir, "report.json.tmpl"))
 	if err != nil || string(rendered) != "DS1002 deadset-go main.go:5\n" {
@@ -312,7 +312,7 @@ func TestAnalyzeRendersTheGoAnalyzersFindingAsTheGoAnalyzerDoes(t *testing.T) {
 	own := filepath.Join(t.TempDir(), "report.json")
 	direct := exec.CommandContext(t.Context(), "deadset-go", "analyze", "--target=.", "--report="+own, "--format=sarif")
 	direct.Dir = target
-	if output, err := direct.CombinedOutput(); direct.ProcessState == nil || direct.ProcessState.ExitCode() != verdict.Findings {
+	if output, err := direct.CombinedOutput(); direct.ProcessState == nil || direct.ProcessState.ExitCode() != vocab.ExitFindings {
 		t.Fatalf("Setup: deadset-go analyze over %s = %v\n%s", target, err, output)
 	}
 	merged, analyzerOwn := readSARIF(t, filepath.Join(runDir, "report.json.sarif")), readSARIF(t, own+".sarif")
@@ -390,11 +390,11 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 				scoped   bool
 			}{
 				{
-					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with, code: verdict.Findings,
+					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with, code: vocab.ExitFindings,
 					loaded: []report.LoadedConsumer{{ID: c.consumer, Role: "consumer", Path: "consumer"}},
 				},
-				{name: "without-it", root: ".", code: verdict.Clean},
-				{name: "without-it-at-possible", root: ".", flags: []string{"--min-confidence=possible"}, findings: c.possible, code: verdict.Findings},
+				{name: "without-it", root: ".", code: vocab.ExitClean},
+				{name: "without-it-at-possible", root: ".", flags: []string{"--min-confidence=possible"}, findings: c.possible, code: vocab.ExitFindings},
 			} {
 				t.Run(run.name, func(t *testing.T) {
 					t.Parallel()

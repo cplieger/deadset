@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/providers"
 	"github.com/cplieger/deadset/v2/internal/verdict"
@@ -209,8 +210,8 @@ func TestSelect_refusesALanguageNoEntryClaims(t *testing.T) {
 					t.Errorf("Select(%v) = %q, want it to name %s", c.inScope, refused.Message, language)
 				}
 			}
-			if code := verdict.ForError(err); code != verdict.Usage {
-				t.Errorf("verdict.ForError(Select(%v)) = %d, want %d", c.inScope, code, verdict.Usage)
+			if code := verdict.ForError(err); code != vocab.ExitUsage {
+				t.Errorf("verdict.ForError(Select(%v)) = %d, want %d", c.inScope, code, vocab.ExitUsage)
 			}
 		})
 	}
@@ -253,8 +254,8 @@ func TestSelect_refusesACommandThatResolvesToNoExecutable(t *testing.T) {
 	if want := []string{"not-on-path[1]", "not-executable[3]", "absent[4]"}; !slices.Equal(refused, want) {
 		t.Errorf("Select(go) refused %v, want %v", refused, want)
 	}
-	if code := verdict.ForError(err); code != verdict.Failure {
-		t.Errorf("verdict.ForError(Select(go)) = %d, want %d", code, verdict.Failure)
+	if code := verdict.ForError(err); code != vocab.ExitFailure {
+		t.Errorf("verdict.ForError(Select(go)) = %d, want %d", code, vocab.ExitFailure)
 	}
 	if msg := err.Error(); !strings.Contains(msg, "analyzer absent, provider entry providers.analyzers[4]") {
 		t.Errorf("Select(go) = %q, want it to name the analyzer and providers.analyzers[4]", msg)

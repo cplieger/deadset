@@ -6,8 +6,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/cplieger/deadset/v2/internal/report"
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // develVersion is the version of a build the toolchain stamped no module
@@ -22,12 +21,12 @@ func init() { register("version", runVersion) }
 // runVersion prints the version of this build and the Contract version it
 // implements, one to a line. It reads no argument.
 func runVersion(_ []string, stdout, _ io.Writer) int {
-	fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), report.ContractVersion)
-	return verdict.Clean
+	fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), vocab.ContractVersion)
+	return vocab.ExitClean
 }
 
 // version is this command's own version, which the build carries rather than
-// the source and which moves independently of [report.ContractVersion]. It is
+// the source and which moves independently of [vocab.ContractVersion]. It is
 // the module version the build stamped with the leading v removed, or
 // develVersion for a build that records none. Every verb that names this
 // command's version reads this one function.

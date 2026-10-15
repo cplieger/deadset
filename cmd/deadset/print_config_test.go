@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // targetHolding returns a target root holding repository as its repository
@@ -34,8 +34,8 @@ func TestPrintConfigPrintsTheResolutionAndItsSources(t *testing.T) {
 	dir := targetHolding(t, `{"target": {"kind": "library"}, "analysis": {"min_confidence": "probable"}, "reporters": {"fail_on": "deny"}}`)
 	var stdout, stderr bytes.Buffer
 	args := []string{"print-config", "--target=" + dir, "--fail-on=warn"}
-	if code := run(args, &stdout, &stderr); code != verdict.Clean {
-		t.Fatalf("run(%q) = %d, want %d\nstderr: %s", args, code, verdict.Clean, stderr.String())
+	if code := run(args, &stdout, &stderr); code != vocab.ExitClean {
+		t.Fatalf("run(%q) = %d, want %d\nstderr: %s", args, code, vocab.ExitClean, stderr.String())
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("run(%q) stderr = %q, want empty", args, stderr.String())
@@ -89,8 +89,8 @@ func TestPrintConfigFailsOnATargetItCannotRead(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			args := []string{"print-config", "--target=" + target, "--central=" + central}
-			if code := run(args, &stdout, &stderr); code != verdict.Failure {
-				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, verdict.Failure, stderr.String())
+			if code := run(args, &stdout, &stderr); code != vocab.ExitFailure {
+				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, vocab.ExitFailure, stderr.String())
 			}
 			if !strings.Contains(stderr.String(), "target") || strings.Contains(stderr.String(), "usage:") {
 				t.Errorf("run(%q) stderr = %q, want it to name the target and print no usage", args, stderr.String())
@@ -127,8 +127,8 @@ func TestPrintConfigRefusesWithTheUsageCode(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			args := append([]string{"print-config", "--target=" + targetHolding(t, c.repository)}, c.extra...)
-			if code := run(args, &stdout, &stderr); code != verdict.Usage {
-				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, verdict.Usage, stderr.String())
+			if code := run(args, &stdout, &stderr); code != vocab.ExitUsage {
+				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, vocab.ExitUsage, stderr.String())
 			}
 			if !strings.Contains(stderr.String(), c.names) || !strings.Contains(stderr.String(), "usage: deadset print-config") {
 				t.Errorf("run(%q) stderr = %q, want it to name %s and print the usage", args, stderr.String(), c.names)

@@ -279,38 +279,6 @@ func TestSettingFlags_supplyDeclaredSettings(t *testing.T) {
 	}
 }
 
-// The issue-kind vocabulary a severity key is checked against is the Contract's.
-func TestIssueCodes_matchTheContract(t *testing.T) {
-	t.Parallel()
-
-	data, err := spec.Contract.ReadFile("contract/kinds.json")
-	if err != nil {
-		t.Fatalf("Setup: read contract/kinds.json: %v", err)
-	}
-	var vocabulary struct {
-		Kinds []struct {
-			Code  string `json:"code"`
-			Fixed bool   `json:"fixed"`
-		} `json:"kinds"`
-	}
-	if err := json.Unmarshal(data, &vocabulary); err != nil {
-		t.Fatalf("Setup: decode contract/kinds.json: %v", err)
-	}
-	var live, fixed []string
-	for _, kind := range vocabulary.Kinds {
-		live = append(live, kind.Code)
-		if kind.Fixed {
-			fixed = append(fixed, kind.Code)
-		}
-	}
-	if !slices.Equal(issueCodes, live) {
-		t.Errorf("issueCodes = %v, want the Contract's codes %v", issueCodes, live)
-	}
-	if !slices.Equal(fixedCodes, fixed) {
-		t.Errorf("fixedCodes = %v, want the codes whose severity the Contract fixes %v", fixedCodes, fixed)
-	}
-}
-
 // schemaString returns the string the pinned schema holds at the end of steps, each a
 // member name or an array index.
 func schemaString(t *testing.T, steps ...any) string {
@@ -379,7 +347,7 @@ func TestPatterns_agreeWithTheSchema(t *testing.T) {
 		},
 		{
 			name: "provenance-key", ours: provenanceKey, schema: onlyPatternProperty(t, "provenance"),
-			samples: []string{"target.kind", "severity.DS1101", "Target.kind", "a..b", "analysis_x", "a.B9_", "", "a."},
+			samples: []string{"target.kind", "severity.DS1501", "Target.kind", "a..b", "analysis_x", "a.B9_", "", "a."},
 		},
 		{
 			name: "provenance-value", ours: provenanceValue,

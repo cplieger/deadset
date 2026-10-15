@@ -31,7 +31,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // interruptGrace is how long an analyzer has to exit after a cancelled run
@@ -41,11 +42,7 @@ const interruptGrace = 10 * time.Second
 // reportCodes are the exit codes an analyzer returns over a complete report:
 // clean, findings and pending. Every other code ends the analyzer's run with
 // no report a reader may use.
-var reportCodes = []int{0, 1, 4}
-
-// usageExit is the exit code an analyzer returns when it refuses its
-// invocation or the configuration it was given.
-const usageExit = 2
+var reportCodes = []int{vocab.ExitClean, vocab.ExitFindings, vocab.ExitPending}
 
 // The refusals an invocation makes, each carried by an [*Error].
 var (
@@ -140,7 +137,7 @@ func Analyze(ctx context.Context, req *Request) (*report.Report, int, error) {
 	switch {
 	case err != nil:
 		return refuse(exit, err)
-	case exit == usageExit:
+	case exit == vocab.ExitUsage:
 		return refuse(exit, fmt.Errorf("exited %d, a usage or configuration error of the analyzer: %w", exit, ErrExited))
 	case !slices.Contains(reportCodes, exit):
 		return refuse(exit, fmt.Errorf("exited %d: %w", exit, ErrExited))
@@ -223,21 +220,13 @@ type outcome struct {
 	exit    int
 }
 
-// setupFailureExit is the exit code an analyzer returns when a setup failure
-// ends its run, and every one of its setup failures is a printed line opening
-// with setupFailurePrefix.
-const (
-	setupFailureExit   = 3
-	setupFailurePrefix = "setup failure: "
-)
-
 // setupFailed reports whether a setup failure ended the analyzer's run.
 func (o *outcome) setupFailed() bool {
-	if o.exit != setupFailureExit {
+	if o.exit != vocab.ExitFailure {
 		return false
 	}
 	for line := range bytes.Lines(o.printed.Bytes()) {
-		if bytes.HasPrefix(line, []byte(setupFailurePrefix)) {
+		if bytes.HasPrefix(line, []byte(vocab.SetupFailurePrefix)) {
 			return true
 		}
 	}

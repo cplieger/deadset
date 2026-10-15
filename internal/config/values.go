@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // rejection is why one setting refuses a value. at is the place inside the value it
@@ -193,13 +195,21 @@ func required(object map[string]json.RawMessage, name string, check checker) *re
 	return check(value).under("." + name)
 }
 
-// contractLanguages are the languages the Contract declares, in the order
-// contract/kinds.json lists them, and targetKinds the kinds a target, or one
-// language of it, takes.
+// contractLanguages are the languages the Contract declares, in its order, and
+// targetKinds the kinds a target, or one language of it, takes.
 var (
-	contractLanguages = []string{"go", "ts"}
+	contractLanguages = languageNames()
 	targetKinds       = []string{"application", "library"}
 )
+
+func languageNames() []string {
+	languages := vocab.Languages()
+	names := make([]string, len(languages))
+	for i, language := range languages {
+		names[i] = string(language)
+	}
+	return names
+}
 
 // targetKind accepts the target kind: one kind for every language, or an object
 // naming the kind of each language. Of several faults in an object it names the

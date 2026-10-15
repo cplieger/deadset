@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // errUnresolvedEdge is a pending finding whose edge no input report evaluates
@@ -105,7 +105,7 @@ func (index edgeIndex) strongestOther(e *report.EdgeEvaluation, dropped map[comp
 // dead evaluation. merger is the merging product's name, which prefixes the
 // component of every finding resolve emits.
 func (r *records) resolve(inputs []Input, merger string) error {
-	sortTotal(r.evaluations, compareEvaluations)
+	report.SortTotal(r.evaluations, report.CompareEvaluations)
 	index := indexEvaluations(r.evaluations)
 	dead := deadEvaluations(r.evaluations)
 	for _, e := range dead {
@@ -162,10 +162,10 @@ func deadEvaluations(evaluations []report.EdgeEvaluation) []*report.EdgeEvaluati
 			dead = append(dead, &evaluations[i])
 		}
 	}
-	sortTotal(dead, func(a, b **report.EdgeEvaluation) int {
+	report.SortTotal(dead, func(a, b **report.EdgeEvaluation) int {
 		first, second := *(*a).Finding, *(*b).Finding
 		first.Analyzer, second.Analyzer = (*a).Analyzer, (*b).Analyzer
-		return compareFindings(&first, &second)
+		return report.CompareFindings(&first, &second)
 	})
 	return dead
 }

@@ -8,7 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // errNoInput is a merge given no report to merge.
@@ -75,33 +76,41 @@ func (e *admissionError) Unwrap() error { return e.Err }
 // language kinds name other languages than the report covers, or one kind for
 // every language it covers.
 type languageKindsError struct {
-	Kinds     *report.LanguageKinds
+	Kinds     map[vocab.Language]report.TargetKind
 	Analyzer  string
-	Languages []string
+	Languages []vocab.Language
 }
 
 // Error names the analyzer, its languages and the kinds it gives.
 func (e *languageKindsError) Error() string {
 	return fmt.Sprintf("merge: %s covers %s and names the language kinds %s, and a mixed kind names two kinds, one per language the report covers",
-		e.Analyzer, strings.Join(e.Languages, ", "), describeKinds(e.Kinds))
+		e.Analyzer, joined(e.Languages), describeKinds(e.Kinds))
 }
 
 // Unwrap is [errLanguageKinds].
 func (*languageKindsError) Unwrap() error { return errLanguageKinds }
 
 // describeKinds is a target's language kinds as an error message names them.
-func describeKinds(kinds *report.LanguageKinds) string {
-	if kinds == nil {
+func describeKinds(kinds map[vocab.Language]report.TargetKind) string {
+	if len(kinds) == 0 {
 		return "of no language"
 	}
 	var named []string
-	if kinds.Go != "" {
-		named = append(named, "go "+string(kinds.Go))
-	}
-	if kinds.TS != "" {
-		named = append(named, "ts "+string(kinds.TS))
+	for _, language := range vocab.Languages() {
+		if kind, held := kinds[language]; held {
+			named = append(named, string(language)+" "+string(kind))
+		}
 	}
 	return strings.Join(named, ", ")
+}
+
+// joined is languages as a message lists them.
+func joined(languages []vocab.Language) string {
+	names := make([]string, len(languages))
+	for i, language := range languages {
+		names[i] = string(language)
+	}
+	return strings.Join(names, ", ")
 }
 
 // targetError is two input reports naming different targets, a root or an
@@ -129,7 +138,7 @@ func describeTarget(t report.Target) string {
 // the reports of one target agree on each language's kind.
 type kindClaimError struct {
 	Analyzers [2]string
-	Language  string
+	Language  vocab.Language
 	Kinds     [2]report.TargetKind
 }
 
@@ -238,7 +247,7 @@ func admitOne(r *report.Report, accepted []string) error {
 		return &admissionError{Err: errConformance, Analyzer: r.Analyzer.Name, Result: r.Analyzer.Conformance.Result}
 	case r.Totals.Omitted != 0:
 		return &admissionError{Err: errOmitted, Analyzer: r.Analyzer.Name, Omitted: r.Totals.Omitted}
-	case r.Target.Kind == report.TargetMixed && !coversItsLanguages(r):
+	case r.Target.Kind == report.TargetKindMixed && !coversItsLanguages(r):
 		return &languageKindsError{
 			Analyzer:  r.Analyzer.Name,
 			Kinds:     r.Target.LanguageKinds,
@@ -252,17 +261,16 @@ func admitOne(r *report.Report, accepted []string) error {
 // exactly the languages the report covers, and not one kind for all of them.
 func coversItsLanguages(r *report.Report) bool {
 	kinds := r.Target.LanguageKinds
-	if kinds == nil {
-		return false
-	}
-	named := map[string]report.TargetKind{"go": kinds.Go, "ts": kinds.TS}
 	distinct := map[report.TargetKind]bool{}
-	for language, kind := range named {
-		if covered := slices.Contains(r.Analyzer.Languages, language); covered != (kind != "") {
+	for language, kind := range kinds {
+		if !slices.Contains(r.Analyzer.Languages, language) {
 			return false
 		}
-		if kind != "" {
-			distinct[kind] = true
+		distinct[kind] = true
+	}
+	for _, language := range r.Analyzer.Languages {
+		if _, held := kinds[language]; !held {
+			return false
 		}
 	}
 	return len(distinct) > 1
@@ -279,7 +287,7 @@ func admitPair(a, b *Input, aEntries, bEntries *idEntries) error {
 		if !slices.Contains(second.Analyzer.Languages, language) {
 			continue
 		}
-		if kinds := [2]report.TargetKind{first.Target.Of(language), second.Target.Of(language)}; kinds[0] != kinds[1] {
+		if kinds := [2]report.TargetKind{first.Target.KindOf(language), second.Target.KindOf(language)}; kinds[0] != kinds[1] {
 			return &kindClaimError{Analyzers: names, Language: language, Kinds: kinds}
 		}
 	}
@@ -321,18 +329,18 @@ func entriesOf(r *report.Report) idEntries {
 		held[i] = map[string]string{}
 	}
 	for i := range r.Configurations {
-		held[builtArray][r.Configurations[i].ID] = compact(&r.Configurations[i])
+		held[builtArray][r.Configurations[i].ID] = report.Compact(&r.Configurations[i])
 	}
 	for i := range r.ConfigurationsNotBuilt {
 		dropped := &r.ConfigurationsNotBuilt[i].Configuration
-		held[notBuiltArray][dropped.ID] = compact(dropped)
+		held[notBuiltArray][dropped.ID] = report.Compact(dropped)
 	}
 	for i := range r.Consumers.Loaded {
-		held[loadedArray][r.Consumers.Loaded[i].ID] = compact(&r.Consumers.Loaded[i])
+		held[loadedArray][r.Consumers.Loaded[i].ID] = report.Compact(&r.Consumers.Loaded[i])
 	}
 	for i := range r.Consumers.Unavailable {
 		consumer := &r.Consumers.Unavailable[i]
-		held[unavailableArray][consumer.ID] = compact(&report.UnavailableConsumer{ID: consumer.ID, Role: consumer.Role})
+		held[unavailableArray][consumer.ID] = report.Compact(&report.UnavailableConsumer{ID: consumer.ID, Role: consumer.Role})
 	}
 	return held
 }
@@ -390,15 +398,13 @@ func compareInputs(a, b Input) int {
 	)
 }
 
-// compareLanguageKinds orders two targets' language kinds member by member, a
-// target without them ordered as one naming no language.
-func compareLanguageKinds(a, b *report.LanguageKinds) int {
-	var none report.LanguageKinds
-	if a == nil {
-		a = &none
+// compareLanguageKinds orders two targets' language kinds language by
+// language, a language a target names no kind for ordered first.
+func compareLanguageKinds(a, b map[vocab.Language]report.TargetKind) int {
+	for _, language := range vocab.Languages() {
+		if order := strings.Compare(string(a[language]), string(b[language])); order != 0 {
+			return order
+		}
 	}
-	if b == nil {
-		b = &none
-	}
-	return cmp.Or(strings.Compare(string(a.Go), string(b.Go)), strings.Compare(string(a.TS), string(b.TS)))
+	return 0
 }

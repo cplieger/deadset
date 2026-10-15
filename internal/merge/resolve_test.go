@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // Of two pending findings no report can resolve, the refusal names the one

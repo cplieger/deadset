@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // TestDispatch pins how a command line reaches a verb over a build whose only
@@ -29,55 +29,55 @@ func TestDispatch(t *testing.T) {
 		{
 			name:       "no_arguments",
 			args:       nil,
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{"usage: deadset", "analyze", "explain", "print-config", "install", "describe", "version"},
 		},
 		{
 			name:       "unknown_command",
 			args:       []string{"frobnicate"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{`unknown command "frobnicate"`, "usage: deadset"},
 		},
 		{
 			name:       "listed_verb_without_a_handler",
 			args:       []string{"analyze", "."},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{`unknown command "analyze"`, "usage: deadset"},
 		},
 		{
 			name:       "undefined_flag",
 			args:       []string{"--verbose", "version"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{"flag provided but not defined: -verbose", "usage: deadset"},
 		},
 		{
 			name:       "fix_after_command",
 			args:       []string{"analyze", "--fix"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{"--fix requested a source edit", "report-only"},
 		},
 		{
 			name:       "fix_before_command",
 			args:       []string{"-fix", "analyze"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{"-fix requested a source edit", "report-only"},
 		},
 		{
 			name:       "fix_with_value",
 			args:       []string{"analyze", "--fix=true"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{"--fix=true requested a source edit", "report-only"},
 		},
 		{
 			name:       "fix_with_version",
 			args:       []string{"version", "--fix"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{"--fix requested a source edit"},
 		},
 		{
 			name:       "fix_as_positional_is_a_command",
 			args:       []string{"fix"},
-			wantExit:   verdict.Usage,
+			wantExit:   vocab.ExitUsage,
 			wantStderr: []string{`unknown command "fix"`},
 		},
 	}
@@ -101,10 +101,10 @@ func TestDispatch(t *testing.T) {
 					t.Errorf("dispatch(%q) stderr = %q, want it to contain %q", tt.args, stderr.String(), want)
 				}
 			}
-			if tt.wantExit == verdict.Clean && stderr.Len() != 0 {
+			if tt.wantExit == vocab.ExitClean && stderr.Len() != 0 {
 				t.Errorf("dispatch(%q) stderr = %q, want empty on exit 0", tt.args, stderr.String())
 			}
-			if tt.wantExit != verdict.Clean && stdout.Len() != 0 {
+			if tt.wantExit != vocab.ExitClean && stdout.Len() != 0 {
 				t.Errorf("dispatch(%q) stdout = %q, want empty on exit %d", tt.args, stdout.String(), tt.wantExit)
 			}
 		})
@@ -127,7 +127,7 @@ commands:
   describe      print this build's capabilities as JSON
   version       print the version of this build and of the contract it implements
 `
-	stub := func([]string, io.Writer, io.Writer) int { return verdict.Clean }
+	stub := func([]string, io.Writer, io.Writer) int { return vocab.ExitClean }
 	for name, tt := range map[string]struct {
 		verbs map[string]handler
 		want  string

@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"pgregory.net/rapid"
 )
 
@@ -21,7 +22,7 @@ var (
 	drawnPaths     = []string{"a.go", "internal/b.go", "internal/b.ts", "web/a.ts"}
 	drawnNames     = []string{"a", "b", "Event"}
 	drawnMessages  = []string{"unexported function has no reference in the target", "dead"}
-	drawnSeverity  = []report.Severity{report.SeverityAllow, report.SeverityWarn, report.SeverityDeny}
+	drawnSeverity  = []vocab.Severity{vocab.Allow, vocab.Warn, vocab.Deny}
 	drawnEdges     = []string{"A", "B", "C"}
 
 	// drawnEdgeStates draws dead twice as often as live or absent, so pairs
@@ -314,7 +315,7 @@ func TestMergeResolvesEveryPendingFindingByItsPairsState(t *testing.T) {
 		kept := map[string]string{}
 		stale := 0
 		for _, f := range merged.Findings {
-			if f.Code == staleEdgeCode {
+			if f.Code == vocab.StaleCrossLanguageEdge {
 				stale++
 				continue
 			}
