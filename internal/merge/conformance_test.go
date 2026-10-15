@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // resultsDescription is the description the results document carries.

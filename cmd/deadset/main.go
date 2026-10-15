@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // command is one verb of this command's surface and the line the usage text
@@ -76,26 +76,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 func dispatch(verbs map[string]handler, args []string, stdout, stderr io.Writer) int {
 	if flagName, ok := requestsFix(args); ok {
 		fmt.Fprintf(stderr, "deadset: %s requested a source edit, but deadset is report-only and never edits a source file\n", flagName)
-		return verdict.Usage
+		return vocab.ExitUsage
 	}
 
 	fs := flag.NewFlagSet("deadset", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, usage(verbs)) }
 	if err := fs.Parse(args); err != nil {
-		return verdict.Usage
+		return vocab.ExitUsage
 	}
 
 	name := fs.Arg(0)
 	if name == "" {
 		fs.Usage()
-		return verdict.Usage
+		return vocab.ExitUsage
 	}
 	verb, ok := verbs[name]
 	if !ok {
 		fmt.Fprintf(stderr, "deadset: unknown command %q\n", name)
 		fs.Usage()
-		return verdict.Usage
+		return vocab.ExitUsage
 	}
 	return verb(fs.Args()[1:], stdout, stderr)
 }

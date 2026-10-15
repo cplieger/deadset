@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 )
 
@@ -23,22 +24,22 @@ func TestResolve_ranksFlagThenRepositoryThenCentralThenDefault(t *testing.T) {
 		in         config.Inputs
 		name       string
 		provenance string
-		want       config.Severity
+		want       vocab.Severity
 	}{
 		{
-			name: "flag", want: config.Allow, provenance: "flag: --fail-on",
+			name: "flag", want: vocab.Allow, provenance: "flag: --fail-on",
 			in: config.Inputs{Flags: flags, Repository: repository, Central: central},
 		},
 		{
-			name: "repository", want: config.Warn, provenance: "repository: repo/deadset.json",
+			name: "repository", want: vocab.Warn, provenance: "repository: repo/deadset.json",
 			in: config.Inputs{Repository: repository, Central: central},
 		},
 		{
-			name: "central", want: config.Deny, provenance: "central: central.json",
+			name: "central", want: vocab.Deny, provenance: "central: central.json",
 			in: config.Inputs{Repository: bare, Central: central},
 		},
 		{
-			name: "default", want: config.Deny, provenance: "default",
+			name: "default", want: vocab.Deny, provenance: "default",
 			in: config.Inputs{Repository: bare},
 		},
 	}
@@ -69,18 +70,18 @@ func TestResolve_severityResolvesPerCode(t *testing.T) {
 
 	r, err := config.Resolve(&config.Inputs{
 		ContractVersion: testContractVersion,
-		Repository:      config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": "library"}, "severity": {"DS1101": "allow"}}`)},
-		Central:         config.Document{Path: "central.json", Data: []byte(`{"severity": {"DS1101": "deny", "DS18": "warn"}}`)},
+		Repository:      config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": "library"}, "severity": {"DS1501": "allow"}}`)},
+		Central:         config.Document{Path: "central.json", Data: []byte(`{"severity": {"DS1501": "deny", "DS14": "warn"}}`)},
 	})
 	if err != nil {
 		t.Fatalf("Resolve(per-code severity) = error %v", err)
 	}
 	got := printed(t, r)
-	if want := map[string]any{"DS1101": "allow", "DS18": "warn"}; !reflect.DeepEqual(got.Values["severity"], want) {
+	if want := map[string]any{"DS1501": "allow", "DS14": "warn"}; !reflect.DeepEqual(got.Values["severity"], want) {
 		t.Errorf("Resolve(per-code severity) severity = %v, want %v", got.Values["severity"], want)
 	}
-	if got.Provenance["severity.DS1101"] != "repository: deadset.json" || got.Provenance["severity.DS18"] != "central: central.json" {
-		t.Errorf("Resolve(per-code severity) provenance = %v, want DS1101 from the repository and DS18 from the central configuration",
+	if got.Provenance["severity.DS1501"] != "repository: deadset.json" || got.Provenance["severity.DS14"] != "central: central.json" {
+		t.Errorf("Resolve(per-code severity) provenance = %v, want DS1501 from the repository and DS14 from the central configuration",
 			got.Provenance)
 	}
 	if _, held := got.Provenance["severity"]; held {
@@ -115,13 +116,13 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 		{name: "duplicated-section", document: `{"target": {"kind": "library"}, "target": {"kind": "application"}}`, at: "target"},
 		{name: "duplicated-nested-key", document: `{"target": {"kind": "library", "kind": "application"}}`, at: "target.kind"},
 		{name: "duplicated-member-of-an-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "os": "darwin"}]}}`, at: "analysis.configurations[0].os"},
-		{name: "duplicated-severity-code", document: `{"severity": {"DS1101": "warn", "DS1101": "deny"}}`, at: "severity.DS1101"},
+		{name: "duplicated-severity-code", document: `{"severity": {"DS1501": "warn", "DS1501": "deny"}}`, at: "severity.DS1501"},
 		{name: "severity-key-spelling", document: `{"severity": {"DS1": "warn"}}`, at: "severity.DS1"},
-		{name: "severity-code-the-contract-fixes", document: `{"severity": {"DS1703": "warn"}}`, at: "severity.DS1703"},
-		{name: "severity-family-holding-a-fixed-code", document: `{"severity": {"DS17": "allow"}}`, at: "severity.DS17"},
+		{name: "severity-code-the-contract-fixes", document: `{"severity": {"DS9003": "warn"}}`, at: "severity.DS9003"},
+		{name: "severity-family-holding-a-fixed-code", document: `{"severity": {"DS90": "allow"}}`, at: "severity.DS90"},
 		{name: "severity-code-of-no-kind", document: `{"severity": {"DS2999": "warn"}}`, at: "severity.DS2999"},
 		{name: "severity-family-of-no-kind", document: `{"severity": {"DS29": "warn"}}`, at: "severity.DS29"},
-		{name: "severity-code-retired", document: `{"severity": {"DS1401": "warn"}}`, at: "severity.DS1401"},
+		{name: "severity-code-of-a-reserved-family", document: `{"severity": {"DS1801": "warn"}}`, at: "severity.DS1801"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -167,7 +168,7 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 		{name: "exemption-class-spelling", document: `{"exemptions": {"disabled": ["Template_Field"]}}`, at: "exemptions.disabled[0]"},
 		{name: "component-extension-repeated", document: `{"ts": {"component_extensions": [".vue", ".vue"]}}`, at: "ts.component_extensions[1]"},
 		{name: "roots-complete-of-another-type", document: `{"ts": {"roots_complete": "yes"}}`, at: "ts.roots_complete"},
-		{name: "severity-outside-its-set", document: `{"severity": {"DS1101": "error"}}`, at: "severity.DS1101"},
+		{name: "severity-outside-its-set", document: `{"severity": {"DS1501": "error"}}`, at: "severity.DS1501"},
 		{name: "contract-version-spelling", document: `{"contract_version": "3.0"}`, at: "contract_version"},
 		{name: "provider-member-undeclared", document: `{"providers": {"analyzers": [{"name": "a", "languages": ["go"], "command": "a", "argument": 0}]}}`, at: "providers.analyzers[0].argument"},
 		{name: "provider-name-spelling", document: `{"providers": {"analyzers": [{"name": "Deadset_Go", "languages": ["go"], "command": "a"}]}}`, at: "providers.analyzers[0].name"},
@@ -381,8 +382,8 @@ func TestResolve_readsTheOrchestratorSettings(t *testing.T) {
 		t.Errorf("Resolve(orchestrator settings).Config.Languages = %v, want %v", r.Config.Languages, want)
 	}
 	want := config.Reporters{
-		Formats: []config.Format{config.FormatSARIF, config.FormatText}, Sort: config.SortSize,
-		Cascade: config.CascadeFull, MaxFindings: 25, FailOn: config.Warn,
+		Formats: []vocab.Format{vocab.FormatSARIF, vocab.FormatText}, Sort: config.SortSize,
+		Cascade: config.CascadeFull, MaxFindings: 25, FailOn: vocab.Warn,
 	}
 	if !reflect.DeepEqual(r.Config.Reporters, want) {
 		t.Errorf("Resolve(orchestrator settings).Config.Reporters = %+v, want %+v", r.Config.Reporters, want)

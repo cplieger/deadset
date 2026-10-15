@@ -7,7 +7,7 @@ package merge
 import (
 	"slices"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // Input is one analyzer report a merge reads, with the digest of the analyzer
@@ -53,6 +53,5 @@ func Merge(inputs []Input, accepted []string, caller *Caller) (*report.Report, e
 	if err := carried.resolve(ordered, caller.Name); err != nil {
 		return nil, err
 	}
-	carried.order()
 	return envelope(ordered, accepted, caller, carried), nil
 }

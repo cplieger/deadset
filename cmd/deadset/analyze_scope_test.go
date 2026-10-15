@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // scopeRead is the part of a scope document these tests compare.
@@ -93,8 +93,8 @@ func TestAnalyzeRoutesEachConsumerToTheAnalyzersOfItsLanguages(t *testing.T) {
 	runDir := filepath.Join(base, "run")
 
 	got := analyze(t, target, runDir, "--scope="+document)
-	if got.code != verdict.Findings {
-		t.Fatalf("analyze --scope=%s = %d, want %d\nstderr: %s", document, got.code, verdict.Findings, got.stderr)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze --scope=%s = %d, want %d\nstderr: %s", document, got.code, vocab.ExitFindings, got.stderr)
 	}
 	want := []string{
 		"config.deadset-go.json", "config.deadset-ts.json", "describe.deadset-go.json", "describe.deadset-ts.json",
@@ -149,8 +149,8 @@ func TestAnalyzeHandsAnAnalyzerClaimingEveryConsumerTheRunsScope(t *testing.T) {
 	writeFile(t, document, []byte(`{"target": {"path": "target"}, "consumers": [{"id": "example.com/consumer", "path": "consumer"}]}`))
 
 	got := analyze(t, target, runDir, "--scope="+document)
-	if got.code != verdict.Findings {
-		t.Fatalf("analyze --scope=%s = %d, want %d\nstderr: %s", document, got.code, verdict.Findings, got.stderr)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze --scope=%s = %d, want %d\nstderr: %s", document, got.code, vocab.ExitFindings, got.stderr)
 	}
 	want := []string{"config.deadset-go.json", "describe.deadset-go.json", "report.deadset-go.json", "report.json", "scope.json"}
 	if names := listing(t, runDir); !slices.Equal(names, want) {
@@ -208,8 +208,8 @@ func TestAnalyzeWithNoConsumerWritesTheTargetAlone(t *testing.T) {
 				extra = append(extra, "--scope="+document)
 			}
 
-			if got := analyze(t, target, runDir, extra...); got.code != verdict.Findings {
-				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", c.name, got.code, verdict.Findings, got.stderr)
+			if got := analyze(t, target, runDir, extra...); got.code != vocab.ExitFindings {
+				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", c.name, got.code, vocab.ExitFindings, got.stderr)
 			}
 			run, err := os.ReadFile(filepath.Join(runDir, "scope.json"))
 			want := "{\n  \"target\": {\n    \"role\": \"target\",\n    \"path\": \"" + target + "\"\n  }\n}\n"
@@ -238,31 +238,31 @@ func TestAnalyzeRefusesAScopeItCannotRoute(t *testing.T) {
 	}{
 		{
 			name:  "document-absent",
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"--scope", "scope.json", "no such file"},
 		},
 		{
 			name:     "member-undeclared",
 			document: `{"target": {"path": "target"}, "network": true}`,
-			code:     verdict.Failure,
+			code:     vocab.ExitFailure,
 			names:    []string{"--scope", "/network", "declares no such member"},
 		},
 		{
 			name:     "another-target",
 			document: `{"target": {"path": "go-consumer"}}`,
-			code:     verdict.Usage,
+			code:     vocab.ExitUsage,
 			names:    []string{"--scope", "go-consumer", "the target of the run"},
 		},
 		{
 			name:     "consumer-absent",
 			document: `{"target": {"path": "target"}, "consumers": [{"path": "go-consumer"}, {"path": "gone"}]}`,
-			code:     verdict.Failure,
+			code:     vocab.ExitFailure,
 			names:    []string{"cannot be read", "no finding is computed without it", "gone"},
 		},
 		{
 			name:     "consumer-a-file",
 			document: `{"target": {"path": "target"}, "consumers": [{"path": "go-consumer/go.mod"}]}`,
-			code:     verdict.Failure,
+			code:     vocab.ExitFailure,
 			names:    []string{"go.mod that --scope declares is not a directory"},
 		},
 		{
@@ -271,13 +271,13 @@ func TestAnalyzeRefusesAScopeItCannotRoute(t *testing.T) {
 			setup: func(t *testing.T, base string) {
 				writeFile(t, filepath.Join(base, "docs", "README.md"), []byte("# docs\n"))
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"--scope", "docs", "does not load", "no language in scope"},
 		},
 		{
 			name:     "consumer-no-analyzer-claims",
 			document: `{"target": {"path": "target"}, "consumers": [{"path": "go-consumer"}, {"path": "ts-consumer"}]}`,
-			code:     verdict.Usage,
+			code:     vocab.ExitUsage,
 			names:    []string{"--scope", "ts-consumer holds ts", "no analyzer of the run claims"},
 		},
 	}
@@ -421,8 +421,8 @@ func TestAnalyzeNamesAModuleLoadedInBothLanguagesByItsGoModulePath(t *testing.T)
 			}
 			runDir := filepath.Join(base, "run")
 
-			if got := analyze(t, target, runDir, flags...); got.code != verdict.Findings {
-				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", c.name, got.code, verdict.Findings, got.stderr)
+			if got := analyze(t, target, runDir, flags...); got.code != vocab.ExitFindings {
+				t.Fatalf("analyze(%s) = %d, want %d\nstderr: %s", c.name, got.code, vocab.ExitFindings, got.stderr)
 			}
 			run := readScopeDocument(t, filepath.Join(runDir, "scope.json"))
 			if run.Target.Path != target {
@@ -446,9 +446,9 @@ func TestAnalyzeRefusesAMixedTargetWhoseGoModNamesNoModule(t *testing.T) {
 	runDir := filepath.Join(filepath.Dir(target), "run")
 
 	got := analyze(t, target, runDir)
-	if got.code != verdict.Failure || !strings.Contains(got.stderr, filepath.Join(target, "go.mod")) || !strings.Contains(got.stderr, "no module directive") {
+	if got.code != vocab.ExitFailure || !strings.Contains(got.stderr, filepath.Join(target, "go.mod")) || !strings.Contains(got.stderr, "no module directive") {
 		t.Errorf("analyze = %d with stderr %q, want %d naming %s and its missing module directive",
-			got.code, got.stderr, verdict.Failure, filepath.Join(target, "go.mod"))
+			got.code, got.stderr, vocab.ExitFailure, filepath.Join(target, "go.mod"))
 	}
 	if _, err := os.Stat(runDir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("analyze left the run directory %s: %v, want none", runDir, err)

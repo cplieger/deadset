@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // resultsDocument is the merge's committed result over the published merge

@@ -8,14 +8,16 @@ import (
 	"io/fs"
 	"maps"
 	"path"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
-	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/render"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
@@ -44,7 +46,7 @@ var refusedCases = map[string]error{
 type vectorCase struct {
 	expected []byte
 	caller   Caller
-	failOn   config.Severity
+	failOn   vocab.Severity
 	inputs   []Input
 	accepted []string
 	exit     int
@@ -97,8 +99,8 @@ func answer(c vectorCase, name string) error {
 	if !bytes.Equal(written.Bytes(), c.expected) {
 		return fmt.Errorf("Merge(%s) =\n%s\nwant expected.json\n%s", name, written.Bytes(), c.expected)
 	}
-	if got := verdict.Code(merged, c.failOn, verdict.On); got != c.exit {
-		return fmt.Errorf("Code(Merge(%s), %s, On) = %d, want expected_exit %d", name, c.failOn, got, c.exit)
+	if got := render.Verdict(&merged.Totals, c.failOn); got != c.exit {
+		return fmt.Errorf("Verdict(Merge(%s), %s) = %d, want expected_exit %d", name, c.failOn, got, c.exit)
 	}
 	return nil
 }
@@ -114,11 +116,11 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 		check func(error) bool
 	}{
 		{
-			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", report.SchemaVersion},
+			name: "schema-version-out-of-range", named: []string{"deadset-go", "1.0.0", vocab.SchemaVersion},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*admissionError](err)
 				return ok && refused.Analyzer == "deadset-go" && refused.SchemaVersion == "1.0.0" &&
-					slices.Equal(refused.Accepted, []string{report.SchemaVersion})
+					slices.Equal(refused.Accepted, []string{vocab.SchemaVersion})
 			},
 		},
 		{
@@ -139,7 +141,7 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 			name: "targets-differ", named: []string{"deadset-go", "deadset-ts"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*targetError](err)
-				return ok && refused.Analyzers == [2]string{"deadset-go", "deadset-ts"} && refused.Targets[0] != refused.Targets[1]
+				return ok && refused.Analyzers == [2]string{"deadset-go", "deadset-ts"} && !reflect.DeepEqual(refused.Targets[0], refused.Targets[1])
 			},
 		},
 		{
@@ -147,14 +149,14 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*kindClaimError](err)
 				return ok && refused.Analyzers == [2]string{"deadset-go", "example-go"} && refused.Language == "go" &&
-					refused.Kinds == [2]report.TargetKind{report.TargetApplication, report.TargetLibrary}
+					refused.Kinds == [2]report.TargetKind{report.TargetKindApplication, report.TargetKindLibrary}
 			},
 		},
 		{
 			name: "target-kinds-not-the-reports-languages", named: []string{"deadset-go", "go application", "ts library"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*languageKindsError](err)
-				return ok && refused.Analyzer == "deadset-go" && slices.Equal(refused.Languages, []string{"go"})
+				return ok && refused.Analyzer == "deadset-go" && slices.Equal(refused.Languages, []vocab.Language{vocab.Go})
 			},
 		},
 		{
@@ -250,11 +252,11 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 		"target kind": func(r *report.Report) bool {
 			switch kinds := r.Target.LanguageKinds; {
 			case kinds != nil:
-				kinds.Go, kinds.TS = kinds.TS, kinds.Go
-			case r.Target.Kind == report.TargetApplication:
-				r.Target.Kind = report.TargetLibrary
+				kinds[vocab.Go], kinds[vocab.TS] = kinds[vocab.TS], kinds[vocab.Go]
+			case r.Target.Kind == report.TargetKindApplication:
+				r.Target.Kind = report.TargetKindLibrary
 			default:
-				r.Target.Kind = report.TargetApplication
+				r.Target.Kind = report.TargetKindApplication
 			}
 			return true
 		},
@@ -345,9 +347,9 @@ func readCase(t *testing.T, name string) vectorCase {
 	if err := decoder.Decode(&caller); err != nil {
 		t.Fatalf("Setup: decode %s/caller.json: %v", dir, err)
 	}
-	if !slices.Contains(report.SchemaVersions, caller.SchemaVersion) || caller.ContractVersion != report.ContractVersion {
+	if !slices.Contains(vocab.SchemaVersions(), caller.SchemaVersion) || caller.ContractVersion != vocab.ContractVersion {
 		t.Fatalf("Setup: %s/caller.json writes schema %s and contract %s, want one of this module's %q and %s",
-			dir, caller.SchemaVersion, caller.ContractVersion, report.SchemaVersions, report.ContractVersion)
+			dir, caller.SchemaVersion, caller.ContractVersion, vocab.SchemaVersions(), vocab.ContractVersion)
 	}
 	c.caller = Caller{
 		SchemaVersion:   caller.SchemaVersion,
@@ -384,7 +386,7 @@ type callerFile struct {
 	Digests         map[string]string `json:"digests"`
 	SchemaVersion   string            `json:"schema_version"`
 	ContractVersion string            `json:"contract_version"`
-	FailOn          config.Severity   `json:"fail_on"`
+	FailOn          vocab.Severity    `json:"fail_on"`
 	Analyzer        struct {
 		Name        string             `json:"name"`
 		Version     string             `json:"version"`

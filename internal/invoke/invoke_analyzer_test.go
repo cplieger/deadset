@@ -10,9 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/invoke"
-	"github.com/cplieger/deadset/v2/internal/report"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
@@ -53,7 +54,7 @@ func goRun(t *testing.T, command, source string) (invoke.Request, rundir.Entry) 
 		}
 	}
 	resolved, err := config.Resolve(&config.Inputs{
-		ContractVersion: report.ContractVersion,
+		ContractVersion: vocab.ContractVersion,
 		Repository: config.Document{
 			Path: filepath.Join(target, config.RepositoryFile),
 			Data: []byte(`{"target": {"kind": "library"}, "reporters": {"formats": ["json", "github"], "max_findings": 1}}`),
@@ -82,7 +83,7 @@ func goRun(t *testing.T, command, source string) (invoke.Request, rundir.Entry) 
 		Config:   entry.Config(),
 		Report:   entry.Report(),
 	}
-	if _, err := invoke.Describe(t.Context(), &req, entry, []string{report.SchemaVersion}); err != nil {
+	if _, err := invoke.Describe(t.Context(), &req, entry, []string{vocab.SchemaVersion}); err != nil {
 		t.Fatalf("Setup: the handshake with %s: %v", goAnalyzer, err)
 	}
 	if err := entry.WriteConfig(resolved, "go"); err != nil {
@@ -108,15 +109,15 @@ func TestDescribeAdmitsTheGoAnalyzer(t *testing.T) {
 		t.Fatalf("Setup: Entry(%s): %v", goAnalyzer, err)
 	}
 
-	got, err := invoke.Describe(t.Context(), &req, entry, []string{report.SchemaVersion})
+	got, err := invoke.Describe(t.Context(), &req, entry, []string{vocab.SchemaVersion})
 	if err != nil {
 		t.Fatalf("Describe(%s) = %v, want it admitted", goAnalyzer, err)
 	}
 	if got.Name != goAnalyzer {
 		t.Errorf("Describe(%s) = %+v, want the name %s", goAnalyzer, got, goAnalyzer)
 	}
-	if !slices.Contains(got.SchemaVersionsAccepted, report.SchemaVersion) || got.Conformance.Result != report.ResultPass {
-		t.Errorf("Describe(%s) = %+v, want schema version %s read and a conformance pass", goAnalyzer, got, report.SchemaVersion)
+	if !slices.Contains(got.SchemaVersionsAccepted, vocab.SchemaVersion) || got.Conformance.Result != report.ResultPass {
+		t.Errorf("Describe(%s) = %+v, want schema version %s read and a conformance pass", goAnalyzer, got, vocab.SchemaVersion)
 	}
 }
 
@@ -140,13 +141,13 @@ func TestAnalyzeReadsTheReportARealAnalyzerWrites(t *testing.T) {
 	if got.Analyzer.Name != goAnalyzer {
 		t.Errorf("Analyze() read a report by %q, want %q", got.Analyzer.Name, goAnalyzer)
 	}
-	want := report.Target{Kind: report.TargetLibrary, Root: "target", Identity: "example.com/app"}
-	if got.Target != want {
+	want := report.Target{Kind: report.TargetKindLibrary, Root: "target", Identity: "example.com/app"}
+	if !reflect.DeepEqual(got.Target, want) {
 		t.Errorf("Analyze() read a report on %+v, want %+v", got.Target, want)
 	}
 	var reported []string
 	for i := range got.Findings {
-		reported = append(reported, got.Findings[i].Code+" "+got.Findings[i].Symbol.Ref)
+		reported = append(reported, string(got.Findings[i].Code)+" "+got.Findings[i].Symbol.Ref)
 	}
 	for _, want := range []string{"DS1002 go://example.com/app#dead", "DS1002 go://example.com/app#alsoDead"} {
 		if !slices.Contains(reported, want) {

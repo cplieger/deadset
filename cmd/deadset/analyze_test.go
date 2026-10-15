@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
-	"github.com/cplieger/deadset/v2/internal/report"
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // The analyzer reports the fakes write, each a published merge input.
@@ -56,8 +56,8 @@ func printingAnalyzer(t *testing.T, name string, languages []string, exit int, w
 	described, err := json.Marshal(map[string]any{
 		"name":                     name,
 		"version":                  "1.0.0",
-		"contract_version":         report.ContractVersion,
-		"schema_versions_accepted": []string{report.SchemaVersion},
+		"contract_version":         vocab.ContractVersion,
+		"schema_versions_accepted": []string{vocab.SchemaVersion},
 		"languages":                languages,
 		"conformance":              map[string]string{"corpus_version": "1.9.0", "result": "pass", "digest": "sha256:" + strings.Repeat("0a", 32)},
 	})
@@ -203,8 +203,8 @@ func TestAnalyzeKeepsTheEvidenceAndExitsWithTheMergedVerdict(t *testing.T) {
 	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 
 	got := analyze(t, target, runDir)
-	if got.code != verdict.Findings {
-		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Findings, got.stderr)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, vocab.ExitFindings, got.stderr)
 	}
 	want := []string{
 		"config.deadset-go.json", "config.deadset-ts.json", "describe.deadset-go.json", "describe.deadset-ts.json",
@@ -270,8 +270,8 @@ func TestAnalyzeHandsEachAnalyzerTheSectionsOfItsLanguagesInScope(t *testing.T) 
 	target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: both.command, Languages: []string{"go", "ts"}}},
 		`, "ts": {"entry_files": ["src/cli.ts"]}`)
 
-	if got := analyze(t, target, runDir); got.code != verdict.Findings {
-		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Findings, got.stderr)
+	if got := analyze(t, target, runDir); got.code != vocab.ExitFindings {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, vocab.ExitFindings, got.stderr)
 	}
 	var handed map[string]json.RawMessage
 	body, err := os.ReadFile(filepath.Join(runDir, "config.deadset-go.json"))
@@ -307,7 +307,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, []string{"--exit-code=off"}
 			},
-			code:  verdict.Clean,
+			code:  vocab.ExitClean,
 			names: []string{"the verdict of this run is 1"},
 		},
 		{
@@ -315,7 +315,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			setup: func(t *testing.T) (string, string, []string) {
 				return t.TempDir(), filepath.Join(t.TempDir(), "run"), []string{"--exit-code=maybe"}
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"--exit-code", `"maybe"`, "on and off", "usage: deadset analyze"},
 		},
 		{
@@ -323,7 +323,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			setup: func(t *testing.T) (string, string, []string) {
 				return t.TempDir(), filepath.Join(t.TempDir(), "run"), []string{"extra"}
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{`"extra"`},
 		},
 		{
@@ -333,7 +333,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, filepath.Join(target, "go.mod"), []byte("module example.com/app\n"))
 				return target, filepath.Join(t.TempDir(), "run"), nil
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"target.kind"},
 		},
 		{
@@ -341,7 +341,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			setup: func(t *testing.T) (string, string, []string) {
 				return filepath.Join(t.TempDir(), "absent"), filepath.Join(t.TempDir(), "run"), nil
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"the target"},
 		},
 		{
@@ -349,7 +349,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			setup: func(t *testing.T) (string, string, []string) {
 				return t.TempDir(), filepath.Join(t.TempDir(), "run"), []string{"--central=" + filepath.Join(t.TempDir(), "central.json")}
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"--central", "central.json"},
 		},
 		{
@@ -359,7 +359,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, []string{"--formats=text,template"}
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"--template", "template format"},
 		},
 		{
@@ -371,7 +371,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, template, []byte("{{range .findings}}"))
 				return target, runDir, []string{"--formats=template", "--template=" + template}
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"--template", "parse the template"},
 		},
 		{
@@ -381,7 +381,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go-fork", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, nil
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"deadset-go-fork", `"deadset-go"`, "report.deadset-go-fork.json"},
 		},
 		{
@@ -391,7 +391,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-ts", Command: f.command, Languages: []string{"ts"}}}, "")
 				return target, runDir, nil
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"providers.analyzers", `"go"`},
 		},
 		{
@@ -401,7 +401,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, _ := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, t.TempDir(), nil
 			},
-			code:  verdict.Usage,
+			code:  vocab.ExitUsage,
 			names: []string{"--run-dir"},
 		},
 		{
@@ -415,7 +415,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 				return target, runDir, nil
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"deadset-ts", "providers.analyzers[1]", "deadset-ts-no-path-holds"},
 		},
 		{
@@ -425,7 +425,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go-fork", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, nil
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"deadset-go-fork", `"deadset-go"`},
 		},
 		{
@@ -435,7 +435,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, nil
 			},
-			code:   verdict.Usage,
+			code:   vocab.ExitUsage,
 			names:  []string{"analyzer deadset-go", "exited 2, a usage or configuration error of the analyzer", "usage: deadset-go analyze"},
 			absent: []string{"usage: deadset analyze"},
 		},
@@ -451,7 +451,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 				return target, runDir, nil
 			},
-			code:   verdict.Usage,
+			code:   vocab.ExitUsage,
 			names:  []string{"analyzer deadset-go", "analyzer deadset-ts", "a usage or configuration error of the analyzer"},
 			absent: []string{"usage: deadset analyze"},
 		},
@@ -467,7 +467,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 				return target, runDir, nil
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"deadset-ts", "exited 3"},
 		},
 		{
@@ -477,7 +477,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 				return target, runDir, nil
 			},
-			code:  verdict.Failure,
+			code:  vocab.ExitFailure,
 			names: []string{"wire/ServerEvent", "provides", "go://example.com/app/internal/wire#ServerEvent"},
 		},
 	}
@@ -500,7 +500,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 					t.Errorf("analyze(%s) stderr = %q, want no %q", c.name, got.stderr, held)
 				}
 			}
-			produced := c.code == verdict.Clean || c.code == verdict.Findings
+			produced := c.code == vocab.ExitClean || c.code == vocab.ExitFindings
 			if _, err := os.Stat(filepath.Join(runDir, "report.json")); (err == nil) != produced {
 				t.Errorf("analyze(%s) left a merged report: %t, want %t", c.name, err == nil, produced)
 			}
@@ -522,8 +522,8 @@ func TestAnalyzeFailsOnAFindingAtOrAboveTheFailingSeverity(t *testing.T) {
 		code               int
 		remediation        bool
 	}{
-		{failOn: "deny", annotation: "::warning ", code: verdict.Clean},
-		{failOn: "warn", annotation: "::warning ", code: verdict.Findings, remediation: true},
+		{failOn: "deny", annotation: "::warning ", code: vocab.ExitClean},
+		{failOn: "warn", annotation: "::warning ", code: vocab.ExitFindings, remediation: true},
 	} {
 		t.Run(c.failOn, func(t *testing.T) {
 			t.Parallel()
@@ -615,8 +615,8 @@ func TestAnalyzeWritesTheSARIFAndTemplateRenderingsBesideTheMergedReport(t *test
 	writeFile(t, template, []byte("{{range .findings}}{{.code}} {{.position.path}}:{{.position.line}}\n{{end}}"))
 
 	got := analyze(t, target, runDir, "--formats=sarif,text,template", "--template="+template)
-	if got.code != verdict.Findings {
-		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Findings, got.stderr)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, vocab.ExitFindings, got.stderr)
 	}
 	sarifPath, templatePath := filepath.Join(runDir, "report.json.sarif"), filepath.Join(runDir, "report.json.tmpl")
 	lines := strings.Split(strings.TrimSuffix(got.stdout, "\n"), "\n")
@@ -661,9 +661,9 @@ func TestAnalyzeFailsASARIFRenderingOfAnUnreadableSourceFile(t *testing.T) {
 	f := fakeAnalyzer(t, "deadset-go", []string{"go"}, 1, goFindings)
 	target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: f.command, Languages: []string{"go"}}}, "")
 	got := analyze(t, target, runDir, "--formats=sarif")
-	if got.code != verdict.Failure || !strings.Contains(got.stderr, "read internal/store/store.go") || got.stdout != "" {
+	if got.code != vocab.ExitFailure || !strings.Contains(got.stderr, "read internal/store/store.go") || got.stdout != "" {
 		t.Errorf("analyze = %d, stdout %q, stderr %q, want %d naming the read of internal/store/store.go and no stdout",
-			got.code, got.stdout, got.stderr, verdict.Failure)
+			got.code, got.stdout, got.stderr, vocab.ExitFailure)
 	}
 	if names := listing(t, runDir); !slices.Contains(names, "report.json") || slices.Contains(names, "report.json.sarif") {
 		t.Errorf("the run directory holds %q, want the merged report and no SARIF log", names)
@@ -679,8 +679,8 @@ func TestAnalyzeResolvesARelativeRunDirectoryAgainstTheWorkingDirectory(t *testi
 	t.Chdir(filepath.Dir(runDir))
 
 	got := analyze(t, target, filepath.Base(runDir))
-	if got.code != verdict.Findings {
-		t.Fatalf("analyze(--run-dir=%s) = %d, want %d\nstderr: %s", filepath.Base(runDir), got.code, verdict.Findings, got.stderr)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze(--run-dir=%s) = %d, want %d\nstderr: %s", filepath.Base(runDir), got.code, vocab.ExitFindings, got.stderr)
 	}
 	if names := listing(t, runDir); !slices.Contains(names, "report.deadset-go.json") || !slices.Contains(names, "report.json") {
 		t.Errorf("the run directory %s holds %q, want the analyzer's report and the merged report", runDir, names)
@@ -700,8 +700,8 @@ func TestAnalyzePassesAnAnalyzersFailureLinesThroughUnchanged(t *testing.T) {
 		setupFailure = "setup failure: missing-module: internal/gen/gen.go imports example.com/app/gen, which nothing provides; run go generate ./...\n"
 		memory       = "memory exhausted: at least 9.5 GB were needed, 8.0 GB are available\n"
 	)
-	tsFake := printingAnalyzer(t, "deadset-ts", []string{"ts"}, verdict.Failure, "", memory)
-	goFake := printingAnalyzer(t, "deadset-go", []string{"go"}, verdict.Failure, "", setupFailure)
+	tsFake := printingAnalyzer(t, "deadset-ts", []string{"ts"}, vocab.ExitFailure, "", memory)
+	goFake := printingAnalyzer(t, "deadset-go", []string{"go"}, vocab.ExitFailure, "", setupFailure)
 	target, runDir := goTarget(t, []provider{
 		{Name: "deadset-ts", Command: tsFake.command, Languages: []string{"ts"}},
 		{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}},
@@ -709,8 +709,8 @@ func TestAnalyzePassesAnAnalyzersFailureLinesThroughUnchanged(t *testing.T) {
 	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 
 	got := analyze(t, target, runDir)
-	if got.code != verdict.Failure {
-		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Failure, got.stderr)
+	if got.code != vocab.ExitFailure {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, vocab.ExitFailure, got.stderr)
 	}
 	if !strings.Contains(got.stderr, "\n"+setupFailure+memory) {
 		t.Errorf("analyze stderr = %q, want deadset-go's line and then deadset-ts's, each on a line of its own as printed", got.stderr)
@@ -730,8 +730,8 @@ func TestAnalyzeNamesTheWorkaroundAfterASetupFailure(t *testing.T) {
 		setupFailure = "setup failure: missing-module: internal/gen/gen.go imports example.com/app/gen, which nothing provides; run go generate ./...\n"
 		workaround   = `deadset: to analyze the target without deadset-go, set analysis.languages: ["ts"] or run deadset-ts alone` + "\n"
 	)
-	tsFake := fakeAnalyzer(t, "deadset-ts", []string{"ts"}, verdict.Findings, tsFindings)
-	goFake := printingAnalyzer(t, "deadset-go", []string{"go"}, verdict.Failure, "", setupFailure)
+	tsFake := fakeAnalyzer(t, "deadset-ts", []string{"ts"}, vocab.ExitFindings, tsFindings)
+	goFake := printingAnalyzer(t, "deadset-go", []string{"go"}, vocab.ExitFailure, "", setupFailure)
 	target, runDir := goTarget(t, []provider{
 		{Name: "deadset-go", Command: goFake.command, Languages: []string{"go"}},
 		{Name: "deadset-ts", Command: tsFake.command, Languages: []string{"ts"}},
@@ -739,8 +739,8 @@ func TestAnalyzeNamesTheWorkaroundAfterASetupFailure(t *testing.T) {
 	writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 
 	got := analyze(t, target, runDir)
-	if got.code != verdict.Failure {
-		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, verdict.Failure, got.stderr)
+	if got.code != vocab.ExitFailure {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, vocab.ExitFailure, got.stderr)
 	}
 	if !strings.Contains(got.stderr, "\n"+setupFailure+workaround) {
 		t.Errorf("analyze stderr = %q, want deadset-go's line and then the line %q", got.stderr, workaround)

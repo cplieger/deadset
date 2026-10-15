@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 )
 
@@ -16,8 +17,8 @@ func TestResolve_refusingAFixedSeverityNamesEveryFixedCodeOfTheKey(t *testing.T)
 	for _, tc := range []struct {
 		key, names string
 	}{
-		{key: "DS1704", names: "the severity of DS1704, which"},
-		{key: "DS17", names: "the severity of DS1703, DS1704 and DS1706, which"},
+		{key: "DS9004", names: "the severity of DS9004, which"},
+		{key: "DS90", names: "the severity of DS9003, DS9004 and DS9006, which"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			t.Parallel()
@@ -37,20 +38,20 @@ func TestResolve_refusingAFixedSeverityNamesEveryFixedCodeOfTheKey(t *testing.T)
 func TestResolved_SeverityPrefersTheCodeOverItsFamily(t *testing.T) {
 	t.Parallel()
 
-	resolved, err := config.Resolve(fromRepository(`{"target": {"kind": "library"}, "severity": {"DS1705": "warn", "DS18": "allow", "DS10": "warn", "DS1002": "deny"}}`))
+	resolved, err := config.Resolve(fromRepository(`{"target": {"kind": "library"}, "severity": {"DS9005": "warn", "DS14": "allow", "DS10": "warn", "DS1002": "deny"}}`))
 	if err != nil {
 		t.Fatalf("Setup: Resolve() = %v", err)
 	}
 	for _, tc := range []struct {
 		code  string
-		want  config.Severity
+		want  vocab.Severity
 		named bool
 	}{
-		{code: "DS1705", want: config.Warn, named: true},
-		{code: "DS1801", want: config.Allow, named: true},
-		{code: "DS1002", want: config.Deny, named: true},
-		{code: "DS1001", want: config.Warn, named: true},
-		{code: "DS1101"},
+		{code: "DS9005", want: vocab.Warn, named: true},
+		{code: "DS1401", want: vocab.Allow, named: true},
+		{code: "DS1002", want: vocab.Deny, named: true},
+		{code: "DS1001", want: vocab.Warn, named: true},
+		{code: "DS1501"},
 	} {
 		got, named := resolved.Severity(tc.code)
 		if got != tc.want || named != tc.named {

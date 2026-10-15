@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset-spec/v8/render"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/merge"
-	"github.com/cplieger/deadset/v2/internal/report"
-	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 // harnessDir holds the harness archives and the result recorded over them.
@@ -279,8 +279,8 @@ func TestHarnessMerge(t *testing.T) {
 		t.Fatalf("Setup: merge.Conformance() = %v", err)
 	}
 	caller := &merge.Caller{
-		SchemaVersion:   report.SchemaVersion,
-		ContractVersion: report.ContractVersion,
+		SchemaVersion:   vocab.SchemaVersion,
+		ContractVersion: vocab.ContractVersion,
 		Name:            "deadset",
 		Version:         "0.0.0",
 		Conformance:     conformance,
@@ -293,7 +293,7 @@ func TestHarnessMerge(t *testing.T) {
 				{Report: readReport(t, variant, goAnalyzer), Digest: recordedDigest},
 				{Report: readReport(t, variant, tsAnalyzer), Digest: recordedDigest},
 			}
-			merged, err := merge.Merge(inputs, report.SchemaVersions, caller)
+			merged, err := merge.Merge(inputs, vocab.SchemaVersions(), caller)
 			if err != nil {
 				t.Fatalf("merge.Merge(%s's reports) = %v, want a merged report", variant.Archive, err)
 			}
@@ -301,7 +301,7 @@ func TestHarnessMerge(t *testing.T) {
 			got := mergedRun{
 				Findings:    run.Findings,
 				Evaluations: run.Evaluations,
-				Exit:        verdict.Code(merged, config.Deny, verdict.On),
+				Exit:        render.Verdict(&merged.Totals, vocab.Deny),
 				Pending:     run.Pending,
 			}
 			violations := checkCriterion(variant, &got)
@@ -542,13 +542,13 @@ func project(r *report.Report) analyzerRun {
 	}
 	for i := range r.Findings {
 		f := &r.Findings[i]
-		run.Findings = append(run.Findings, recordedFinding{Code: f.Code, Symbol: f.Symbol.Ref, Component: f.Component.ID})
+		run.Findings = append(run.Findings, recordedFinding{Code: string(f.Code), Symbol: f.Symbol.Ref, Component: f.Component.ID})
 	}
 	for i := range r.EdgeEvaluations {
 		e := &r.EdgeEvaluations[i]
 		recorded := recordedEvaluation{Edge: e.Edge, Side: string(e.Side), Symbol: e.Symbol, State: string(e.State)}
 		if e.Finding != nil {
-			recorded.Code = e.Finding.Code
+			recorded.Code = string(e.Finding.Code)
 		}
 		run.Evaluations = append(run.Evaluations, recorded)
 	}

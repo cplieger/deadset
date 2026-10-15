@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -18,16 +19,17 @@ type listedPackage struct {
 	Standard   bool
 }
 
-// TestTheCommandLinksOnlyTheStandardLibraryAndItsOwnPackages lists every
-// package the deadset command links and finds each one in the standard library
-// or in this module: no analyzer is linked as a library, and no JSON Schema
-// validator, nor any other module, is part of the binary.
-func TestTheCommandLinksOnlyTheStandardLibraryAndItsOwnPackages(t *testing.T) {
+// TestTheCommandLinksOnlyTheStandardLibraryAndFirstPartyModules lists every
+// package the deadset command links and finds each one in the standard library,
+// in golang.org/x, or in a first-party module, deadset-spec among them: no
+// third-party module, a JSON Schema validator included, is part of the binary.
+// No analyzer is a library dependency, so none is linked.
+func TestTheCommandLinksOnlyTheStandardLibraryAndFirstPartyModules(t *testing.T) {
 	t.Parallel()
 
 	command := module + "/cmd/deadset"
 	list := exec.CommandContext(t.Context(), "go", "list", "-deps", "-json=ImportPath,Standard,Module", command)
-	list.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+	list.Env = append(os.Environ(), "GOFLAGS=")
 	var stderr bytes.Buffer
 	list.Stderr = &stderr
 	listed, err := list.Output()
@@ -43,16 +45,22 @@ func TestTheCommandLinksOnlyTheStandardLibraryAndItsOwnPackages(t *testing.T) {
 			t.Fatalf("Setup: decode what go list -deps %s printed: %v", command, err)
 		}
 		found = found || p.ImportPath == command
-		if p.Standard || p.Module != nil && p.Module.Path == module {
+		if p.Standard || p.Module != nil && allowedModule(p.Module.Path) {
 			continue
 		}
 		from := "no module"
 		if p.Module != nil {
 			from = "the module " + p.Module.Path
 		}
-		t.Errorf("the deadset command links %s from %s, want only the standard library and %s's own packages", p.ImportPath, from, module)
+		t.Errorf("the deadset command links %s from %s, want only the standard library, golang.org/x and first-party modules", p.ImportPath, from)
 	}
 	if !found {
 		t.Errorf("go list -deps %s does not list %s itself, so the graph read is not the command's", command, command)
 	}
+}
+
+// allowedModule reports whether the command may link a package of one module:
+// golang.org/x, or a first-party github.com/cplieger module.
+func allowedModule(path string) bool {
+	return strings.HasPrefix(path, "golang.org/x/") || strings.HasPrefix(path, "github.com/cplieger/")
 }

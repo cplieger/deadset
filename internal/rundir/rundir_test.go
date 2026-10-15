@@ -10,8 +10,9 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/report"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
@@ -27,7 +28,7 @@ func resolved(t *testing.T, document string) *config.Resolved {
 	t.Helper()
 
 	r, err := config.Resolve(&config.Inputs{
-		ContractVersion: report.ContractVersion,
+		ContractVersion: vocab.ContractVersion,
 		Repository:      config.Document{Path: "deadset.json", Data: []byte(document)},
 	})
 	if err != nil {
@@ -320,8 +321,8 @@ func TestWriteMergedRefusesAReportEncodeRefuses(t *testing.T) {
 	}
 	refused := *merged
 	refused.Findings = nil
-	if err := dir.WriteMerged(&refused); !errors.As(err, new(*report.Error)) {
-		t.Fatalf("WriteMerged(a report with no findings array) = %v, want a *report.Error", err)
+	if err := dir.WriteMerged(&refused); !errors.Is(err, report.ErrInvalid) {
+		t.Fatalf("WriteMerged(a report with no findings array) = %v, want report.ErrInvalid", err)
 	}
 	if _, err := os.Stat(dir.Merged()); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after a refused WriteMerged, Stat(%s) = %v, want no file", dir.Merged(), err)

@@ -6,19 +6,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
-// The stale-edge finding's code and the name, fixability and default severity
-// the issue-kind vocabulary gives it, and the target-relative path of the
-// document that declares edges, where a document-level finding sits.
-const (
-	staleEdgeCode       = "DS1705"
-	staleEdgeKind       = "stale-cross-language-edge"
-	staleEdgeFixability = report.FixabilityNone
-	staleEdgeSeverity   = report.SeverityDeny
-	edgesDocument       = "deadset-edges.json"
-)
+// edgesDocument is the target-relative path of the document that declares
+// edges, where a document-level finding sits.
+const edgesDocument = "deadset-edges.json"
+
+// staleEdgeKind is the stale-edge finding's kind in the issue-kind vocabulary.
+var staleEdgeKind, _ = vocab.KindOf(vocab.StaleCrossLanguageEdge)
 
 // staleEdges is one stale-edge finding per edge, in bytewise order of the edge
 // identifiers, for every edge with a side that holds evaluations and whose
@@ -68,19 +65,19 @@ func staleEdge(edge string, held, stale []report.EdgeSide, component string) rep
 	}
 	language, _, _ := strings.Cut(stale[0].Symbol, "://")
 	return report.Finding{
-		Code:              staleEdgeCode,
-		Kind:              staleEdgeKind,
-		Language:          language,
+		Code:              staleEdgeKind.Code,
+		Kind:              staleEdgeKind.Name,
+		Language:          vocab.Language(language),
 		Position:          report.Position{Path: edgesDocument, Line: 1, Column: 1, EndLine: 1},
 		Symbol:            report.Symbol{Ref: stale[0].Symbol, Kind: "edge", Name: edge, SizeLines: 1},
-		ReachabilityClass: report.ClassCertain,
-		Confidence:        report.ClassCertain,
+		ReachabilityClass: vocab.Certain,
+		Confidence:        vocab.Certain,
 		Component:         report.Component{ID: component, Root: true, SymbolCount: 1},
 		RetainedBy:        []string{},
 		Configurations:    []string{},
 		ConsumersLoaded:   []string{},
-		Fixability:        staleEdgeFixability,
-		Severity:          staleEdgeSeverity,
+		Fixability:        staleEdgeKind.Fixability,
+		Severity:          staleEdgeKind.DefaultSeverity,
 		Message:           message,
 		Details:           report.Details{Edge: edge, Sides: held},
 	}

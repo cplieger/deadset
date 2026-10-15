@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/cplieger/deadset/v2/internal/report"
+	"github.com/cplieger/deadset-spec/v8/report"
 )
 
 // Each edge with a wholly absent side yields one stale-edge finding, numbered
@@ -31,7 +31,7 @@ func TestMergeReportsEachStaleEdgeOnceInEdgeOrder(t *testing.T) {
 	var got []string
 	for i := range merged.Findings {
 		f := &merged.Findings[i]
-		got = append(got, f.Component.ID+" "+f.Details.Edge+" "+f.Language+" "+f.Symbol.Ref+": "+f.Message)
+		got = append(got, f.Component.ID+" "+f.Details.Edge+" "+string(f.Language)+" "+f.Symbol.Ref+": "+f.Message)
 	}
 	want := []string{
 		"deadset/c-2 wire/b go go://example.com/app#B: no analyzer enumerates the symbol either side of the edge names",

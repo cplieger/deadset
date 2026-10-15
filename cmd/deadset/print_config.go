@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/verdict"
 )
@@ -27,12 +28,12 @@ func runPrintConfig(args []string, stdout, stderr io.Writer) int {
 	central := set.String("central", "", centralUsage)
 	config.RegisterFlags(set)
 	if err := set.Parse(args); err != nil {
-		return verdict.Usage
+		return vocab.ExitUsage
 	}
 	if set.NArg() != 0 {
 		fmt.Fprintf(stderr, "deadset: print-config takes no argument, got %q\n", set.Arg(0))
 		set.Usage()
-		return verdict.Usage
+		return vocab.ExitUsage
 	}
 
 	resolved, _, err := resolveConfiguration(set, *target, *central)
@@ -42,10 +43,10 @@ func runPrintConfig(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "deadset: %v\n", err)
 		code := verdict.ForError(err)
-		if code == verdict.Usage {
+		if code == vocab.ExitUsage {
 			set.Usage()
 		}
 		return code
 	}
-	return verdict.Clean
+	return vocab.ExitClean
 }

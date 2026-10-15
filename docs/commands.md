@@ -72,7 +72,7 @@ With `analysis.languages` empty, deadset reads the names of the files under the 
 - Before any analysis, deadset runs each analyzer's `describe` command. It admits an analyzer that names itself as its entry does and reads a report schema version deadset accepts. The analyzer must also record a pass of the contract's conformance corpus. Any other ends the run with exit code 3.
 - An analyzer that exits with 2 has refused its own invocation or the configuration it was given. The run exits with 2 and names that analyzer after the lines it printed. deadset does not print its own usage text then, since its command line was not at fault.
 
-Each analyzer runs as a separate process, in the deepest directory that holds the target and every consumer. The analyzers are separate programs with their own releases. deadset parses no source itself. Every finding comes from an analyzer's report, except `DS1705`, the stale edge the merge reports. deadset makes no network request.
+Each analyzer runs as a separate process, in the deepest directory that holds the target and every consumer. The analyzers are separate programs with their own releases. deadset parses no source itself. Every finding comes from an analyzer's report, except `DS9005`, the stale edge the merge reports. deadset makes no network request.
 
 ## Outputs
 

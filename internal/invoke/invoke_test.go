@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset/v2/internal/invoke"
-	"github.com/cplieger/deadset/v2/internal/report"
 )
 
 // TestAnalyzeReadsTheReportOfEveryVerdict pins that each exit code that is a
@@ -101,7 +101,7 @@ func TestAnalyzeReadsNoReportAfterAnExitThatCarriesNone(t *testing.T) {
 			if !errors.Is(err, invoke.ErrExited) || refused.Exit != exit {
 				t.Errorf("Analyze(an analyzer exiting %d) = %v with exit %d, want ErrExited with exit %d", exit, err, refused.Exit, exit)
 			}
-			if _, decoded := errors.AsType[*report.Error](err); decoded {
+			if errors.Is(err, report.ErrInvalid) {
 				t.Errorf("Analyze(an analyzer exiting %d) = %v, want the report never decoded", exit, err)
 			}
 			if refused.Analyzer != req.Analyzer || refused.Report != req.Report {
@@ -136,17 +136,17 @@ func TestAnalyzeRefusesAnAbsentReport(t *testing.T) {
 
 // TestAnalyzeRefusesAReportThatDoesNotDecode pins that a truncated report and a
 // report carrying an undeclared member are each refused naming the entry, the
-// path, the JSON Pointer of the value at fault and the reason.
+// path and why the report schema refuses the document.
 func TestAnalyzeRefusesAReportThatDoesNotDecode(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		written func(*testing.T) []byte
 		name    string
-		pointer string
+		why     string
 	}{
-		{name: "truncated", written: truncated, pointer: ""},
-		{name: "undeclared-member", written: withUndeclaredMember, pointer: "/" + undeclared},
+		{name: "truncated", written: truncated, why: "not one strict JSON value"},
+		{name: "undeclared-member", written: withUndeclaredMember, why: strconv.Quote(undeclared)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -157,17 +157,13 @@ func TestAnalyzeRefusesAReportThatDoesNotDecode(t *testing.T) {
 			if got != nil {
 				t.Errorf("Analyze(a %s report) = %+v, want no report", c.name, got)
 			}
-			decoded, ok := errors.AsType[*report.Error](err)
-			if !ok {
-				t.Fatalf("Analyze(a %s report) = %v, want an error carrying the *report.Error", c.name, err)
-			}
-			if decoded.Pointer != c.pointer {
-				t.Errorf("Analyze(a %s report) refuses the value at %q, want %q", c.name, decoded.Pointer, c.pointer)
+			if !errors.Is(err, report.ErrInvalid) {
+				t.Fatalf("Analyze(a %s report) = %v, want an error wrapping report.ErrInvalid", c.name, err)
 			}
 			if refused, _ := errors.AsType[*invoke.Error](err); refused == nil || refused.Exit != 1 {
 				t.Errorf("Analyze(a %s report) = %v, want an *invoke.Error naming exit 1", c.name, err)
 			}
-			for _, named := range []string{req.Analyzer, req.Report, decoded.Error()} {
+			for _, named := range []string{req.Analyzer, req.Report, c.why} {
 				if !strings.Contains(err.Error(), named) {
 					t.Errorf("Analyze(a %s report) = %q, want the message to name %q", c.name, err, named)
 				}

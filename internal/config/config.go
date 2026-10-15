@@ -12,6 +12,8 @@
 // its value passes through unread.
 package config
 
+import "github.com/cplieger/deadset-spec/v8/vocab"
+
 // config is the part of the resolved configuration the orchestrator reads.
 type config struct {
 	// Languages is analysis.languages: the languages in scope, or none when the
@@ -30,33 +32,10 @@ type config struct {
 type Reporters struct {
 	Sort        Sort
 	Cascade     cascade
-	FailOn      Severity
-	Formats     []Format
+	FailOn      vocab.Severity
+	Formats     []vocab.Format
 	MaxFindings int
 }
-
-// Severity is what a finding of one issue kind does to a run: allow reports
-// nothing, warn reports without failing the run, deny fails it.
-type Severity string
-
-// The severities, from the lowest to the highest.
-const (
-	Allow Severity = "allow"
-	Warn  Severity = "warn"
-	Deny  Severity = "deny"
-)
-
-// Format is one rendering of the finding list.
-type Format string
-
-// The formats.
-const (
-	FormatText     Format = "text"
-	formatJSON     Format = "json"
-	FormatGitHub   Format = "github"
-	FormatSARIF    Format = "sarif"
-	FormatTemplate Format = "template"
-)
 
 // Sort is the order findings are rendered in.
 type Sort string
