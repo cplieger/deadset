@@ -69,7 +69,7 @@ import (
 
 // Open writes the event that opens a stream.
 func Open(dst io.Writer) error {
-	return json.NewEncoder(dst).Encode(ServerEvent{Kind: "open"})
+	return json.NewEncoder(dst).Encode(ServerEvent{Kind: "open", Seq: 1})
 }
 -- internal/wire/relay.go --
 package wire

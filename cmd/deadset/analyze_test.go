@@ -512,8 +512,8 @@ func TestAnalyzeExitCodes(t *testing.T) {
 }
 
 // A warn finding fails the run only at or below a failing severity of warn, and
-// only a failing run prints the remediation; the annotations follow the same
-// failing severity.
+// only a failing run prints the remediation; the annotation follows the finding's
+// severity alone, whatever the failing severity.
 func TestAnalyzeFailsOnAFindingAtOrAboveTheFailingSeverity(t *testing.T) {
 	t.Parallel()
 
@@ -523,7 +523,7 @@ func TestAnalyzeFailsOnAFindingAtOrAboveTheFailingSeverity(t *testing.T) {
 		remediation        bool
 	}{
 		{failOn: "deny", annotation: "::warning ", code: verdict.Clean},
-		{failOn: "warn", annotation: "::error ", code: verdict.Findings, remediation: true},
+		{failOn: "warn", annotation: "::warning ", code: verdict.Findings, remediation: true},
 	} {
 		t.Run(c.failOn, func(t *testing.T) {
 			t.Parallel()
