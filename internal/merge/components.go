@@ -1,9 +1,6 @@
 package merge
 
-import (
-	"github.com/cplieger/deadset-spec/v8/report"
-	"github.com/cplieger/deadset-spec/v8/vocab"
-)
+import "github.com/cplieger/deadset-spec/v8/report"
 
 // listing is one input's members of one component.
 type listing struct {
@@ -15,7 +12,7 @@ type listing struct {
 // components: one entry per component the ordered findings name, in the order
 // of the first finding naming it, holding every member the inputs list for it
 // and for each component the union joined into it, once each, ordered by
-// path, line, column and reference, and a stale edge's subject alone.
+// path, line, column and reference.
 func (r *records) components(findings []report.Finding) []report.ComponentListing {
 	if !r.lists {
 		return nil
@@ -34,10 +31,6 @@ func (r *records) components(findings []report.Finding) []report.ComponentListin
 		f := &findings[i]
 		id := f.Component.ID
 		held, ok := members[id]
-		if !ok && f.Code == vocab.StaleCrossLanguageEdge {
-			// The merger mints a stale edge's one-member component, which no input lists.
-			held, ok = []report.Positioned{{Ref: f.Symbol.Ref, Name: f.Symbol.Name, Position: f.Position}}, true
-		}
 		if !ok || seen[id] {
 			continue
 		}

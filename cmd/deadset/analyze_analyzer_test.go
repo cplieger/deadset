@@ -429,3 +429,28 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 		})
 	}
 }
+
+// sarifLog is the members of a SARIF log a run's rendering is checked by.
+type sarifLog struct {
+	Runs []struct {
+		Results []struct {
+			RuleID              string            `json:"ruleId"`
+			PartialFingerprints map[string]string `json:"partialFingerprints"`
+		} `json:"results"`
+	} `json:"runs"`
+}
+
+// readSARIF decodes the SARIF log at path.
+func readSARIF(t *testing.T, path string) *sarifLog {
+	t.Helper()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var log sarifLog
+	if err := json.Unmarshal(body, &log); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+	return &log
+}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
 	"io"
 	"runtime/debug"
@@ -16,13 +18,13 @@ import (
 // accepts a semantic version and nothing else.
 const develVersion = "0.0.0-devel"
 
-func init() { register("version", runVersion) }
-
-// runVersion prints the version of this build and the Contract version it
-// implements, one to a line. It reads no argument.
-func runVersion(_ []string, stdout, _ io.Writer) int {
-	fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), vocab.ContractVersion)
-	return vocab.ExitClean
+// bindVersion binds the version verb, which prints the version of this build
+// and the Contract version it implements, one to a line.
+func (*command) bindVersion(*flag.FlagSet) runner {
+	return func(_ context.Context, stdout, _ io.Writer) (int, error) {
+		_, err := fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), vocab.ContractVersion)
+		return vocab.ExitClean, err
+	}
 }
 
 // version is this command's own version, which the build carries rather than

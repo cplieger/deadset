@@ -34,7 +34,7 @@ func TestPrintConfigPrintsTheResolutionAndItsSources(t *testing.T) {
 	dir := targetHolding(t, `{"target": {"kind": "library"}, "analysis": {"min_confidence": "probable"}, "reporters": {"fail_on": "deny"}}`)
 	var stdout, stderr bytes.Buffer
 	args := []string{"print-config", "--target=" + dir, "--fail-on=warn"}
-	if code := run(args, &stdout, &stderr); code != vocab.ExitClean {
+	if code := invoke(args, &stdout, &stderr); code != vocab.ExitClean {
 		t.Fatalf("run(%q) = %d, want %d\nstderr: %s", args, code, vocab.ExitClean, stderr.String())
 	}
 	if stderr.Len() != 0 {
@@ -89,7 +89,7 @@ func TestPrintConfigFailsOnATargetItCannotRead(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			args := []string{"print-config", "--target=" + target, "--central=" + central}
-			if code := run(args, &stdout, &stderr); code != vocab.ExitFailure {
+			if code := invoke(args, &stdout, &stderr); code != vocab.ExitFailure {
 				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, vocab.ExitFailure, stderr.String())
 			}
 			if !strings.Contains(stderr.String(), "target") || strings.Contains(stderr.String(), "usage:") {
@@ -127,7 +127,7 @@ func TestPrintConfigRefusesWithTheUsageCode(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			args := append([]string{"print-config", "--target=" + targetHolding(t, c.repository)}, c.extra...)
-			if code := run(args, &stdout, &stderr); code != vocab.ExitUsage {
+			if code := invoke(args, &stdout, &stderr); code != vocab.ExitUsage {
 				t.Errorf("run(%q) = %d, want %d\nstderr: %s", args, code, vocab.ExitUsage, stderr.String())
 			}
 			if !strings.Contains(stderr.String(), c.names) || !strings.Contains(stderr.String(), "usage: deadset print-config") {

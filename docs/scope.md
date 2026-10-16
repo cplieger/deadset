@@ -23,11 +23,11 @@ The document is the scope document [deadset-spec](https://github.com/cplieger/de
 
 - Each consumer is handed to every analyzer claiming a language detected in it, and to no other. A Go consumer reaches the Go analyzer and a TypeScript one the TypeScript analyzer.
 - A consumer holding a language no analyzer of the run claims is refused with exit code 2.
-- A consumer that does not exist, is not a directory or holds no language does not load, and the run ends with exit code 3. A scope document that cannot be read or does not meet the schema also ends the run with exit code 3.
+- A consumer that does not exist, is not a directory or holds no language does not load, and the run ends with exit code 3 and the line `setup failure: missing-consumer`. A scope document that does not meet the schema also ends the run with exit code 3, and one that cannot be read with exit code 2.
 - The analyzers run in the deepest directory holding the target and every consumer. The merged report's `target.root`, and each consumer's path under `consumers.loaded`, are relative to that directory.
 - The run directory keeps the declared scope as `scope.json`. An analyzer handed only some of the consumers reads its own, `scope.<name>.json`.
 
-A target or consumer can hold both Go and TypeScript. When the scope document gives it no `id`, deadset names it by its Go module path in every report. A target that no `go.mod` governs, its Go modules in directories below it, is named by the `name` its `package.json` gives it, or `.` when it gives none. The merge then reads the two analyzers' reports as one module.
+When the scope document gives a target or consumer no `id`, deadset names it in the scope it hands every analyzer: by its Go module path when the run loads it as Go, else by the `name` its `package.json` gives it. A target both languages load that neither names, its Go modules in directories below it, is named `.`. Every report of a module then names it alike, and the merge reads the two analyzers' reports as one module.
 
 ## What the findings mean
 

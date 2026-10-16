@@ -3,9 +3,11 @@ package merge
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // errUnresolvedEdge is a pending finding whose edge no input report evaluates
@@ -99,11 +101,10 @@ func (index edgeIndex) strongestOther(e *report.EdgeEvaluation, dropped map[comp
 // resolve decides every dead evaluation of the working set: a pending finding
 // whose edge no other side evaluates ends the merge with an
 // [*unresolvedError]; the components rules 2 and 4 drop, run to a fixpoint,
-// leave the findings; every other pending finding is promoted and its
-// component joins the components paired with it; one stale-edge finding is
-// emitted per edge with a wholly absent side. The working set then holds no
-// dead evaluation. merger is the merging product's name, which prefixes the
-// component of every finding resolve emits.
+// leave the findings; every other pending finding is promoted and united; one
+// stale-edge finding is emitted per edge with a wholly absent side. The
+// working set then holds no dead evaluation. merger is the merging product's
+// name, which prefixes the component of every finding resolve emits.
 func (r *records) resolve(inputs []Input, merger string) error {
 	report.SortTotal(r.evaluations, report.CompareEvaluations)
 	index := indexEvaluations(r.evaluations)
@@ -121,19 +122,15 @@ func (r *records) resolve(inputs []Input, merger string) error {
 			kept = append(kept, r.findings[i])
 		}
 	}
-	var promoted []promotion
-	for _, e := range dead {
-		if dropped[componentOfEvaluation(e)] {
-			continue
-		}
-		finding := *e.Finding
-		finding.Analyzer = e.Analyzer
-		promoted = append(promoted, promotion{finding: finding, edge: e.Edge, side: e.Side})
-		kept = append(kept, finding)
+	promoted := promote(dead, dropped)
+	for i := range promoted {
+		kept = append(kept, promoted[i].finding)
 	}
 	r.renamed = unite(kept, promoted)
-	kept = append(kept, staleEdges(index, merger)...)
+	emitted, listings := staleEdges(index, merger)
+	kept = append(kept, emitted...)
 	r.findings = kept
+	r.listings = append(r.listings, listings...)
 
 	live := r.evaluations[:0:0]
 	for i := range r.evaluations {
@@ -192,47 +189,114 @@ func dropComponents(dead []*report.EdgeEvaluation, index edgeIndex) map[componen
 	return dropped
 }
 
-// promotion is one pending finding resolution promoted, stamped with its
-// analyzer, with the edge side whose evaluation carried it.
-type promotion struct {
-	finding report.Finding
-	edge    string
-	side    report.Side
+// promote is the finding of every dead evaluation whose component is not
+// dropped, once per finding, in canonical order, with every edge side whose
+// evaluation carried it.
+func promote(dead []*report.EdgeEvaluation, dropped map[componentKey]bool) []promotion {
+	var promoted []promotion
+	for _, e := range dead {
+		if dropped[componentOfEvaluation(e)] {
+			continue
+		}
+		finding := *e.Finding
+		finding.Analyzer = e.Analyzer
+		at := carrier{edge: e.Edge, side: e.Side}
+		// dead is in canonical order, so the evaluations carrying one finding are adjacent.
+		if n := len(promoted); n > 0 && report.CompareFindings(&promoted[n-1].finding, &finding) == 0 {
+			promoted[n-1].carriers = append(promoted[n-1].carriers, at)
+			continue
+		}
+		promoted = append(promoted, promotion{finding: finding, carriers: []carrier{at}})
+	}
+	return promoted
 }
 
-// unite joins the component of each promoted finding with the component of
-// every promoted finding on another side of its edge, visiting the promotions
-// in canonical order. A joined component takes the identifier of the
-// component the visit reached first and the sums of the joined components'
-// symbol counts and deletable lines, and every finding of a joined component
-// is rewritten to it; each keeps its own root flag. It returns the identifier
-// each reached component now carries.
+// promotion is one pending finding resolution promoted, stamped with its
+// analyzer, with every edge side whose evaluation carried it.
+type promotion struct {
+	finding  report.Finding
+	carriers []carrier
+}
+
+type carrier struct {
+	edge string
+	side report.Side
+}
+
+// pairs reports whether p and q were carried on two sides of one edge.
+func (p *promotion) pairs(q *promotion) bool {
+	for _, a := range p.carriers {
+		for _, b := range q.carriers {
+			if a.edge == b.edge && a.side != b.side {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// unite joins the component of each promoted finding with that of every
+// promoted finding on another side of one of its edges, visiting the
+// promotions in canonical order. A joined component takes the identifier the
+// visit reached first and the summed symbol counts and deletable lines; every
+// finding of it is rewritten to it, keeps its root flag, and is capped at
+// [lowestRoots] (confidence.29). It returns the identifier each reached
+// component now carries.
 func unite(findings []report.Finding, promoted []promotion) map[componentKey]string {
 	var u unionFind
 	for i := range promoted {
 		p := &promoted[i]
 		u.reach(&p.finding)
 		for j := range promoted {
-			q := &promoted[j]
-			if q.edge == p.edge && q.side != p.side {
+			if q := &promoted[j]; p.pairs(q) {
 				u.reach(&q.finding)
 				u.join(componentOfFinding(&p.finding), componentOfFinding(&q.finding))
 			}
 		}
 	}
 	joined := u.components()
+	capped := lowestRoots(findings, joined)
 	for i := range findings {
-		if c, ok := joined[componentOfFinding(&findings[i])]; ok {
-			findings[i].Component.ID = c.ID
-			findings[i].Component.SymbolCount = c.SymbolCount
-			findings[i].Component.DeletableLines = c.DeletableLines
+		f := &findings[i]
+		c, ok := joined[componentOfFinding(f)]
+		if !ok {
+			continue
 		}
+		if lowest, held := capped[c.ID]; held && less(lowest, f.Confidence) {
+			f.Confidence = lowest
+		}
+		f.Component.ID = c.ID
+		f.Component.SymbolCount = c.SymbolCount
+		f.Component.DeletableLines = c.DeletableLines
 	}
 	renamed := make(map[componentKey]string, len(joined))
 	for key, c := range joined {
 		renamed[key] = c.ID
 	}
 	return renamed
+}
+
+// lowestRoots is, per joined identifier, the lowest confidence among the
+// joined component's root findings that are not test-only.
+func lowestRoots(findings []report.Finding, joined map[componentKey]report.Component) map[string]vocab.Class {
+	lowest := map[string]vocab.Class{}
+	for i := range findings {
+		f := &findings[i]
+		c, ok := joined[componentOfFinding(f)]
+		if !ok || !f.Component.Root || f.TestOnly {
+			continue
+		}
+		if held, seen := lowest[c.ID]; !seen || less(f.Confidence, held) {
+			lowest[c.ID] = f.Confidence
+		}
+	}
+	return lowest
+}
+
+// less reports whether a is a less certain class than b.
+func less(a, b vocab.Class) bool {
+	classes := vocab.Classes()
+	return slices.Index(classes, a) > slices.Index(classes, b)
 }
 
 // unionFind is the components the union visit reached, in the order it

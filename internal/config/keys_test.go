@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // schemaKey is one key of the Contract's configuration schema, with the members of
@@ -198,8 +199,8 @@ func schemaAt(t *testing.T, path string) (schemaKey, bool) {
 }
 
 // The target kind's two shapes are the schema's: a string of the kinds the key
-// list checks, and an object naming each language contract/kinds.json lists, in
-// its order, each of those kinds.
+// list checks, and an object naming each language the registry marks as taking
+// a target kind, in its order, each of those kinds.
 func TestTargetKind_takesTheSchemasTwoShapes(t *testing.T) {
 	t.Parallel()
 
@@ -227,15 +228,11 @@ func TestTargetKind_takesTheSchemasTwoShapes(t *testing.T) {
 	if err := json.Unmarshal(data, &schema); err != nil {
 		t.Fatalf("Setup: decode contract/config.schema.json: %v", err)
 	}
-	kinds, err := spec.Contract.ReadFile("contract/kinds.json")
-	if err != nil {
-		t.Fatalf("Setup: read contract/kinds.json: %v", err)
-	}
-	var vocabulary struct {
-		Languages []string `json:"languages"`
-	}
-	if err := json.Unmarshal(kinds, &vocabulary); err != nil {
-		t.Fatalf("Setup: decode contract/kinds.json: %v", err)
+	var registry []string
+	for _, row := range vocab.LanguageRows() {
+		if row.TakesTargetKind {
+			registry = append(registry, string(row.Language))
+		}
 	}
 
 	branches := schema.Properties.Target.Properties.Kind.OneOf
@@ -246,10 +243,10 @@ func TestTargetKind_takesTheSchemasTwoShapes(t *testing.T) {
 		t.Errorf("target.kind's string branch takes %q, want the key list's %q", branches[0].Enum, targetKinds)
 	}
 	names, members := orderedMembers(t, branches[1].Properties)
-	if !slices.Equal(contractLanguages, vocabulary.Languages) || !slices.Equal(names, contractLanguages) ||
+	if !slices.Equal(contractLanguages, registry) || !slices.Equal(names, contractLanguages) ||
 		!slices.Equal(branches[1].Required, contractLanguages) {
-		t.Errorf("target.kind's object branch declares %q and requires %q, want the key list's %q, kinds.json's %q",
-			names, branches[1].Required, contractLanguages, vocabulary.Languages)
+		t.Errorf("target.kind's object branch declares %q and requires %q, want the key list's %q, the registry's %q",
+			names, branches[1].Required, contractLanguages, registry)
 	}
 	for _, name := range names {
 		var member kindBranch

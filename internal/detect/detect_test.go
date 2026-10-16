@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/detect"
 )
 
@@ -33,285 +34,97 @@ func tree(t *testing.T, files map[string]string) string {
 // language's file.
 const goProgram = "package main\n\nfunc main() {}\n"
 
-// mixed is a target holding a Go server and a TypeScript client, each in a
-// directory of its own.
-var mixed = map[string]string{
-	"server/go.mod":           "module example.com/server\n",
-	"server/main.go":          goProgram,
-	"web/package.json":        `{"name": "@example/web"}`,
-	"web/tsconfig.json":       "{}",
-	"web/src/app.ts":          "export const app = 1;\n",
-	"README.md":               "# example\n",
-	"server/internal/wire.go": "package internal\n",
-}
-
 func TestLanguages(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		files map[string]string
-		want  []string
+		want  []vocab.Language
 	}{
 		"go module": {
 			files: map[string]string{"go.mod": "module example.com/app\n", "main.go": goProgram},
-			want:  []string{"go"},
+			want:  []vocab.Language{vocab.Go},
 		},
 		"go source without a module file": {
 			files: map[string]string{"tool.go": goProgram},
-			want:  []string{"go"},
+			want:  []vocab.Language{vocab.Go},
 		},
 		"module file below the root": {
 			files: map[string]string{"services/api/go.mod": "module example.com/api\n"},
-			want:  []string{"go"},
+			want:  []vocab.Language{vocab.Go},
 		},
 		"typescript project file alone": {
 			files: map[string]string{"tsconfig.json": "{}"},
-			want:  []string{"ts"},
+			want:  []vocab.Language{vocab.TS},
 		},
 		"named typescript project file": {
 			files: map[string]string{"web/tsconfig.app.json": "{}"},
-			want:  []string{"ts"},
+			want:  []vocab.Language{vocab.TS},
 		},
-		"manifest with typescript sources": {
+		"manifest with typescript sources and no compiler configuration": {
 			files: map[string]string{"package.json": "{}", "src/index.mts": "export {};\n"},
-			want:  []string{"ts"},
 		},
 		"mixed": {
-			files: mixed,
-			want:  []string{"go", "ts"},
-		},
-		"manifest with no typescript source": {
 			files: map[string]string{
-				"go.mod": "module example.com/app\n", "main.go": goProgram,
-				"package.json": "{}", "scripts/lint.js": "export {};\n",
+				"server/go.mod": "module example.com/server\n", "server/main.go": goProgram,
+				"web/package.json": `{"name": "@example/web"}`, "web/tsconfig.json": "{}", "web/src/app.ts": "export const app = 1;\n",
 			},
-			want: []string{"go"},
+			want: []vocab.Language{vocab.Go, vocab.TS},
 		},
-		"typescript source with no manifest": {
+		"go text inside documents, archives and a typescript string literal": {
 			files: map[string]string{
-				"go.mod": "module example.com/app\n", "main.go": goProgram,
-				"tools/gen.ts": "export {};\n",
-			},
-			want: []string{"go"},
-		},
-		"go text inside a typescript string literal": {
-			files: map[string]string{
-				"package.json": "{}", "tsconfig.json": "{}",
-				"src/gen.ts": "export const program = `" + goProgram + "`;\n",
-			},
-			want: []string{"ts"},
-		},
-		"go text inside documents and archives": {
-			files: map[string]string{
-				"package.json": "{}", "src/index.ts": "export {};\n",
+				"tsconfig.json": "{}", "src/gen.ts": "export const program = `" + goProgram + "`;\n",
 				"docs/usage.md":         "```go\n" + goProgram + "```\n",
 				"fixtures/module.txtar": "-- go.mod --\nmodule example.com/fixture\n-- main.go --\n" + goProgram,
 			},
-			want: []string{"ts"},
+			want: []vocab.Language{vocab.TS},
 		},
-		"installed packages": {
+		"directories the go row skips": {
 			files: map[string]string{
-				"package.json": "{}", "tsconfig.json": "{}", "src/index.ts": "export {};\n",
-				"node_modules/flatted/golang/pkg/flatted/flatted.go": "package flatted\n",
-			},
-			want: []string{"ts"},
-		},
-		"vendored sources, test inputs and hidden directories": {
-			files: map[string]string{
-				"package.json": "{}", "tsconfig.json": "{}",
+				"tsconfig.json":                 "{}",
 				"vendor/example.com/lib/lib.go": "package lib\n",
 				"testdata/fixture/go.mod":       "module example.com/fixture\n",
-				"internal/x/testdata/case.go":   goProgram,
 				".cache/build/main.go":          goProgram,
+				"_tools/mod/go.mod":             "module example.com/tools\n",
+				"node_modules/flatted/x.go":     "package flatted\n",
 			},
-			want: []string{"ts"},
+			want: []vocab.Language{vocab.TS},
 		},
-		"go module below an underscored directory": {
-			files: map[string]string{
-				"package.json": "{}", "tsconfig.json": "{}", "src/index.ts": "export {};\n",
-				"_tools/mod/go.mod": "module example.com/tools\n", "_tools/mod/main.go": goProgram,
-			},
-			want: []string{"ts"},
+		"typescript configurations the go row's skips do not hide": {
+			files: map[string]string{".config/tsconfig.json": "{}", "testdata/web/tsconfig.json": "{}", "_app/tsconfig.json": "{}"},
+			want:  []vocab.Language{vocab.TS},
 		},
-		"typescript below an underscored directory": {
-			files: map[string]string{
-				"package.json": "{}", "_app/tsconfig.json": "{}", "_app/src/index.ts": "export {};\n",
-			},
-			want: []string{"ts"},
+		"directories the typescript row skips": {
+			files: map[string]string{"node_modules/lib/tsconfig.json": "{}", ".git/tsconfig.json": "{}"},
 		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			root := tree(t, tc.files)
+			t.Parallel()
 
-			got, err := detect.Languages(root, detect.Options{})
-			if err != nil {
-				t.Fatalf("Languages(%v) error = %v, want nil", tc.files, err)
-			}
-			if !slices.Equal(got, tc.want) {
-				t.Errorf("Languages(%v) = %q, want %q", tc.files, got, tc.want)
+			got, err := detect.Languages(tree(t, tc.files))
+			if err != nil || !slices.Equal(got, tc.want) {
+				t.Errorf("Languages(%v) = %q, %v, want %q", tc.files, got, err, tc.want)
 			}
 		})
 	}
 }
 
-func TestLanguagesFilters(t *testing.T) {
-	tests := map[string]struct {
-		files   map[string]string
-		filters []string
-		want    []string
-	}{
-		"one directory": {
-			files:   mixed,
-			filters: []string{"server"},
-			want:    []string{"go"},
-		},
-		"the other directory": {
-			files:   mixed,
-			filters: []string{"web"},
-			want:    []string{"ts"},
-		},
-		"both directories": {
-			files:   mixed,
-			filters: []string{"web", "server/"},
-			want:    []string{"go", "ts"},
-		},
-		"one file": {
-			files:   mixed,
-			filters: []string{"web/tsconfig.json"},
-			want:    []string{"ts"},
-		},
-		"a skipped directory named outright": {
-			files:   map[string]string{"testdata/fixture/go.mod": "module example.com/fixture\n"},
-			filters: []string{"testdata"},
-			want:    []string{"go"},
-		},
-		"an underscored directory named outright": {
-			files:   map[string]string{"_tools/go.mod": "module example.com/tools\n"},
-			filters: []string{"_tools"},
-			want:    []string{"go"},
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			root := tree(t, tc.files)
+// A root is read whatever its name, and through a link.
+func TestLanguagesReadsTheRootItself(t *testing.T) {
+	t.Parallel()
 
-			got, err := detect.Languages(root, detect.Options{Filters: tc.filters})
-			if err != nil {
-				t.Fatalf("Languages(filters %q) error = %v, want nil", tc.filters, err)
-			}
-			if !slices.Equal(got, tc.want) {
-				t.Errorf("Languages(filters %q) = %q, want %q", tc.filters, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestLanguagesOverride(t *testing.T) {
-	tests := map[string]struct {
-		configured []string
-		want       []string
-	}{
-		"a narrower set than the census": {
-			configured: []string{"go"},
-			want:       []string{"go"},
-		},
-		"a language the tree does not hold": {
-			configured: []string{"ts"},
-			want:       []string{"ts"},
-		},
-		"repeated and unordered": {
-			configured: []string{"ts", "go", "ts"},
-			want:       []string{"go", "ts"},
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			root := tree(t, map[string]string{"go.mod": "module example.com/app\n", "main.go": goProgram})
-
-			got, err := detect.Languages(root, detect.Options{Languages: tc.configured})
-			if err != nil {
-				t.Fatalf("Languages(configured %q) error = %v, want nil", tc.configured, err)
-			}
-			if !slices.Equal(got, tc.want) {
-				t.Errorf("Languages(configured %q) = %q, want %q", tc.configured, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestLanguagesThroughALink(t *testing.T) {
-	target := tree(t, map[string]string{"go.mod": "module example.com/app\n"})
+	base := tree(t, map[string]string{"_tools/go.mod": "module example.com/tools\n"})
 	link := filepath.Join(t.TempDir(), "checkout")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatalf("Setup: link %s to %s: %v", link, target, err)
+	if err := os.Symlink(filepath.Join(base, "_tools"), link); err != nil {
+		t.Fatalf("Setup: link %s: %v", link, err)
 	}
-
-	got, err := detect.Languages(link, detect.Options{})
-	if err != nil {
-		t.Fatalf("Languages(%s) error = %v, want nil", link, err)
+	for _, root := range []string{filepath.Join(base, "_tools"), link} {
+		if got, err := detect.Languages(root); err != nil || !slices.Equal(got, []vocab.Language{vocab.Go}) {
+			t.Errorf("Languages(%s) = %q, %v, want go", root, got, err)
+		}
 	}
-	if want := []string{"go"}; !slices.Equal(got, want) {
-		t.Errorf("Languages(%s) = %q, want %q", link, got, want)
-	}
-}
-
-func TestLanguagesRefuses(t *testing.T) {
-	tests := map[string]struct {
-		files map[string]string
-		opts  detect.Options
-		want  error
-	}{
-		"no language": {
-			files: map[string]string{"README.md": "# notes\n", "package.json": "{}"},
-			want:  detect.ErrNoLanguage,
-		},
-		"a filter holding no language": {
-			files: mixed,
-			opts:  detect.Options{Filters: []string{"README.md"}},
-			want:  detect.ErrNoLanguage,
-		},
-		"a filter naming nothing": {
-			files: mixed,
-			opts:  detect.Options{Filters: []string{"web", "client"}},
-			want:  fs.ErrNotExist,
-		},
-		"a filter naming nothing beside a configured set": {
-			files: mixed,
-			opts:  detect.Options{Languages: []string{"go"}, Filters: []string{"client"}},
-			want:  fs.ErrNotExist,
-		},
-		"a filter leaving the target": {
-			files: mixed,
-			opts:  detect.Options{Filters: []string{"../server"}},
-			want:  detect.ErrFilter,
-		},
-		"an absolute filter": {
-			files: mixed,
-			opts:  detect.Options{Filters: []string{"/server"}},
-			want:  detect.ErrFilter,
-		},
-		"an empty filter": {
-			files: mixed,
-			opts:  detect.Options{Filters: []string{""}},
-			want:  detect.ErrFilter,
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			root := tree(t, tc.files)
-
-			got, err := detect.Languages(root, tc.opts)
-			if !errors.Is(err, tc.want) {
-				t.Errorf("Languages(%+v) = %q, %v, want an error matching %v", tc.opts, got, err, tc.want)
-			}
-		})
-	}
-}
-
-func TestLanguagesAbsentTarget(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "absent")
-
-	got, err := detect.Languages(root, detect.Options{})
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Languages(%s) = %q, %v, want an error matching %v", root, got, err, fs.ErrNotExist)
+	if _, err := detect.Languages(filepath.Join(base, "absent")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Languages(an absent root) = %v, want an error matching fs.ErrNotExist", err)
 	}
 }

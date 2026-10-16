@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/cplieger/deadset-spec/v8/report"
-	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // The files of a run directory that no provider entry keys.
@@ -64,13 +63,17 @@ func CreateTemp() (*Dir, error) {
 	return &Dir{path: path}, nil
 }
 
-// Path is the path of the run directory.
+// Path is the run directory's absolute path.
 func (d *Dir) Path() string { return d.path }
 
-// Scope is the path of the scope document the analyzers of the run read.
+// Scope is the path of the scope document every analyzer of the run reads
+// unless its entry holds one of its own.
 func (d *Dir) Scope() string { return filepath.Join(d.path, scopeFile) }
 
-// Merged is the path of the merged report.
+// WriteScope writes document as the run's scope document.
+func (d *Dir) WriteScope(document []byte) error { return writeOnce(d.Scope(), document) }
+
+// Merged is the path the merged report is written to.
 func (d *Dir) Merged() string { return filepath.Join(d.path, mergedFile) }
 
 // WriteMerged writes r, in the encoding [report.Encode] writes, as the merged
@@ -129,15 +132,13 @@ func (e Entry) WriteDescribe(document []byte) error {
 	return writeOnce(e.Describe(), document)
 }
 
-// WriteConfig writes the configuration an analyzer claiming languages
-// receives, as [config.Resolved.Split] renders it from resolved.
-func (e Entry) WriteConfig(resolved *config.Resolved, languages ...string) error {
-	document, err := resolved.Split(languages...)
-	if err != nil {
-		return err
-	}
-	return writeOnce(e.Config(), document)
-}
+// WriteConfig writes document as the configuration the entry's analyzer
+// reads.
+func (e Entry) WriteConfig(document []byte) error { return writeOnce(e.Config(), document) }
+
+// WriteScope writes document as the scope document of the entry's analyzer
+// alone.
+func (e Entry) WriteScope(document []byte) error { return writeOnce(e.Scope(), document) }
 
 // file is the path of the entry's file of one kind.
 func (e Entry) file(kind string) string {

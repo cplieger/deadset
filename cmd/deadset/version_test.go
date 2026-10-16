@@ -61,7 +61,7 @@ func TestTheVersionVerbPrintsTheDevelVersionUnderTest(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"version"}, &stdout, &stderr); got != vocab.ExitClean {
+	if got := invoke([]string{"version"}, &stdout, &stderr); got != vocab.ExitClean {
 		t.Fatalf("run([version]) = %d, want %d; stderr: %q", got, vocab.ExitClean, stderr.String())
 	}
 	const want = "deadset 0.0.0-devel\ncontract 8.0.0\n"

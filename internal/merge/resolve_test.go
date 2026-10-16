@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // Of two pending findings no report can resolve, the refusal names the one
@@ -109,5 +110,35 @@ func TestMergeJoinsPairedComponentsUnderTheFirstReachedIdentifier(t *testing.T) 
 	}
 	if _, backward := mustMerge(t, inputs(typescript, golang)); !bytes.Equal(forward, backward) {
 		t.Errorf("Merge(typescript, golang) =\n%s\nwant the bytes of Merge(golang, typescript)\n%s", backward, forward)
+	}
+}
+
+// A joined component's findings take the lowest confidence among its root
+// findings that are not test-only, so a test-only root's possible lowers no
+// other finding and stays its own.
+func TestMergeCapsAJoinedComponentByItsRootsThatAreNotTestOnly(t *testing.T) {
+	t.Parallel()
+
+	golang := analyzerReport("deadset-go", "go")
+	event := finding("deadset-go/c-1", "wire.go", 1, "Event")
+	golang.EdgeEvaluations = []report.EdgeEvaluation{pending("wire/Event", report.SideProvides, event)}
+	typescript := analyzerReport("deadset-ts", "ts")
+	client := finding("deadset-ts/c-1", "web/wire.ts", 1, "Client")
+	client.Confidence = vocab.Probable
+	helper := finding("deadset-ts/c-1", "web/helper.ts", 1, "helper")
+	helper.TestOnly, helper.Confidence = true, vocab.Possible
+	typescript.Findings = []report.Finding{helper}
+	typescript.EdgeEvaluations = []report.EdgeEvaluation{pending("wire/Event", report.SideUsedBy, client)}
+
+	merged, _ := mustMerge(t, inputs(golang, typescript))
+	want := map[string]vocab.Class{"Event": vocab.Probable, "Client": vocab.Probable, "helper": vocab.Possible}
+	for i := range merged.Findings {
+		f := &merged.Findings[i]
+		if f.Confidence != want[f.Symbol.Name] {
+			t.Errorf("Merge() %s confidence = %s, want %s", f.Symbol.Name, f.Confidence, want[f.Symbol.Name])
+		}
+	}
+	if len(merged.Findings) != len(want) {
+		t.Errorf("Merge() findings = %q, want %d", findingNames(merged), len(want))
 	}
 }

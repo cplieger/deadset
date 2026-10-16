@@ -9,9 +9,8 @@ This page lists what deadset reads, what it runs and what it writes. It is for a
 | `deadset analyze` | Runs every analyzer a language in scope needs, merges their reports, prints the result and exits with the verdict |
 | `deadset print-config` | Prints the resolved configuration as JSON and the source of every setting |
 | `deadset version` | Prints the deadset version and the contract version it implements, one to a line |
-| `explain`, `install`, `describe` | Reserved. Each prints the usage text and exits with 2 in this build |
 
-Every command exits with 2 when its command line holds a `fix` flag in any spelling. `--fix` and `-fix=true` are two such spellings. deadset only reports and never edits a source file.
+Each command takes only the options listed for it, and `version` takes none. Any other option, a `--fix` flag among them, and any argument end the run with exit code 2 and print the command's usage text. deadset only reports and never edits a source file.
 
 ## Flags of analyze
 
@@ -28,7 +27,7 @@ Every command exits with 2 when its command line holds a `fix` flag in any spell
 | `--formats` | The formats, separated by commas: `text`, `json`, `github`, `sarif`, `template` | `text` |
 | `--fail-on` | The lowest severity that fails the run: `allow`, `warn` or `deny` | `deny` |
 
-`print-config` takes `--target`, `--central` and the last four flags. A flag value outside its set ends the run with exit code 2. So do a `--run-dir` that exists and a `--central` file that does not.
+`print-config` takes `--target`, `--central` and the last four flags. A flag value outside its set ends the run with exit code 2. So do a `--run-dir` that exists, and a `--central`, `--scope` or `--template` file that cannot be read.
 
 ## Configuration
 
@@ -53,7 +52,7 @@ The keys are those of the contract's [configuration schema](https://github.com/c
 
 ## How languages are detected
 
-With `analysis.languages` empty, deadset reads the names of the files under the target, never their contents. Go is in scope when the tree holds a `go.mod` or a `.go` file. TypeScript is in scope when it holds a `tsconfig*.json`, or a `.ts`, `.tsx`, `.mts` or `.cts` file together with a `package.json` anywhere in the tree. Directories named `node_modules`, `testdata` or `vendor`, and every directory whose name starts with a full stop, are skipped. A directory whose name starts with an underscore is skipped for Go alone, which builds nothing from one. A tree with no language in scope ends the run with exit code 2.
+With `analysis.languages` empty, deadset reads the names of the files under the target, never their contents. Go is in scope when the tree holds a `go.mod` or a `.go` file. TypeScript is in scope when it holds a `tsconfig*.json`, the one file its analyzer reads a program from. Each language skips the directories its analyzer skips. Go skips `node_modules`, `testdata`, `vendor` and every directory whose name starts with a full stop or an underscore. TypeScript skips only `node_modules` and `.git`, so a `tsconfig.json` under `.config` or `testdata` puts it in scope. A tree with no language in scope ends the run with exit code 3 and the line `setup failure: no-program`.
 
 ## The provider list
 
@@ -69,10 +68,10 @@ With `analysis.languages` empty, deadset reads the names of the files under the 
 - A command is a name deadset looks up on `PATH`, or an absolute path. A relative path is refused.
 - A run invokes every entry that claims a language in scope, two entries for one language included. A language in scope that no entry claims ends the run with exit code 2.
 - An entry whose command finds no file ends the run with exit code 3. deadset never downloads an analyzer.
-- Before any analysis, deadset runs each analyzer's `describe` command. It admits an analyzer that names itself as its entry does and reads a report schema version deadset accepts. The analyzer must also record a pass of the contract's conformance corpus. Any other ends the run with exit code 3.
+- Before any analysis, deadset runs each analyzer's `describe` command. It admits an analyzer that names itself as its entry does, claims every language the run hands it, and reads a report schema version deadset accepts. The analyzer must also record a pass of the contract's conformance corpus. Any other ends the run with exit code 3.
 - An analyzer that exits with 2 has refused its own invocation or the configuration it was given. The run exits with 2 and names that analyzer after the lines it printed. deadset does not print its own usage text then, since its command line was not at fault.
 
-Each analyzer runs as a separate process, in the deepest directory that holds the target and every consumer. The analyzers are separate programs with their own releases. deadset parses no source itself. Every finding comes from an analyzer's report, except `DS9005`, the stale edge the merge reports. deadset makes no network request.
+Each analyzer runs as a separate process, in the deepest directory that holds the target and every consumer. The analyzers are separate programs with their own releases. deadset parses no source itself. Every finding comes from an analyzer's report, except `DS9005`, the stale edge the merge reports. Each analyzer is handed every configured root, so one analyzer can report a root unmatched (`DS9004`) that another matched. The merge drops every `DS9004` finding for a root that an analyzer reading it matched: an analyzer of the language the root's prefix names, or any analyzer for a root with no language prefix. deadset makes no network request.
 
 ## Outputs
 
@@ -88,7 +87,7 @@ A run directory belongs to one run, and no file in it is ever overwritten. It ho
 
 | File | Contents |
 | --- | --- |
-| `scope.json` | The scope the run declared, with every path relative to the directory the analyzers run in |
+| `scope.json` | The scope the run declared, with every path absolute |
 | `describe.<analyzer>.json` | What the analyzer printed for `describe` |
 | `config.<analyzer>.json` | The configuration the analyzer was handed |
 | `scope.<analyzer>.json` | The scope of an analyzer handed only some of the consumers |
@@ -105,8 +104,8 @@ A run directory belongs to one run, and no file in it is ever overwritten. It ho
 | --- | --- |
 | 0 | No finding fails the run, and the report holds no stale suppression. Also the code of a run with `--exit-code=off` that produced a report, whatever its verdict |
 | 1 | A finding at or above `reporters.fail_on`, or a stale suppression whatever its severity |
-| 2 | The run was asked something it refuses: a malformed command line or configuration, no target kind, a `fix` flag or an unreadable template |
-| 3 | The run produced no answer: an analyzer was missing, refused or failed, a consumer did not load, or a cross-language finding had no analyzer report its paired side |
+| 2 | The run was asked something it refuses: a malformed command line or configuration, no target kind, a `fix` flag, or a configuration, scope or template file that cannot be read |
+| 3 | The run produced no answer: the tree holds no program, an analyzer was missing, refused or failed, a consumer did not load, or a cross-language finding had no analyzer report its paired side |
 | 4 | Reserved by the contract for a report that still holds a pending finding. deadset settles every cross-language pair in the merge or ends the run with 3, so `analyze` does not return 4 |
 
 A stale suppression fails the run whatever its severity. A run that ends with 2 or 3 keeps that code under `--exit-code=off`. When one analyzer stops on a setup failure, the run still ends with 3. After that analyzer's lines, standard error names the `analysis.languages` value for the other languages and the analyzer you can run alone instead. The contract's [exit codes](https://github.com/cplieger/deadset-spec/blob/v8.0.0/docs/exit-codes.md) page states the whole table.

@@ -239,7 +239,7 @@ func searched(kind string, document Document) string {
 // readConfig reads the settings the orchestrator reads out of the resolved values.
 func readConfig(values map[string]json.RawMessage) (config, error) {
 	var c config
-	providers, providersErr := readProviders(values[providerListKey])
+	providers, providersErr := readProviders(values[ProviderListKey])
 	c.Providers = providers
 	err := errors.Join(
 		providersErr,
