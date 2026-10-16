@@ -1,266 +1,162 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"os/signal"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/detect"
-	"github.com/cplieger/deadset/v2/internal/gomod"
-	"github.com/cplieger/deadset/v2/internal/invoke"
-	"github.com/cplieger/deadset/v2/internal/merge"
-	"github.com/cplieger/deadset/v2/internal/pkgjson"
-	"github.com/cplieger/deadset/v2/internal/policy"
-	"github.com/cplieger/deadset/v2/internal/providers"
-	"github.com/cplieger/deadset/v2/internal/rundir"
+	"github.com/cplieger/deadset/v2/internal/plan"
+	"github.com/cplieger/deadset/v2/internal/run"
 	"github.com/cplieger/deadset/v2/internal/scope"
-	"github.com/cplieger/deadset/v2/internal/verdict"
+	"github.com/cplieger/deadset/v2/internal/source"
 )
 
-func init() { register("analyze", runAnalyze) }
-
-const analyzeUsage = "usage: deadset analyze [--target=DIR] [--scope=FILE] [--central=FILE] [--run-dir=DIR] [--template=FILE] " +
-	"[--exit-code=on|off] [--languages=LIST] [--min-confidence=CLASS] [--formats=LIST] [--fail-on=SEVERITY]"
-
-// name is the analyzer name a merged report this command writes carries.
-const name = "deadset"
-
-// The flags a refusal names: the one naming the template the template format
-// renders, and the one naming the scope document.
+// The options a refusal names more than once.
 const (
-	templateFlag = "template"
-	scopeFlag    = "scope"
+	scopeOption    = "scope"
+	templateOption = "template"
 )
 
-// The two values --exit-code takes.
-const (
-	exitCodeOn  = "on"
-	exitCodeOff = "off"
-)
-
-// streamed is every format rendered on stdout rather than as a file beside
-// the merged report in the run directory. A document a crash cut short on a
-// stream is not one a reader can tell from a complete one, and an upload step
-// names a file, so the merged report, the json format's rendering, and every
-// other document are files, each named by the suffix documents gives it.
-var streamed = map[vocab.Format]bool{vocab.FormatText: true, vocab.FormatGitHub: true}
-
-// documents is the suffix of every format rendered as a file beside the
-// merged report.
-var documents = map[vocab.Format]string{
-	vocab.FormatSARIF:    ".sarif",
-	vocab.FormatTemplate: ".tmpl",
+// analyzeFlags is what one analyze command line asked for.
+type analyzeFlags struct {
+	*command
+	set                                          *flag.FlagSet
+	target, scopePath, central, runDir, template string
+	exitCode                                     onOff
 }
 
-// analysis is one analyze invocation: what its flags asked for, and where it
-// writes.
-type analysis struct {
-	stdout, stderr io.Writer
+// onOff is the value of --exit-code.
+type onOff bool
 
-	// set is the parsed flag set, which the setting flags are read from.
-	set *flag.FlagSet
-
-	// template is the parsed template --template names, nil where it names
-	// none.
-	template *render.Template
-
-	target, scopePath, central, runDir, templatePath string
-
-	exitCodeOff bool
+func (o *onOff) String() string {
+	if *o {
+		return "on"
+	}
+	return "off"
 }
 
-// runAnalyze analyzes the target with every analyzer the provider list holds
-// for a language in scope, merges their reports and returns the verdict of
-// the merged report. It reads no argument.
-func runAnalyze(args []string, stdout, stderr io.Writer) int {
-	a := &analysis{stdout: stdout, stderr: stderr}
-	a.set = flag.NewFlagSet("deadset analyze", flag.ContinueOnError)
-	a.set.SetOutput(stderr)
-	a.set.Usage = func() { fmt.Fprintln(stderr, analyzeUsage) }
-	a.set.StringVar(&a.target, "target", ".", targetUsage)
-	a.set.StringVar(&a.scopePath, scopeFlag, "",
-		"the scope document naming the target and the consumers whose references count against it")
-	a.set.StringVar(&a.central, "central", "", centralUsage)
-	a.set.StringVar(&a.runDir, "run-dir", "",
-		"the run directory, which must not exist. Leave it empty to make one under the temporary directory")
-	a.set.StringVar(&a.templatePath, templateFlag, "", "the file holding the template the template format renders")
-	exitCode := a.set.String("exit-code", exitCodeOn,
-		"whether the exit code carries the verdict of the run: "+exitCodeOn+" or "+exitCodeOff)
-	config.RegisterFlags(a.set)
-	if err := a.set.Parse(args); err != nil {
-		return vocab.ExitUsage
+func (o *onOff) Set(value string) error {
+	switch value {
+	case "on", "off":
+		*o = value == "on"
+		return nil
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	code, err := vocab.ExitClean, a.invocation(*exitCode)
-	if err == nil {
-		code, err = a.run(ctx)
-	}
-	if err != nil {
-		fmt.Fprintf(stderr, "deadset: %v\n", err)
-		code = verdict.ForError(err)
-		// An analyzer's refusal is of its own command line, whose usage text it
-		// printed; this command's usage would name a mistake the user did not make.
-		if _, analyzer := errors.AsType[*invoke.Error](err); code == vocab.ExitUsage && !analyzer {
-			a.set.Usage()
-		}
-	}
-	return code
+	return fmt.Errorf("%q is not a value: the values are on and off", value)
 }
 
-// invocation checks the half of the command line no document has a say in,
-// before any document is read.
-func (a *analysis) invocation(exitCode string) error {
-	if a.set.NArg() != 0 {
-		return &verdict.InvocationError{Err: fmt.Errorf("analyze takes no argument, got %q", a.set.Arg(0))}
-	}
-	switch exitCode {
-	case exitCodeOn:
-		a.exitCodeOff = false
-	case exitCodeOff:
-		a.exitCodeOff = true
-	default:
-		return &verdict.InvocationError{
-			Err:  fmt.Errorf("%q is not a value: the values are %s and %s", exitCode, exitCodeOn, exitCodeOff),
-			Flag: "exit-code",
-		}
-	}
-	return nil
+// bindAnalyze binds the analyze verb, which analyzes the target with every
+// analyzer the provider list holds for a language in scope, merges their
+// reports and returns the verdict of the merged report.
+func (c *command) bindAnalyze(set *flag.FlagSet) runner {
+	a := &analyzeFlags{command: c, set: set, exitCode: true}
+	set.StringVar(&a.target, "target", ".", "")
+	set.StringVar(&a.scopePath, scopeOption, "", "")
+	set.StringVar(&a.central, "central", "", "")
+	set.StringVar(&a.runDir, "run-dir", "", "")
+	set.StringVar(&a.template, templateOption, "", "")
+	set.Var(&a.exitCode, "exit-code", "")
+	return a.analyze
 }
 
-// run resolves the configuration, chooses the analyzers, runs each into the
-// run directory, merges their reports, writes and prints the merged report,
-// and returns its verdict. An error is a run that produced no merged report.
-func (a *analysis) run(ctx context.Context) (int, error) {
+// analyze reads what the command line names, runs the analysis, prints what
+// every analyzer printed, the renderings and the verdict, and returns the
+// verdict's exit code.
+func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (int, error) {
 	resolved, root, err := resolveConfiguration(a.set, a.target, a.central)
 	if err != nil {
 		return 0, err
 	}
 	reporters := &resolved.Config.Reporters
-	if refused := a.readTemplate(reporters.Formats); refused != nil {
-		return 0, refused
+	template, err := a.readTemplate(reporters.Formats)
+	if err != nil {
+		return 0, err
 	}
 	declared, err := a.readScope(root)
 	if err != nil {
 		return 0, err
 	}
-	inScope, err := detect.Languages(root, detect.Options{Languages: resolved.Config.Languages})
-	if err != nil {
-		return 0, err
-	}
-	analyzers, err := providers.Select(resolved.Config.Providers, inScope)
-	if err != nil {
-		return 0, err
-	}
-	whole, routes, err := plan(declared, analyzers, inScope)
-	if err != nil {
-		return 0, err
-	}
-	dir, err := a.runDirectory()
-	if err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(a.stderr, "deadset: the run directory is %s\n", dir.Path())
-
-	runs, err := prepare(dir, resolved, analyzers, &whole, routes)
-	if err != nil {
-		return 0, err
-	}
-	for i := range runs {
-		runs[i].request.Diagnostics = a.stderr
-	}
-	merged, err := analyzeAll(ctx, runs)
-	if err != nil {
-		return 0, err
-	}
-	policy.Apply(merged, &policy.Options{
-		Severity:    resolved.Severity,
-		Sort:        reporters.Sort,
-		MaxFindings: reporters.MaxFindings,
+	opts := &render.Options{Template: template, BySize: reporters.Sort == config.SortSize}
+	result, err := run.Analyze(ctx, &run.Request{
+		Resolved:    resolved,
+		Scope:       declared,
+		Root:        root,
+		RunDir:      a.runDir,
+		Render:      opts,
+		Version:     version(),
+		Diagnostics: stderr,
+		Started:     func(dir string) { fmt.Fprintf(stderr, "%s: the run directory is %s\n", run.Product, dir) },
+		Print:       func(outcomes []source.Outcome) error { return printOutcomes(stderr, outcomes) },
+		Open:        a.open,
 	})
-	if err := a.publish(dir, root, merged, reporters); err != nil {
+	switch {
+	case errors.Is(err, run.ErrRunDir):
+		return 0, &usageError{err: err, option: "run-dir"}
+	case isUnclaimed(err):
+		return 0, &usageError{err: err, option: scopeOption}
+	case err != nil:
 		return 0, err
 	}
-	return a.verdict(merged, reporters.FailOn), nil
+	if err := printResult(stdout, result, opts, reporters); err != nil {
+		return 0, err
+	}
+	return a.verdict(stderr, result.Merged, reporters.FailOn), nil
+}
+
+// isUnclaimed reports whether err holds a consumer no analyzer claims.
+func isUnclaimed(err error) bool {
+	_, unclaimed := errors.AsType[*plan.UnclaimedError](err)
+	return unclaimed
 }
 
 // readTemplate reads and parses the template --template names, before any
 // analyzer runs. The template format with no template, and a template that
-// does not parse, are invocations the run refuses.
-func (a *analysis) readTemplate(formats []vocab.Format) error {
-	if a.templatePath == "" {
+// cannot be read or does not parse, are command lines the run refuses.
+func (a *analyzeFlags) readTemplate(formats []vocab.Format) (*render.Template, error) {
+	if a.template == "" {
 		if slices.Contains(formats, vocab.FormatTemplate) {
-			return &verdict.InvocationError{
-				Err:  errors.New("the template format renders the template this flag names, and none was named"),
-				Flag: templateFlag,
-			}
+			return nil, &usageError{err: errors.New("the template format renders the template this option names, and none was named"), option: templateOption}
 		}
-		return nil
+		return nil, nil
 	}
-	text, err := os.ReadFile(a.templatePath)
+	text, err := os.ReadFile(a.template)
 	if err != nil {
-		return &verdict.InvocationError{Err: err, Flag: templateFlag}
+		return nil, &usageError{err: err, option: templateOption}
 	}
-	a.template, err = render.ParseTemplate(string(text))
+	parsed, err := render.ParseTemplate(string(text))
 	if err != nil {
-		return &verdict.InvocationError{Err: err, Flag: templateFlag}
+		return nil, &usageError{err: err, option: templateOption}
 	}
-	return nil
-}
-
-// runDirectory creates the run directory --run-dir names, or one of its own
-// when it names none. A path that exists, or whose parent does not, is an
-// invocation the run refuses.
-func (a *analysis) runDirectory() (*rundir.Dir, error) {
-	if a.runDir == "" {
-		return rundir.CreateTemp()
-	}
-	dir, err := rundir.Create(a.runDir)
-	if errors.Is(err, fs.ErrExist) || errors.Is(err, fs.ErrNotExist) {
-		return nil, &verdict.InvocationError{Err: err, Flag: "run-dir"}
-	}
-	return dir, err
-}
-
-// analyzerRun is one selected analyzer: the files the run directory keeps for
-// it and the invocation that runs it.
-type analyzerRun struct {
-	entry   rundir.Entry
-	request invoke.Request
+	return parsed, nil
 }
 
 // readScope reads the scope document --scope names, whose target must be the
-// target root. With no document the scope is the target alone.
-func (a *analysis) readScope(root string) (*scope.Document, error) {
+// target root; with no document the scope is the target alone. A document
+// that cannot be read is a command line the run refuses, and one the scope
+// schema refuses a failure of the run, as for every analyzer.
+func (a *analyzeFlags) readScope(root string) (*scope.Document, error) {
 	if a.scopePath == "" {
 		return &scope.Document{Target: scope.Module{Path: root}}, nil
 	}
 	declared, err := scope.Read(a.scopePath)
-	if err != nil {
-		return nil, fmt.Errorf("--%s=%s: %w", scopeFlag, a.scopePath, err)
-	}
-	if !sameDirectory(declared.Target.Path, root) {
-		return nil, &verdict.InvocationError{
-			Err:  fmt.Errorf("the document names the target %s, and the target of the run is %s", declared.Target.Path, root),
-			Flag: scopeFlag,
+	switch {
+	case errors.Is(err, scope.ErrDocument):
+		return nil, fmt.Errorf("--scope=%s: %w", a.scopePath, err)
+	case err != nil:
+		return nil, &usageError{err: err, option: scopeOption}
+	case !sameDirectory(declared.Target.Path, root):
+		return nil, &usageError{
+			err:    fmt.Errorf("the document names the target %s, and the target of the run is %s", declared.Target.Path, root),
+			option: scopeOption,
 		}
 	}
 	return declared, nil
@@ -276,314 +172,59 @@ func sameDirectory(a, b string) bool {
 	return err == nil && os.SameFile(first, second)
 }
 
-// route is what one selected analyzer is handed: the languages in scope its
-// entry claims, and the declared consumers holding one of them.
-type route struct {
-	languages []string
-	consumers []rundir.Module
-}
-
-// plan is the scope the run writes for the declared document, and one route
-// per analyzer in the order of analyzers. Every analyzer runs in the scope's
-// working directory, the deepest directory holding every path the document
-// names, because each names the paths of its report relative to the
-// directory it runs in. A consumer is handed to every analyzer claiming a
-// language detection finds in it, and to no other, since an analyzer refuses
-// a consumer it cannot load: one that does not exist ends the run as a
-// failure, and one no analyzer claims is an invocation the run refuses.
-func plan(declared *scope.Document, analyzers []providers.Analyzer, inScope []string) (rundir.Scope, []route, error) {
-	root := declared.Root()
-	inside := func(path string) string {
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return path
+// printOutcomes writes what every analyzer printed, whole and in analyzer
+// name order, each setup failure followed by the line telling how to analyze
+// the target without that analyzer. It returns every failed write of an
+// analyzer that refused nothing itself; an analyzer's own refusal stands for
+// a failed write of its output.
+func printOutcomes(stderr io.Writer, outcomes []source.Outcome) error {
+	var failures []error
+	for _, o := range source.ByName(outcomes) {
+		shown := o.Printed
+		if o.SetupFailed() {
+			shown = append(slices.Clip(shown), workaround(outcomes, o.Analyzer)...)
 		}
-		return relative
-	}
-	target, err := targetName(declared.Target, inScope)
-	if err != nil {
-		return rundir.Scope{}, nil, err
-	}
-	whole := rundir.Scope{Root: root, Target: rundir.Module{ID: target, Path: inside(declared.Target.Path)}}
-	if declared.Workspace != "" {
-		whole.Workspace = inside(declared.Workspace)
-	}
-	held := make([][]string, len(declared.Consumers))
-	for i, consumer := range declared.Consumers {
-		languages, err := consumerLanguages(consumer.Path)
-		if err != nil {
-			return rundir.Scope{}, nil, err
-		}
-		held[i] = languages
-		loaded := slices.DeleteFunc(slices.Clone(languages), func(language string) bool { return !slices.Contains(inScope, language) })
-		id, err := published(consumer, loaded)
-		if err != nil {
-			return rundir.Scope{}, nil, err
-		}
-		whole.Consumers = append(whole.Consumers, rundir.Module{ID: id, Path: inside(consumer.Path)})
-	}
-
-	routes, claimed := routeConsumers(whole.Consumers, held, analyzers, inScope)
-	var unclaimed []error
-	for j, languages := range held {
-		if !claimed[j] {
-			unclaimed = append(unclaimed, fmt.Errorf("the consumer %s holds %s, and no analyzer of the run claims a language of it",
-				declared.Consumers[j].Path, strings.Join(languages, ", ")))
-		}
-	}
-	if len(unclaimed) > 0 {
-		return rundir.Scope{}, nil, &verdict.InvocationError{Err: errors.Join(unclaimed...), Flag: scopeFlag}
-	}
-	return whole, routes, nil
-}
-
-// published is the name module is written under in the run's scope document,
-// given the languages of the run it is loaded in. Where it is loaded in more
-// than one language, the declared document names none and a go.mod governs it,
-// that is the module path of its Go module: the Contract's name for a module
-// whose language has a module path, and the one the Go analyzer reports it by,
-// so every report of it names it alike and the merge admits them. Otherwise it
-// keeps the declared name, or none, and its analyzer's load names it.
-func published(module scope.Module, languages []string) (string, error) {
-	if module.ID != "" || len(languages) < 2 {
-		return module.ID, nil
-	}
-	path, found, err := gomod.Path(module.Path)
-	if err != nil || !found {
-		return "", err
-	}
-	return path, nil
-}
-
-// targetName is the name the target is written under: the one [published]
-// gives it, else, where the run loads it in more than one language, its
-// package name or [unnamed]. A target no go.mod governs may hold Go modules
-// below it, which the Go analyzer reports under this one name, so every
-// report of the target names it alike and the merge admits them.
-func targetName(target scope.Module, languages []string) (string, error) {
-	name, err := published(target, languages)
-	if err != nil || name != "" || len(languages) < 2 {
-		return name, err
-	}
-	if pkg, named := pkgjson.Name(target.Path); named {
-		return pkg, nil
-	}
-	return unnamed, nil
-}
-
-// unnamed is the name of a target that no go.mod governs and whose package.json
-// names no package, the one a TypeScript analysis gives it.
-const unnamed = "."
-
-// routeConsumers is one route per analyzer, handing it every consumer whose
-// languages, held, include one its entry claims in scope, and whether each
-// consumer was handed to any analyzer.
-func routeConsumers(consumers []rundir.Module, held [][]string, analyzers []providers.Analyzer, inScope []string) (routes []route, claimed []bool) {
-	routes = make([]route, len(analyzers))
-	claimed = make([]bool, len(consumers))
-	for i := range analyzers {
-		languages := slices.DeleteFunc(slices.Clone(analyzers[i].Entry.Languages),
-			func(language string) bool { return !slices.Contains(inScope, language) })
-		routes[i].languages = languages
-		for j := range consumers {
-			if slices.ContainsFunc(held[j], func(language string) bool { return slices.Contains(languages, language) }) {
-				routes[i].consumers = append(routes[i].consumers, consumers[j])
-				claimed[j] = true
-			}
-		}
-	}
-	return routes, claimed
-}
-
-// consumerLanguages is every language detection finds in the consumer
-// directory at path. A consumer that cannot be read or holds no language fails
-// to load, so the run ends as a failure with no finding computed without it.
-func consumerLanguages(path string) ([]string, error) {
-	info, err := os.Stat(path)
-	switch {
-	case err != nil:
-		return nil, fmt.Errorf("the consumer %s that --%s declares cannot be read, and no finding is computed without it: %w", path, scopeFlag, err)
-	case !info.IsDir():
-		return nil, fmt.Errorf("the consumer %s that --%s declares is not a directory, and no finding is computed without it", path, scopeFlag)
-	}
-	languages, err := detect.Languages(path, detect.Options{})
-	if err != nil {
-		// %v, not %w: a consumer with no language fails to load, which is not
-		// the usage error a target with no language is.
-		return nil, fmt.Errorf("the consumer %s that --%s declares does not load, and no finding is computed without it: %v", path, scopeFlag, err)
-	}
-	return languages, nil
-}
-
-// prepare writes the run's scope document and each analyzer's configuration
-// into dir and returns one run per analyzer, in the order of analyzers. An
-// analyzer whose route holds only some of the run's consumers reads a scope
-// document of its own, which names those.
-func prepare(dir *rundir.Dir, resolved *config.Resolved, analyzers []providers.Analyzer,
-	whole *rundir.Scope, routes []route,
-) ([]analyzerRun, error) {
-	if err := dir.WriteScope(whole); err != nil {
-		return nil, err
-	}
-	runs := make([]analyzerRun, 0, len(analyzers))
-	for i := range analyzers {
-		selected, routed := &analyzers[i], &routes[i]
-		entry, err := dir.Entry(selected.Entry.Name)
-		if err != nil {
-			return nil, err
-		}
-		if err := entry.WriteConfig(resolved, routed.languages...); err != nil {
-			return nil, err
-		}
-		document := dir.Scope()
-		if len(routed.consumers) < len(whole.Consumers) {
-			own := *whole
-			own.Consumers = routed.consumers
-			if err := entry.WriteScope(&own); err != nil {
-				return nil, err
-			}
-			document = entry.Scope()
-		}
-		runs = append(runs, analyzerRun{entry: entry, request: invoke.Request{
-			Analyzer:  selected.Entry.Name,
-			Languages: routed.languages,
-			Command:   selected.Executable,
-			Dir:       whole.Root,
-			Scope:     document,
-			Config:    entry.Config(),
-			Report:    entry.Report(),
-		}})
-	}
-	return runs, nil
-}
-
-// analyzeAll runs the handshake with every analyzer and then every analysis,
-// and merges the reports. No analysis runs unless every analyzer was admitted,
-// no report merges unless each names the analyzer of its provider entry, and
-// every refusal of one step is named.
-func analyzeAll(ctx context.Context, runs []analyzerRun) (*report.Report, error) {
-	accepted := vocab.SchemaVersions()
-	digests := make([]string, len(runs))
-	var refused []error
-	for i := range runs {
-		run := &runs[i]
-		digest, handshakeErr := artifactDigest(run.request.Command)
-		if handshakeErr == nil {
-			_, handshakeErr = invoke.Describe(ctx, &run.request, run.entry, accepted)
-		}
-		if handshakeErr != nil {
-			refused = append(refused, handshakeErr)
-		}
-		digests[i] = digest
-	}
-	if len(refused) > 0 {
-		return nil, errors.Join(refused...)
-	}
-
-	requests := make([]invoke.Request, len(runs))
-	for i := range runs {
-		requests[i] = runs[i].request
-	}
-	reports, err := invoke.Run(ctx, requests)
-	if err != nil {
-		return nil, err
-	}
-	inputs := make([]merge.Input, len(reports))
-	for i := range reports {
-		if named := reports[i].Analyzer.Name; named != runs[i].request.Analyzer {
-			refused = append(refused, fmt.Errorf("analyzer %s, report %s: the report names the analyzer %q, not its provider entry %q",
-				runs[i].request.Analyzer, runs[i].request.Report, named, runs[i].request.Analyzer))
-		}
-		inputs[i] = merge.Input{Report: reports[i], Digest: digests[i]}
-	}
-	if len(refused) > 0 {
-		return nil, errors.Join(refused...)
-	}
-	conformance, err := merge.Conformance()
-	if err != nil {
-		return nil, err
-	}
-	return merge.Merge(inputs, accepted, &merge.Caller{
-		SchemaVersion:   vocab.SchemaVersion,
-		ContractVersion: vocab.ContractVersion,
-		Name:            name,
-		Version:         version(),
-		Conformance:     conformance,
-	})
-}
-
-// artifactDigest is the digest of the analyzer artifact at path, spelled as a
-// merged report's merged_from names it.
-func artifactDigest(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("digest the analyzer %s: %w", path, err)
-	}
-	defer func() { _ = file.Close() }()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("digest the analyzer %s: %w", path, err)
-	}
-	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-// publish writes the merged report r and every rendering of it the formats
-// name that is a file beside it into dir, then prints the rest.
-func (a *analysis) publish(dir *rundir.Dir, root string, r *report.Report, reporters *config.Reporters) error {
-	if err := dir.WriteMerged(r); err != nil {
-		return err
-	}
-	written, err := a.writeDocuments(dir, root, r, reporters)
-	if err != nil {
-		return err
-	}
-	return a.print(r, reporters, written)
-}
-
-// writeDocuments writes into dir every rendering the formats name that is a
-// file beside the merged report, in their order, and returns each file's line
-// of the output: the format and the path. The SARIF rendering hashes the
-// source lines its results name, which it reads below the target root, the
-// directory every path of the report is relative to.
-func (a *analysis) writeDocuments(dir *rundir.Dir, root string, r *report.Report, reporters *config.Reporters) ([]string, error) {
-	files, err := os.OpenRoot(root)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = files.Close() }()
-	opts := a.renderOptions(reporters)
-	opts.Read = func(path string) ([]byte, error) { return files.ReadFile(filepath.FromSlash(path)) }
-	var written []string
-	for _, format := range reporters.Formats {
-		suffix, held := documents[format]
-		if !held {
+		if len(shown) == 0 {
 			continue
 		}
-		var document bytes.Buffer
-		if err := render.Render(&document, format, r, opts); err != nil {
-			return nil, err
+		if _, err := stderr.Write(shown); err != nil && o.Err == nil {
+			failures = append(failures, fmt.Errorf("analyzer %s, exit %d: copy what it printed: %w", o.Analyzer, o.Exit, err))
 		}
-		if err := dir.WriteRendering(suffix, document.Bytes()); err != nil {
-			return nil, err
-		}
-		written = append(written, string(format)+" "+dir.Rendering(suffix))
 	}
-	return written, nil
+	return errors.Join(failures...)
 }
 
-// renderOptions is what every rendering of this run reads beside the report.
-func (a *analysis) renderOptions(reporters *config.Reporters) *render.Options {
-	return &render.Options{Template: a.template, BySize: reporters.Sort == config.SortSize}
+// workaround is the line telling how to analyze the target without the
+// analyzer named failed: the configuration that hands the run only the
+// languages of the analyzers that left a report, or those analyzers run
+// alone. With no such analyzer it is empty.
+func workaround(outcomes []source.Outcome, failed string) string {
+	var languages, names []string
+	for i := range outcomes {
+		if outcomes[i].Err == nil {
+			for _, language := range outcomes[i].Languages {
+				languages = append(languages, strconv.Quote(string(language)))
+			}
+			names = append(names, outcomes[i].Analyzer)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	slices.Sort(names)
+	return fmt.Sprintf("%s: to analyze the target without %s, set analysis.languages: [%s] or run %s alone\n",
+		run.Product, failed, strings.Join(slices.Compact(slices.Sorted(slices.Values(languages))), ", "), strings.Join(names, " and "))
 }
 
-// print writes to stdout every rendering the formats name that is a stream,
-// in their order, then the summary, a line naming each rendering written
-// beside the merged report, and the remediation when a finding fails the run.
-func (a *analysis) print(r *report.Report, reporters *config.Reporters, written []string) error {
+// printResult writes to stdout every rendering the formats name that is a
+// stream, in their order, then the summary, a line naming each rendering
+// written beside the merged report, and the remediation when a finding fails
+// the run.
+func printResult(stdout io.Writer, result *run.Result, opts *render.Options, reporters *config.Reporters) error {
 	var out strings.Builder
-	opts := a.renderOptions(reporters)
+	r := result.Merged
 	for _, format := range reporters.Formats {
-		if streamed[format] {
+		if run.Streamed(format) {
 			if err := render.Render(&out, format, r, opts); err != nil {
 				return err
 			}
@@ -592,13 +233,13 @@ func (a *analysis) print(r *report.Report, reporters *config.Reporters, written 
 	if err := render.Summary(&out, r); err != nil {
 		return err
 	}
-	for _, line := range written {
-		fmt.Fprintln(&out, line)
+	for _, w := range result.Written {
+		fmt.Fprintf(&out, "%s %s\n", w.Format, w.Path)
 	}
 	if render.Failing(&r.Totals.BySeverity, reporters.FailOn) {
 		out.WriteString(remediation)
 	}
-	_, err := io.WriteString(a.stdout, out.String())
+	_, err := io.WriteString(stdout, out.String())
 	return err
 }
 
@@ -609,20 +250,18 @@ const remediation = "remediation: for each failing finding, delete the symbol, w
 // verdict names on stderr what the merged report holds that a reader acts on
 // whatever the exit code says, and returns the code the exit-code table gives
 // it, or the clean code where the exit code is configured off.
-func (a *analysis) verdict(r *report.Report, failOn vocab.Severity) int {
+func (a *analyzeFlags) verdict(stderr io.Writer, r *report.Report, failOn vocab.Severity) int {
 	if n := r.Totals.Pending; n > 0 {
-		fmt.Fprintf(a.stderr, "deadset: %s\n", counted(n, "pending finding", "pending findings"))
+		fmt.Fprintf(stderr, "%s: %s\n", run.Product, counted(n, "pending finding", "pending findings"))
 	}
 	if n := r.Totals.StaleSuppressions; n > 0 {
-		fmt.Fprintf(a.stderr, "deadset: %s\n", counted(n, "stale suppression", "stale suppressions"))
+		fmt.Fprintf(stderr, "%s: %s\n", run.Product, counted(n, "stale suppression", "stale suppressions"))
 	}
 	answer := render.Verdict(&r.Totals, failOn)
-	if !a.exitCodeOff {
+	if a.exitCode || answer == vocab.ExitClean {
 		return answer
 	}
-	if answer != vocab.ExitClean {
-		fmt.Fprintf(a.stderr, "deadset: the exit code is configured off: the verdict of this run is %d\n", answer)
-	}
+	fmt.Fprintf(stderr, "%s: the exit code is configured off: the verdict of this run is %d\n", run.Product, answer)
 	return vocab.ExitClean
 }
 

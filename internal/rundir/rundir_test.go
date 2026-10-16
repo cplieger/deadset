@@ -11,31 +11,8 @@ import (
 
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/report"
-	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
-
-// mixedTarget is a repository configuration for a target holding both languages.
-const mixedTarget = `{
-  "target": {"kind": "library"},
-  "go": {},
-  "ts": {"entry_files": ["src/cli.ts"]}
-}`
-
-// resolved resolves document as the one configuration source of a run.
-func resolved(t *testing.T, document string) *config.Resolved {
-	t.Helper()
-
-	r, err := config.Resolve(&config.Inputs{
-		ContractVersion: vocab.ContractVersion,
-		Repository:      config.Document{Path: "deadset.json", Data: []byte(document)},
-	})
-	if err != nil {
-		t.Fatalf("Setup: resolve %s: %v", document, err)
-	}
-	return r
-}
 
 // created is a run directory created under a fresh temporary directory.
 func created(t *testing.T) (*rundir.Dir, string) {
@@ -85,8 +62,7 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 	t.Parallel()
 
 	dir, path := created(t)
-	r := resolved(t, mixedTarget)
-	if err := dir.WriteScope(&rundir.Scope{Root: path, Target: rundir.Module{Path: "."}}); err != nil {
+	if err := dir.WriteScope([]byte("{}")); err != nil {
 		t.Fatalf("WriteScope() = %v", err)
 	}
 	for _, name := range []string{"deadset-go", "deadset-go-next"} {
@@ -94,11 +70,11 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 		if err := e.WriteDescribe([]byte(`{"name":"deadset-go"}`)); err != nil {
 			t.Fatalf("Entry(%q).WriteDescribe() = %v", name, err)
 		}
-		if err := e.WriteConfig(r, "go"); err != nil {
+		if err := e.WriteConfig([]byte("{}")); err != nil {
 			t.Fatalf("Entry(%q).WriteConfig(go) = %v", name, err)
 		}
 		if name == "deadset-go-next" {
-			if err := e.WriteScope(&rundir.Scope{Root: path, Target: rundir.Module{Path: "."}}); err != nil {
+			if err := e.WriteScope([]byte("{}")); err != nil {
 				t.Fatalf("Entry(%q).WriteScope() = %v", name, err)
 			}
 		}
@@ -194,32 +170,6 @@ func TestCreateTempMakesAnEmptyDirectoryOfItsOwn(t *testing.T) {
 	}
 }
 
-// TestWriteConfigWritesTheSplitForTheEntrysLanguages pins the configuration an
-// entry's analyzer reads to the split of the resolved configuration for the
-// languages the entry claims, byte for byte.
-func TestWriteConfigWritesTheSplitForTheEntrysLanguages(t *testing.T) {
-	t.Parallel()
-
-	dir, _ := created(t)
-	r := resolved(t, mixedTarget)
-	e := entry(t, dir, "deadset-ts")
-	if err := e.WriteConfig(r, "ts"); err != nil {
-		t.Fatalf("WriteConfig(ts) = %v", err)
-	}
-
-	want, err := r.Split("ts")
-	if err != nil {
-		t.Fatalf("Setup: Split(ts): %v", err)
-	}
-	got, err := os.ReadFile(e.Config())
-	if err != nil {
-		t.Fatalf("read %s: %v", e.Config(), err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Errorf("WriteConfig(ts) wrote\n%s\nwant Split(ts)\n%s", got, want)
-	}
-}
-
 // TestWriteDescribeKeepsTheBytesAsPrinted pins that the describe evidence is the
 // analyzer's output itself, whatever it holds.
 func TestWriteDescribeKeepsTheBytesAsPrinted(t *testing.T) {
@@ -245,7 +195,6 @@ func TestWriteDescribeKeepsTheBytesAsPrinted(t *testing.T) {
 func TestEveryFileIsWrittenOnce(t *testing.T) {
 	t.Parallel()
 
-	r := resolved(t, mixedTarget)
 	merged, err := report.Decode(exampleReport(t))
 	if err != nil {
 		t.Fatalf("Setup: decode the example report: %v", err)
@@ -262,7 +211,7 @@ func TestEveryFileIsWrittenOnce(t *testing.T) {
 		},
 		{
 			name:  "config",
-			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteConfig(r, "go") },
+			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteConfig([]byte("{}")) },
 			path:  func(_ *rundir.Dir, e rundir.Entry) string { return e.Config() },
 		},
 		{
@@ -271,18 +220,14 @@ func TestEveryFileIsWrittenOnce(t *testing.T) {
 			path:  func(d *rundir.Dir, _ rundir.Entry) string { return d.Merged() },
 		},
 		{
-			name: "scope",
-			write: func(d *rundir.Dir, _ rundir.Entry) error {
-				return d.WriteScope(&rundir.Scope{Root: "/src/run", Target: rundir.Module{Path: "."}})
-			},
-			path: func(d *rundir.Dir, _ rundir.Entry) string { return d.Scope() },
+			name:  "scope",
+			write: func(d *rundir.Dir, _ rundir.Entry) error { return d.WriteScope([]byte("{}")) },
+			path:  func(d *rundir.Dir, _ rundir.Entry) string { return d.Scope() },
 		},
 		{
-			name: "entry-scope",
-			write: func(_ *rundir.Dir, e rundir.Entry) error {
-				return e.WriteScope(&rundir.Scope{Root: "/src/run", Target: rundir.Module{Path: "."}})
-			},
-			path: func(_ *rundir.Dir, e rundir.Entry) string { return e.Scope() },
+			name:  "entry-scope",
+			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteScope([]byte("{}")) },
+			path:  func(_ *rundir.Dir, e rundir.Entry) string { return e.Scope() },
 		},
 	}
 	for _, w := range writes {

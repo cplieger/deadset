@@ -18,7 +18,6 @@ import (
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
 const vectorsDir = "vectors/merge"
@@ -84,8 +83,8 @@ func answer(c vectorCase, name string) error {
 			return fmt.Errorf("case %s holds no expected.json and names no refusal this test expects", name)
 		case merged != nil || !errors.Is(err, want):
 			return fmt.Errorf("Merge(%s) = %v, %v, want no report and an error wrapping %v", name, merged, err, want)
-		case verdict.ForError(err) != c.exit:
-			return fmt.Errorf("ForError(Merge(%s)) = %d, want expected_exit %d", name, verdict.ForError(err), c.exit)
+		case c.exit != vocab.ExitFailure:
+			return fmt.Errorf("case %s refuses the merge with expected_exit %d, and a refused merge ends the run with %d", name, c.exit, vocab.ExitFailure)
 		}
 		return nil
 	}

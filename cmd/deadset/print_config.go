@@ -1,52 +1,24 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"fmt"
 	"io"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/verdict"
 )
 
-func init() { register("print-config", runPrintConfig) }
-
-const printConfigUsage = "usage: deadset print-config [--target=DIR] [--central=FILE] " +
-	"[--languages=LIST] [--min-confidence=CLASS] [--formats=LIST] [--fail-on=SEVERITY]"
-
-// runPrintConfig resolves the configuration an analysis of the target runs under
-// and prints it, with the source of every setting. It reads no argument. A
-// configuration the resolution refuses, and a central configuration that does not
-// exist where the invocation names it, are usage errors; a target that is not a
-// directory is a failure.
-func runPrintConfig(args []string, stdout, stderr io.Writer) int {
-	set := flag.NewFlagSet("deadset print-config", flag.ContinueOnError)
-	set.SetOutput(stderr)
-	set.Usage = func() { fmt.Fprintln(stderr, printConfigUsage) }
-	target := set.String("target", ".", targetUsage)
-	central := set.String("central", "", centralUsage)
-	config.RegisterFlags(set)
-	if err := set.Parse(args); err != nil {
-		return vocab.ExitUsage
-	}
-	if set.NArg() != 0 {
-		fmt.Fprintf(stderr, "deadset: print-config takes no argument, got %q\n", set.Arg(0))
-		set.Usage()
-		return vocab.ExitUsage
-	}
-
-	resolved, _, err := resolveConfiguration(set, *target, *central)
-	if err == nil {
-		err = resolved.Print(stdout)
-	}
-	if err != nil {
-		fmt.Fprintf(stderr, "deadset: %v\n", err)
-		code := verdict.ForError(err)
-		if code == vocab.ExitUsage {
-			set.Usage()
+// bindPrintConfig binds the print-config verb, which resolves the
+// configuration an analysis of the target runs under and prints it with the
+// source of every setting.
+func (*command) bindPrintConfig(set *flag.FlagSet) runner {
+	target := set.String("target", ".", "")
+	central := set.String("central", "", "")
+	return func(_ context.Context, stdout, _ io.Writer) (int, error) {
+		resolved, _, err := resolveConfiguration(set, *target, *central)
+		if err != nil {
+			return 0, err
 		}
-		return code
+		return vocab.ExitClean, resolved.Print(stdout)
 	}
-	return vocab.ExitClean
 }

@@ -10,24 +10,16 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
-	"github.com/cplieger/deadset/v2/internal/verdict"
-)
-
-// targetUsage and centralUsage describe the two flags every verb that reads a
-// configuration takes.
-const (
-	targetUsage  = "the target root, which holds the repository configuration " + config.RepositoryFile
-	centralUsage = "the central configuration, whose settings the repository configuration overrides"
 )
 
 // resolveConfiguration resolves the configuration a verb runs under over the
 // target root target, the central configuration central and the setting flags
 // set parsed, and returns it with the absolute path of the target root.
 //
-// Each document is read once and its absence answered by who named it: a
-// target that is not a directory is a failure of the run, a central
-// configuration the flag names that does not exist is an invocation the run
-// refuses, and an absent repository configuration is no configuration.
+// A target that is not a directory is a failure of the run; a configuration
+// document that cannot be read, the central one the invocation names
+// included, is a command line the run refuses; an absent repository
+// configuration is no configuration.
 func resolveConfiguration(set *flag.FlagSet, target, central string) (*config.Resolved, string, error) {
 	root, err := targetRoot(target)
 	if err != nil {
@@ -38,11 +30,11 @@ func resolveConfiguration(set *flag.FlagSet, target, central string) (*config.Re
 		return nil, "", err
 	}
 	repository, centralDocument, err := config.ReadDocuments(target, central)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, "", &verdict.InvocationError{Err: err, Flag: "central"}
-	}
 	if err != nil {
-		return nil, "", err
+		if unread, ok := errors.AsType[*fs.PathError](err); ok && unread.Path == central {
+			return nil, "", &usageError{err: err, option: "central"}
+		}
+		return nil, "", &usageError{err: err}
 	}
 	resolved, err := config.Resolve(&config.Inputs{
 		ContractVersion: vocab.ContractVersion,

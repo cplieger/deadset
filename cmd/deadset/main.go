@@ -6,134 +6,152 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/plan"
+	"github.com/cplieger/deadset/v2/internal/run"
+	"github.com/cplieger/deadset/v2/internal/source"
 )
 
-// command is one verb of this command's surface and the line the usage text
-// gives it.
+// runner runs one parsed command line. A non-nil error is printed and gives
+// the exit code; otherwise the code is the one returned.
+type runner func(ctx context.Context, stdout, stderr io.Writer) (int, error)
+
+// binders defines, per verb, the verb's own options on a flag set and returns
+// what runs the command line it parsed. Its setting options are config's.
+var binders = map[string]func(c *command, set *flag.FlagSet) runner{
+	"analyze":      (*command).bindAnalyze,
+	"print-config": (*command).bindPrintConfig,
+	"version":      (*command).bindVersion,
+}
+
+// verbs is every verb of the orchestrator's row of cli.json, in its order.
+var verbs = vocab.OrchestratorVerbs()
+
+// command is this program's command line and how it opens a source.
 type command struct {
-	name    string
-	summary string
-}
-
-// commands is every verb this command answers, in the order the usage text
-// lists them. A verb with no registered handler is listed, and invoking it is a
-// usage error.
-var commands = []command{
-	{name: "analyze", summary: "find dead code in a repository and merge every analyzer's report"},
-	{name: "explain", summary: "say why one symbol is or is not reported"},
-	{name: "print-config", summary: "print the resolved configuration and where each setting came from"},
-	{name: "install", summary: "install the analyzers the provider list names"},
-	{name: "describe", summary: "print this build's capabilities as JSON"},
-	{name: "version", summary: "print the version of this build and of the contract it implements"},
-}
-
-// handler runs one verb over the arguments that follow the verb's name. It
-// writes its result to stdout and its diagnostics to stderr, and returns one of
-// the exit codes [verdict] names.
-type handler func(args []string, stdout, stderr io.Writer) int
-
-// handlers maps a verb's name to the function that runs it. Each verb's own
-// file adds its entry by calling register from an init function, so a verb is
-// added by adding its file, and the map is complete before main runs.
-var handlers = map[string]handler{}
-
-// register makes run the handler of the verb named name. It panics on a name
-// commands does not list and on a name registered twice: each is a mistake in
-// this command's own source, and a panic at initialization fails every test of
-// the package rather than shipping a verb the usage text cannot reach.
-func register(name string, run handler) {
-	if !slices.ContainsFunc(commands, func(c command) bool { return c.name == name }) {
-		panic(fmt.Sprintf("deadset: register %q: the command list names no such verb", name))
-	}
-	if _, taken := handlers[name]; taken {
-		panic(fmt.Sprintf("deadset: register %q: the verb has a handler already", name))
-	}
-	handlers[name] = run
+	// open is the run's [run.Request.Open].
+	open func(planned *plan.Source, dir string, diagnostics io.Writer) (source.Source, error)
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit((&command{}).dispatch(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run executes the command line in args and returns the process exit code.
-// It writes the report to stdout and diagnostics to stderr, and never exits
-// the process itself, so a test drives it directly.
-func run(args []string, stdout, stderr io.Writer) int {
-	return dispatch(handlers, args, stdout, stderr)
+// dispatch runs the command line in args and returns the process exit code.
+// It writes the verb's output to stdout and diagnostics to stderr, and never
+// exits the process itself, so a test drives it directly.
+func (c *command) dispatch(args []string, stdout, stderr io.Writer) int {
+	top := flag.NewFlagSet(run.Product, flag.ContinueOnError)
+	top.SetOutput(stderr)
+	top.Usage = func() { fmt.Fprint(stderr, usage()) }
+	if err := top.Parse(args); err != nil {
+		return vocab.ExitUsage
+	}
+	name := top.Arg(0)
+	at := slices.IndexFunc(verbs, func(v vocab.Verb) bool { return v.Name == name })
+	switch {
+	case name == "":
+		top.Usage()
+		return vocab.ExitUsage
+	case at < 0:
+		fmt.Fprintf(stderr, "%s: unknown command %q\n", run.Product, name)
+		top.Usage()
+		return vocab.ExitUsage
+	}
+	verb := &verbs[at]
+	set, runVerb := c.flags(verb)
+	set.SetOutput(stderr)
+	set.Usage = func() { fmt.Fprint(stderr, verbUsage(verb)) }
+	if err := set.Parse(top.Args()[1:]); err != nil {
+		return vocab.ExitUsage
+	}
+	if set.NArg() != 0 {
+		fmt.Fprintf(stderr, "%s: %s takes no argument, got %q\n", run.Product, verb.Name, set.Arg(0))
+		set.Usage()
+		return vocab.ExitUsage
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	code, err := runVerb(ctx, stdout, stderr)
+	if err != nil {
+		return failed(stderr, err, set.Usage)
+	}
+	return code
 }
 
-// dispatch runs the verb args names from verbs, the handlers registered by name.
-// It takes the handlers as a parameter so a test pins the dispatch over a fixed
-// set, whichever verb files the build holds.
-func dispatch(verbs map[string]handler, args []string, stdout, stderr io.Writer) int {
-	if flagName, ok := requestsFix(args); ok {
-		fmt.Fprintf(stderr, "deadset: %s requested a source edit, but deadset is report-only and never edits a source file\n", flagName)
-		return vocab.ExitUsage
+// flags is the flag set of one verb, which defines exactly the options its
+// row of cli.json lists. A binder that defines another set is a mistake in
+// this command's own source, so it panics, failing every test that runs the
+// verb.
+func (c *command) flags(verb *vocab.Verb) (*flag.FlagSet, runner) {
+	set := flag.NewFlagSet(run.Product+" "+verb.Name, flag.ContinueOnError)
+	runVerb := binders[verb.Name](c, set)
+	if slices.ContainsFunc(verb.Options, func(name string) bool { o, _ := vocab.OptionOf(name); return o.Setting != "" }) {
+		config.RegisterFlags(set)
 	}
-
-	fs := flag.NewFlagSet("deadset", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fs.Usage = func() { fmt.Fprint(stderr, usage(verbs)) }
-	if err := fs.Parse(args); err != nil {
-		return vocab.ExitUsage
+	var defined []string
+	set.VisitAll(func(f *flag.Flag) { defined = append(defined, f.Name) })
+	if want := slices.Sorted(slices.Values(verb.Options)); !slices.Equal(defined, want) {
+		panic(fmt.Sprintf("deadset %s: the verb defines the options %q, and cli.json lists %q", verb.Name, defined, want))
 	}
-
-	name := fs.Arg(0)
-	if name == "" {
-		fs.Usage()
-		return vocab.ExitUsage
-	}
-	verb, ok := verbs[name]
-	if !ok {
-		fmt.Fprintf(stderr, "deadset: unknown command %q\n", name)
-		fs.Usage()
-		return vocab.ExitUsage
-	}
-	return verb(fs.Args()[1:], stdout, stderr)
+	return set, runVerb
 }
 
-// usage is the usage text: every verb of commands with its summary, and the
-// verbs verbs holds a handler for while any verb is still without one.
-func usage(verbs map[string]handler) string {
+// usage is the usage text: every verb with its summary.
+func usage() string {
 	var text strings.Builder
-	text.WriteString("usage: deadset <command> [arguments]\n\ncommands:\n")
-	var implemented []string
-	for _, c := range commands {
-		fmt.Fprintf(&text, "  %-13s %s\n", c.name, c.summary)
-		if _, ok := verbs[c.name]; ok {
-			implemented = append(implemented, c.name)
-		}
-	}
-	switch n := len(implemented); {
-	case n == 0, n == len(commands):
-	case n == 1:
-		fmt.Fprintf(&text, "\nOnly %s is implemented in this build.\n", implemented[0])
-	default:
-		fmt.Fprintf(&text, "\nOnly %s and %s are implemented in this build.\n",
-			strings.Join(implemented[:n-1], ", "), implemented[n-1])
+	fmt.Fprintf(&text, "usage: %s <command> [options]\n\ncommands:\n", run.Product)
+	for _, v := range verbs {
+		fmt.Fprintf(&text, "  %-13s %s\n", v.Name, v.Summary)
 	}
 	return text.String()
 }
 
-// requestsFix reports whether args carries a fix flag in any spelling
-// (-fix, --fix, -fix=value, --fix=value), and returns the spelling found.
-func requestsFix(args []string) (string, bool) {
-	for _, arg := range args {
-		name := strings.TrimLeft(arg, "-")
-		if len(name) == len(arg) {
-			continue
-		}
-		if name == "fix" || strings.HasPrefix(name, "fix=") {
-			return arg, true
+// verbUsage is one verb's usage text: its command line, its summary and each
+// option with what it does.
+func verbUsage(verb *vocab.Verb) string {
+	var text, line strings.Builder
+	fmt.Fprintf(&line, "usage: %s %s", run.Product, verb.Name)
+	width := 0
+	spelled := make([]string, len(verb.Options))
+	for i, name := range verb.Options {
+		o, _ := vocab.OptionOf(name)
+		spelled[i] = "--" + o.Name + "=" + strings.ToUpper(o.Value)
+		fmt.Fprintf(&line, " [%s]", spelled[i])
+		width = max(width, len(spelled[i]))
+	}
+	fmt.Fprintf(&text, "%s\n\n%s\n", line.String(), verb.Summary)
+	if len(verb.Options) > 0 {
+		text.WriteString("\noptions:\n")
+	}
+	for i, name := range verb.Options {
+		o, _ := vocab.OptionOf(name)
+		fmt.Fprintf(&text, "  %-*s  %s\n", width, spelled[i], o.Summary)
+	}
+	return text.String()
+}
+
+func init() {
+	for name := range binders {
+		if !slices.ContainsFunc(verbs, func(v vocab.Verb) bool { return v.Name == name }) {
+			panic(fmt.Sprintf("deadset: the verb %s has a binder, and cli.json lists no such verb", name))
 		}
 	}
-	return "", false
+	for _, v := range verbs {
+		if binders[v.Name] == nil {
+			panic(fmt.Sprintf("deadset: cli.json lists the verb %s, and this build binds none", v.Name))
+		}
+	}
 }

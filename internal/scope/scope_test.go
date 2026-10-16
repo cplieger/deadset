@@ -1,6 +1,7 @@
 package scope_test
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset-spec/v8/document"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/scope"
 )
 
@@ -113,10 +116,7 @@ func TestReadRefusesEveryPublishedNegative(t *testing.T) {
 
 			path := written(t, negative.File, published(t, "examples/negatives/"+negative.File))
 			_, err := scope.Read(path)
-			at := path + ": " + negative.InstancePath
-			if negative.Constraint == "required" || negative.Constraint == "additionalProperties" {
-				at += "/"
-			}
+			at := path + ": " + cmp.Or(negative.InstancePath, "the document") + ": " + negative.Constraint + ": "
 			if !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), at) {
 				t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, ErrDocument) naming %q", negative.File, err, at)
 			}
@@ -127,25 +127,23 @@ func TestReadRefusesEveryPublishedNegative(t *testing.T) {
 	}
 }
 
-// TestReadRefusesWhatTheClosedDecodeRefuses pins the refusals of the closed
+// TestReadRefusesWhatTheClosedDecodeRefuses pins the refusals of the strict
 // decode no published negative carries, each at the JSON Pointer it names; at
-// is the pointer and its separator, empty for the whole document.
+// is the pointer and its separator, empty for a document that is not strict
+// JSON.
 func TestReadRefusesWhatTheClosedDecodeRefuses(t *testing.T) {
 	t.Parallel()
 
 	for _, c := range []struct {
 		name, body, at string
 	}{
-		{name: "member-named-twice", body: `{"target": {"path": "."}, "target": {"path": "app"}}`, at: "/target: "},
-		{name: "path-named-twice", body: `{"target": {"path": ".", "path": "app"}}`, at: "/target/path: "},
-		{name: "trailing-content", body: `{"target": {"path": "."}} {}`, at: ""},
-		{name: "not-an-object", body: `["target"]`, at: ""},
+		{name: "member-named-twice", body: `{"target": {"path": "."}, "target": {"path": "app"}}`},
+		{name: "trailing-content", body: `{"target": {"path": "."}} {}`},
+		{name: "not-an-object", body: `["target"]`, at: "the document: "},
 		{name: "target-role-consumer", body: `{"target": {"role": "consumer", "path": "."}}`, at: "/target/role: "},
-		{name: "target-path-absent", body: `{"target": {"id": "example.com/app"}}`, at: "/target/path: "},
+		{name: "target-path-absent", body: `{"target": {"id": "example.com/app"}}`, at: "/target: required: "},
 		{name: "consumers-null", body: `{"target": {"path": "."}, "consumers": null}`, at: "/consumers: "},
-		{name: "consumers-an-object", body: `{"target": {"path": "."}, "consumers": {"path": "consumer"}}`, at: "/consumers: "},
-		{name: "consumer-path-null", body: `{"target": {"path": "."}, "consumers": [{"path": "one"}, {"path": null}]}`, at: "/consumers/1/path: "},
-		{name: "consumer-undeclared-member", body: `{"target": {"path": "."}, "consumers": [{"path": "one", "url": "x"}]}`, at: "/consumers/0/url: "},
+		{name: "consumer-undeclared-member", body: `{"target": {"path": "."}, "consumers": [{"path": "one", "url": "x"}]}`, at: "/consumers/0: additionalProperties: "},
 		{name: "workspace-empty", body: `{"target": {"path": "."}, "workspace": ""}`, at: "/workspace: "},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -153,7 +151,8 @@ func TestReadRefusesWhatTheClosedDecodeRefuses(t *testing.T) {
 
 			path := written(t, "scope.json", []byte(c.body))
 			_, err := scope.Read(path)
-			if want := path + ": " + c.at; !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), want) {
+			if want := path + ": " + c.at; !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), want) ||
+				(c.at == "") != errors.Is(err, document.ErrMalformed) {
 				t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, ErrDocument) naming %q", c.body, err, want)
 			}
 		})
@@ -221,6 +220,61 @@ func TestRootIsTheDeepestDirectoryHoldingEveryPath(t *testing.T) {
 
 			if got := c.document.Root(); got != c.want {
 				t.Errorf("(%+v).Root() = %q, want %q", c.document, got, c.want)
+			}
+		})
+	}
+}
+
+// A document larger than the bound every document is held to is refused
+// without being read whole.
+func TestReadRefusesADocumentOverTheBound(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"target": {"path": "` + strings.Repeat("a", vocab.ConfigMaxBytes) + `"}}`)
+	path := written(t, "scope.json", body)
+	if _, err := scope.Read(path); !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("Read(a document of %d bytes) = %v, want ErrDocument naming the bound", len(body), err)
+	}
+}
+
+// Encode writes the document the scope schema states, with the roles the
+// module's place gives it, and Read reads it back as it was.
+func TestEncodeWritesWhatReadReadsBack(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	for _, c := range []struct {
+		document scope.Document
+		name     string
+		want     string
+	}{
+		{
+			name:     "target-alone",
+			document: scope.Document{Target: scope.Module{Path: dir}},
+			want:     "{\n  \"target\": {\n    \"role\": \"target\",\n    \"path\": \"" + dir + "\"\n  }\n}\n",
+		},
+		{
+			name: "target-and-consumers",
+			document: scope.Document{
+				Workspace: filepath.Join(dir, "go.work"),
+				Target:    scope.Module{ID: "example.com/app", Path: filepath.Join(dir, "app")},
+				Consumers: []scope.Module{{ID: "@example/web", Path: filepath.Join(dir, "web")}, {Path: filepath.Join(dir, "tool")}},
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			encoded, err := c.document.Encode()
+			if err != nil {
+				t.Fatalf("Encode() = %v", err)
+			}
+			if c.want != "" && string(encoded) != c.want {
+				t.Errorf("Encode() =\n%s\nwant\n%s", encoded, c.want)
+			}
+			read, err := scope.Read(written(t, "scope.json", encoded))
+			if err != nil || !reflect.DeepEqual(read, &c.document) {
+				t.Errorf("Read(Encode()) = %+v, %v, want %+v", read, err, c.document)
 			}
 		})
 	}

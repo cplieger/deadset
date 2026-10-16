@@ -56,6 +56,10 @@
       "result": "pass"
     },
     {
+      "case": "joined-component-takes-one-confidence",
+      "result": "pass"
+    },
+    {
       "case": "line-separators-escaped",
       "result": "pass"
     },
@@ -69,6 +73,10 @@
     },
     {
       "case": "one-report",
+      "result": "pass"
+    },
+    {
+      "case": "pending-finding-on-two-dead-edges",
       "result": "pass"
     },
     {
@@ -141,6 +149,10 @@
     },
     {
       "case": "two-reports-no-edges",
+      "result": "pass"
+    },
+    {
+      "case": "unmatched-root-another-analyzer-matched",
       "result": "pass"
     },
     {

@@ -7,14 +7,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
 // RepositoryFile is the name of the repository configuration at the target root.
 const RepositoryFile = "deadset.json"
-
-// maxDocumentBytes bounds a configuration document. A document over it is refused
-// without being read whole.
-const maxDocumentBytes = 1 << 20
 
 // Document is one configuration document: the file it was read from, which every
 // provenance entry the document supplies names, and its contents. Data is nil when
@@ -51,12 +49,12 @@ func readFile(path string) ([]byte, error) {
 	}
 	defer func() { _ = file.Close() }()
 
-	data, err := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, vocab.ConfigMaxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read the configuration %s: %w", path, err)
 	}
-	if len(data) > maxDocumentBytes {
-		return nil, &Error{Message: fmt.Sprintf("%s: the configuration is larger than the %d bytes one may hold", path, maxDocumentBytes)}
+	if len(data) > vocab.ConfigMaxBytes {
+		return nil, &Error{Message: fmt.Sprintf("%s: the configuration is larger than the %d bytes one may hold", path, vocab.ConfigMaxBytes)}
 	}
 	return data, nil
 }

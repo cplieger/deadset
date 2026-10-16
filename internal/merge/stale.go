@@ -19,10 +19,12 @@ var staleEdgeKind, _ = vocab.KindOf(vocab.StaleCrossLanguageEdge)
 
 // staleEdges is one stale-edge finding per edge, in bytewise order of the edge
 // identifiers, for every edge with a side that holds evaluations and whose
-// every evaluation is absent. merger prefixes each finding's component, which
-// counts the emitted findings from 1.
-func staleEdges(index edgeIndex, merger string) []report.Finding {
+// every evaluation is absent, with the listing of each finding's one-member
+// component, which no input lists. merger prefixes each finding's component,
+// which counts the emitted findings from 1.
+func staleEdges(index edgeIndex, merger string) ([]report.Finding, []listing) {
 	var emitted []report.Finding
+	var listings []listing
 	for _, edge := range slices.Sorted(maps.Keys(index)) {
 		var held, stale []report.EdgeSide
 		for _, side := range []report.Side{report.SideProvides, report.SideUsedBy} {
@@ -37,10 +39,15 @@ func staleEdges(index edgeIndex, merger string) []report.Finding {
 			}
 		}
 		if len(stale) > 0 {
-			emitted = append(emitted, staleEdge(edge, held, stale, merger+"/c-"+strconv.Itoa(len(emitted)+1)))
+			f := staleEdge(edge, held, stale, merger+"/c-"+strconv.Itoa(len(emitted)+1))
+			emitted = append(emitted, f)
+			listings = append(listings, listing{
+				component: componentKey{id: f.Component.ID},
+				members:   []report.Positioned{{Ref: f.Symbol.Ref, Name: f.Symbol.Name, Position: f.Position}},
+			})
 		}
 	}
-	return emitted
+	return emitted, listings
 }
 
 // strongestOf is the strongest state among one side's evaluations, each read
