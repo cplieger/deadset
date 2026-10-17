@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/cplieger/deadset/v2/internal/config"
@@ -39,7 +40,7 @@ func TestReadDocuments(t *testing.T) {
 	writeFile(t, target, config.RepositoryFile, repository)
 	central := writeFile(t, elsewhere, "central.json", []byte(`{}`))
 
-	repo, centralDocument, err := config.ReadDocuments(target, central)
+	repo, centralDocument, err := config.ReadDocuments(t.Context(), target, central)
 	if err != nil {
 		t.Fatalf("ReadDocuments(%s, %s) = error %v", target, central, err)
 	}
@@ -50,7 +51,7 @@ func TestReadDocuments(t *testing.T) {
 		t.Errorf("ReadDocuments(%s) central = %s holding %q, want %s holding {}", central, centralDocument.Path, centralDocument.Data, central)
 	}
 
-	repo, centralDocument, err = config.ReadDocuments(elsewhere, "")
+	repo, centralDocument, err = config.ReadDocuments(t.Context(), elsewhere, "")
 	if err != nil {
 		t.Fatalf("ReadDocuments(a root with no repository configuration) = error %v", err)
 	}
@@ -60,13 +61,68 @@ func TestReadDocuments(t *testing.T) {
 			repo, centralDocument)
 	}
 
-	if _, _, err := config.ReadDocuments(target, filepath.Join(elsewhere, "missing.json")); !errors.Is(err, fs.ErrNotExist) {
+	if _, _, err := config.ReadDocuments(t.Context(), target, filepath.Join(elsewhere, "missing.json")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("ReadDocuments(a central configuration that does not exist) = error %v, want one wrapping fs.ErrNotExist", err)
 	}
 
 	oversized := t.TempDir()
 	writeFile(t, oversized, config.RepositoryFile, bytes.Repeat([]byte(" "), 1<<20+1))
-	if _, _, err := config.ReadDocuments(oversized, ""); !isRefusal(err) {
+	if _, _, err := config.ReadDocuments(t.Context(), oversized, ""); !isRefusal(err) {
 		t.Errorf("ReadDocuments(a repository configuration over the size bound) = error %v, want a *config.Error", err)
+	}
+}
+
+// The repository configuration is read inside the target root alone: a
+// symbolic link leading out of it and a file that is not a regular one are not
+// read, and a link inside it is.
+func TestReadDocuments_readsTheRepositoryConfigurationInsideTheTarget(t *testing.T) {
+	t.Parallel()
+
+	repository := []byte(`{"target": {"kind": "library"}}`)
+	cases := []struct {
+		setup func(t *testing.T, target string)
+		name  string
+		reads bool
+	}{
+		{name: "link-out-of-the-target", setup: func(t *testing.T, target string) {
+			outside := writeFile(t, t.TempDir(), "deadset.json", repository)
+			link(t, outside, filepath.Join(target, config.RepositoryFile))
+		}},
+		{name: "link-to-an-endless-device", setup: func(t *testing.T, target string) {
+			link(t, "/dev/zero", filepath.Join(target, config.RepositoryFile))
+		}},
+		{name: "named-pipe", setup: func(t *testing.T, target string) {
+			if err := syscall.Mkfifo(filepath.Join(target, config.RepositoryFile), 0o600); err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+		}},
+		{name: "link-inside-the-target", reads: true, setup: func(t *testing.T, target string) {
+			writeFile(t, target, "shared.json", repository)
+			link(t, "shared.json", filepath.Join(target, config.RepositoryFile))
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			target := t.TempDir()
+			c.setup(t, target)
+			repo, _, err := config.ReadDocuments(t.Context(), target, "")
+			switch {
+			case c.reads && (err != nil || !bytes.Equal(repo.Data, repository)):
+				t.Errorf("ReadDocuments(%s) = %q, error %v, want %q", c.name, repo.Data, err, repository)
+			case !c.reads && (err == nil || repo.Data != nil):
+				t.Errorf("ReadDocuments(%s) = %q, error %v, want an error and nothing read", c.name, repo.Data, err)
+			}
+		})
+	}
+}
+
+// link makes name a symbolic link to target.
+func link(t *testing.T, target, name string) {
+	t.Helper()
+
+	if err := os.Symlink(target, name); err != nil {
+		t.Fatalf("Setup: %v", err)
 	}
 }

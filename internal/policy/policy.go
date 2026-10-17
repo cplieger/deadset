@@ -8,7 +8,6 @@ package policy
 import (
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/config"
 )
 
 // Options is how one run shapes its merged report.
@@ -18,7 +17,8 @@ type Options struct {
 	// wrote it.
 	Severity func(code string) (vocab.Severity, bool)
 
-	Sort config.Sort
+	// BySize keeps the largest deletions where the maximum drops findings.
+	BySize bool
 
 	// MaxFindings is the most findings the report keeps; zero keeps every one.
 	MaxFindings int
@@ -33,7 +33,7 @@ func Apply(r *report.Report, opts *Options) {
 	if opts.Severity != nil && restate(r, opts.Severity) {
 		report.Recount(r)
 	}
-	report.Cap(r, opts.MaxFindings, opts.Sort == config.SortSize)
+	report.Cap(r, opts.MaxFindings, opts.BySize)
 }
 
 // restate gives every finding the merge emitted the severity configured for

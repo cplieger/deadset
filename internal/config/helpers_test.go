@@ -8,16 +8,10 @@ import (
 	"github.com/cplieger/deadset/v2/internal/config"
 )
 
-// testContractVersion is the Contract version the tests resolve under.
-const testContractVersion = "3.2.0"
-
 // fromRepository returns the inputs of a run whose one source is a repository
 // configuration holding document.
 func fromRepository(document string) *config.Inputs {
-	return &config.Inputs{
-		ContractVersion: testContractVersion,
-		Repository:      config.Document{Path: "deadset.json", Data: []byte(document)},
-	}
+	return &config.Inputs{Repository: config.Document{Path: "deadset.json", Data: []byte(document)}}
 }
 
 // printedDocument is a printed configuration, decoded.

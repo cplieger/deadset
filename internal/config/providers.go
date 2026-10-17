@@ -2,9 +2,6 @@ package config
 
 import "encoding/json"
 
-// ProviderListKey is the setting that holds the provider list.
-const ProviderListKey = "providers.analyzers"
-
 // Provider is one entry of the provider list: an analyzer the orchestrator may run.
 type Provider struct {
 	// Name is the analyzer's name. No two entries of one list share it, because

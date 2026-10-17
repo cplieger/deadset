@@ -22,7 +22,6 @@ import (
 	"github.com/cplieger/deadset-spec/v8/document"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
@@ -96,7 +95,7 @@ type CommandError struct {
 }
 
 func (e *CommandError) Error() string {
-	return fmt.Sprintf("analyzer %s, provider entry %s[%d]: %v", e.Name, config.ProviderListKey, e.Index, e.Err)
+	return fmt.Sprintf("analyzer %s, provider entry %s[%d]: %v", e.Name, vocab.KeyProvidersAnalyzers, e.Index, e.Err)
 }
 
 func (e *CommandError) Unwrap() error { return e.Err }

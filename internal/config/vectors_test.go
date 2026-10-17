@@ -50,22 +50,19 @@ var publishedCases = []string{
 	"unimplemented-key",
 }
 
-// contractVersion is the version of the pinned Contract, which the published cases
-// name as the version the product implements.
-func contractVersion(t *testing.T) string {
+// caseFlags reads the flags.json of a published case, by key, or none.
+func caseFlags(t *testing.T, dir string) map[vocab.Key]json.RawMessage {
 	t.Helper()
 
-	data, err := spec.Contract.ReadFile("contract/contract.json")
-	if err != nil {
-		t.Fatalf("Setup: read contract/contract.json: %v", err)
+	data := caseFile(t, dir, "flags.json")
+	if data == nil {
+		return nil
 	}
-	var contract struct {
-		ContractVersion string `json:"contract_version"`
+	var flags map[vocab.Key]json.RawMessage
+	if err := json.Unmarshal(data, &flags); err != nil {
+		t.Fatalf("Setup: decode %s/flags.json: %v", dir, err)
 	}
-	if err := json.Unmarshal(data, &contract); err != nil {
-		t.Fatalf("Setup: decode contract/contract.json: %v", err)
-	}
-	return contract.ContractVersion
+	return flags
 }
 
 // caseFile reads one file of a published case, or nil when the case has none.
@@ -112,17 +109,15 @@ func TestPublishedConfigurationVectors(t *testing.T) {
 		t.Fatalf("vectors/config holds %v, want the cases this suite runs %v", found, publishedCases)
 	}
 
-	version := contractVersion(t)
 	for _, name := range publishedCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			dir := path.Join("vectors/config", name)
 			in := &config.Inputs{
-				ContractVersion: version,
-				Repository:      config.Document{Path: "repository.json", Data: caseFile(t, dir, "repository.json")},
-				Central:         config.Document{Path: "central.json", Data: caseFile(t, dir, "central.json")},
-				Flags:           caseFile(t, dir, "flags.json"),
+				Repository: config.Document{Path: "repository.json", Data: caseFile(t, dir, "repository.json")},
+				Central:    config.Document{Path: "central.json", Data: caseFile(t, dir, "central.json")},
+				Flags:      caseFlags(t, dir),
 			}
 			resolved, refused := caseFile(t, dir, "expected.json"), caseFile(t, dir, "expected-error.json")
 			if (resolved == nil) == (refused == nil) {
@@ -138,7 +133,7 @@ func TestPublishedConfigurationVectors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Resolve(%s) = error %v, want the resolved configuration", name, err)
 			}
-			assertResolved(t, name, resolved, r, version)
+			assertResolved(t, name, resolved, r)
 		})
 	}
 }
@@ -170,7 +165,7 @@ func assertRefused(t *testing.T, name string, expected []byte, err error) {
 // assertResolved checks the printed configuration against the case's
 // expected.json member by member, in order, and checks that the printed output
 // read back as a repository configuration resolves to the same values.
-func assertResolved(t *testing.T, name string, expected []byte, r *config.Resolved, version string) {
+func assertResolved(t *testing.T, name string, expected []byte, r *config.Resolved) {
 	t.Helper()
 
 	var printed bytes.Buffer
@@ -181,10 +176,7 @@ func assertResolved(t *testing.T, name string, expected []byte, r *config.Resolv
 		t.Errorf("Resolve(%s) printed\n%s\nwant\n%s", name, printed.String(), expected)
 	}
 
-	back, err := config.Resolve(&config.Inputs{
-		ContractVersion: version,
-		Repository:      config.Document{Path: "printed.json", Data: printed.Bytes()},
-	})
+	back, err := config.Resolve(&config.Inputs{Repository: config.Document{Path: "printed.json", Data: printed.Bytes()}})
 	if err != nil {
 		t.Fatalf("Resolve(the printed configuration of %s) = error %v, want it to read back", name, err)
 	}
@@ -237,10 +229,9 @@ func dottedPath(pointer string) string {
 }
 
 // Every configuration document the Contract publishes as refused is refused here,
-// naming the place in the document the schema's own refusal names, or the member
-// inside it the closed key list does not declare, which is refused by its own name.
-// A document refused inside a language's own section is resolved instead, its value
-// passed through unread to the analyzer of that language, which refuses it.
+// a language's own section included, naming the place in the document the
+// schema's own refusal names, or the member inside it the closed key list does
+// not declare, which is refused by its own name.
 func TestPublishedRefusedConfigurations(t *testing.T) {
 	t.Parallel()
 
@@ -262,7 +253,6 @@ func TestPublishedRefusedConfigurations(t *testing.T) {
 	}
 
 	schema := configSchemaDocument(t)
-	version := contractVersion(t)
 	for _, row := range refused {
 		t.Run(strings.TrimSuffix(row.File, ".json"), func(t *testing.T) {
 			t.Parallel()
@@ -271,17 +261,7 @@ func TestPublishedRefusedConfigurations(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Setup: read examples/negatives/%s: %v", row.File, err)
 			}
-			_, err = config.Resolve(&config.Inputs{
-				ContractVersion: version,
-				Repository:      config.Document{Path: row.File, Data: document},
-			})
-			if section, owned := languageSection(schema, row.InstancePath); owned {
-				if err != nil {
-					t.Errorf("Resolve(%s) = error %v, want the %s section passed through unread to its analyzer",
-						row.File, err, section)
-				}
-				return
-			}
+			_, err = config.Resolve(&config.Inputs{Repository: config.Document{Path: row.File, Data: document}})
 			refusal, isRefusal := errors.AsType[*config.Error](err)
 			if !isRefusal {
 				t.Fatalf("Resolve(%s) = error %v, want a *config.Error", row.File, err)
@@ -307,16 +287,6 @@ func configSchemaDocument(t *testing.T) map[string]any {
 		t.Fatalf("Setup: decode contract/config.schema.json: %v", err)
 	}
 	return schema
-}
-
-// languageSection returns the top-level key a JSON Pointer starts in when the schema
-// gives that key to one language's analyzer.
-func languageSection(schema map[string]any, pointer string) (string, bool) {
-	name, _, _ := strings.Cut(strings.TrimPrefix(pointer, "/"), "/")
-	properties, _ := schema["properties"].(map[string]any)
-	declaration, _ := properties[name].(map[string]any)
-	owner, _ := declaration["x-owner"].(string)
-	return name, strings.HasSuffix(owner, "-analyzer")
 }
 
 // refusedKey returns the key a refusal of one published refused document names: the

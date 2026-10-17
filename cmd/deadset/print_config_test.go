@@ -117,6 +117,8 @@ func TestPrintConfigRefusesWithTheUsageCode(t *testing.T) {
 		{name: "language-in-scope-without-a-target-kind", repository: `{"analysis": {"languages": ["go"]}}`, names: "target.kind"},
 		{name: "no-configuration-at-all", names: "target.kind"},
 		{name: "unimplemented-key", repository: `{"target": {"kind": "library"}, "reporters": {"fail_under": "warn"}}`, names: "reporters.fail_under"},
+		{name: "exemption-class-outside-the-vocabulary", repository: `{"target": {"kind": "library"}, "exemptions": {"disabled": ["no-such-class"]}}`, names: "no-such-class"},
+		{name: "fault-in-a-language-section", repository: `{"target": {"kind": "library"}, "ts": {"serializers": [{"symbol": "go://a#B"}]}}`, names: "ts.serializers[0].symbol"},
 		{name: "flag-outside-its-set", repository: `{"target": {"kind": "library"}}`, extra: []string{"--fail-on=loud"}, names: "reporters.fail_on"},
 		{name: "central-configuration-absent", repository: `{"target": {"kind": "library"}}`, extra: []string{"--central=" + filepath.Join(t.TempDir(), "central.json")}, names: "central.json"},
 		{name: "argument", repository: `{"target": {"kind": "library"}}`, extra: []string{"extra"}, names: `"extra"`},

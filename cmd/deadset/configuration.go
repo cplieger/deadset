@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 )
 
@@ -20,16 +20,12 @@ import (
 // document that cannot be read, the central one the invocation names
 // included, is a command line the run refuses; an absent repository
 // configuration is no configuration.
-func resolveConfiguration(set *flag.FlagSet, target, central string) (*config.Resolved, string, error) {
+func resolveConfiguration(ctx context.Context, set *flag.FlagSet, target, central string) (*config.Resolved, string, error) {
 	root, err := targetRoot(target)
 	if err != nil {
 		return nil, "", err
 	}
-	flags, err := config.FlagSettings(set)
-	if err != nil {
-		return nil, "", err
-	}
-	repository, centralDocument, err := config.ReadDocuments(target, central)
+	repository, centralDocument, err := config.ReadDocuments(ctx, target, central)
 	if err != nil {
 		if unread, ok := errors.AsType[*fs.PathError](err); ok && unread.Path == central {
 			return nil, "", &usageError{err: err, option: "central"}
@@ -37,10 +33,9 @@ func resolveConfiguration(set *flag.FlagSet, target, central string) (*config.Re
 		return nil, "", &usageError{err: err}
 	}
 	resolved, err := config.Resolve(&config.Inputs{
-		ContractVersion: vocab.ContractVersion,
-		Repository:      repository,
-		Central:         centralDocument,
-		Flags:           flags,
+		Repository: repository,
+		Central:    centralDocument,
+		Flags:      config.FlagSettings(set),
 	})
 	if err != nil {
 		return nil, "", err

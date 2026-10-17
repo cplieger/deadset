@@ -197,7 +197,7 @@ func claimed(entries []config.Provider, languages []vocab.Language) error {
 		return nil
 	}
 	return &config.Error{Message: fmt.Sprintf("%s holds no entry claiming %s, in scope for this run: "+
-		"add an entry claiming each, or leave them out of scope", config.ProviderListKey, strings.Join(unclaimed, ", "))}
+		"add an entry claiming each, or leave them out of scope", vocab.KeyProvidersAnalyzers, strings.Join(unclaimed, ", "))}
 }
 
 // consumerLanguages is every language a census finds in the consumer at

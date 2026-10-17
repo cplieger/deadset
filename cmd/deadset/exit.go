@@ -7,6 +7,7 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/documents"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/run"
 	"github.com/cplieger/deadset/v2/internal/source"
@@ -32,13 +33,15 @@ func (e *usageError) Error() string {
 func (e *usageError) Unwrap() error { return e.err }
 
 // failed prints err and returns the exit code of a run it ended. A setup
-// failure prints its setup-failure line. A configuration or a command line
-// the run refuses, and an analyzer exiting with the usage code, having
-// refused a value of the configuration it was given, is [vocab.ExitUsage]:
-// each is fixed by changing what the run was asked to do. The usage text
-// follows a refusal of this command's own, not an analyzer's, which printed
-// its own. Every other error is [vocab.ExitFailure], the code of a run that
-// produced no answer.
+// failure prints its setup-failure line. A configuration, a shared document
+// or a command line the run refuses, and an analyzer exiting with the usage
+// code, having refused a value of the configuration it was given, is
+// [vocab.ExitUsage]: each is fixed by changing what the run was asked to do.
+// The usage text follows a refusal of the command line or the configuration.
+// It does not follow a refused shared document, whose message names the
+// document and the value, or an analyzer's refusal, which printed its own.
+// Every other error is [vocab.ExitFailure], the code of a run that produced no
+// answer.
 func failed(stderr io.Writer, err error, printUsage func()) int {
 	if setup, ok := errors.AsType[*plan.SetupError](err); ok {
 		fmt.Fprintf(stderr, "%s%s\n", vocab.SetupFailurePrefix, setup)
@@ -48,7 +51,8 @@ func failed(stderr io.Writer, err error, printUsage func()) int {
 	if !refused(err) {
 		return vocab.ExitFailure
 	}
-	if _, analyzer := errors.AsType[*source.Error](err); !analyzer {
+	_, analyzer := errors.AsType[*source.Error](err)
+	if _, shared := errors.AsType[*documents.Error](err); !analyzer && !shared {
 		printUsage()
 	}
 	return vocab.ExitUsage
@@ -61,7 +65,7 @@ func refused(err error) bool {
 	switch err := err.(type) {
 	case nil:
 		return false
-	case *config.Error, *usageError:
+	case *config.Error, *usageError, *documents.Error:
 		return true
 	case *source.Error:
 		return err.Exit == vocab.ExitUsage && errors.Is(err, source.ErrExited)

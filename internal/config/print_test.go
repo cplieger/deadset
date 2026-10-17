@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 )
 
@@ -33,13 +34,13 @@ func TestSplit_handsEachAnalyzerItsOwnSections(t *testing.T) {
 	}
 	cases := []struct {
 		name      string
-		languages []string
+		languages []vocab.Language
 		held      []string
 		withheld  []string
 	}{
-		{name: "go", languages: []string{"go"}, held: []string{"go"}, withheld: []string{"ts"}},
-		{name: "ts", languages: []string{"ts"}, held: []string{"ts"}, withheld: []string{"go"}},
-		{name: "both", languages: []string{"go", "ts"}, held: []string{"go", "ts"}},
+		{name: "go", languages: []vocab.Language{vocab.Go}, held: []string{"go"}, withheld: []string{"ts"}},
+		{name: "ts", languages: []vocab.Language{vocab.TS}, held: []string{"ts"}, withheld: []string{"go"}},
+		{name: "both", languages: []vocab.Language{vocab.Go, vocab.TS}, held: []string{"go", "ts"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -96,7 +97,7 @@ func TestSplit_withholdsTheReporterSettingsTheMergedReportTakes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup: Resolve(a target configuring its reporters) = error %v", err)
 	}
-	for _, languages := range [][]string{{"go"}, {"ts"}, {"go", "ts"}} {
+	for _, languages := range [][]vocab.Language{{vocab.Go}, {vocab.TS}, {vocab.Go, vocab.TS}} {
 		document, err := r.Split(languages...)
 		if err != nil {
 			t.Fatalf("Split(%v) = error %v", languages, err)
@@ -130,14 +131,11 @@ func TestSplit_readsBackAsTheValuesItHolds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup: Resolve(a mixed target) = error %v", err)
 	}
-	document, err := r.Split("ts")
+	document, err := r.Split(vocab.TS)
 	if err != nil {
 		t.Fatalf("Split(ts) = error %v", err)
 	}
-	back, err := config.Resolve(&config.Inputs{
-		ContractVersion: testContractVersion,
-		Repository:      config.Document{Path: "config.ts.json", Data: document},
-	})
+	back, err := config.Resolve(&config.Inputs{Repository: config.Document{Path: "config.ts.json", Data: document}})
 	if err != nil {
 		t.Fatalf("Resolve(the split for ts) = error %v, want it to read back\n%s", err, document)
 	}

@@ -16,7 +16,6 @@ import (
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
-	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/run"
@@ -77,8 +76,7 @@ func request(t *testing.T, target, document string, declared *scope.Document, re
 	t.Helper()
 
 	resolved, err := config.Resolve(&config.Inputs{
-		ContractVersion: vocab.ContractVersion,
-		Repository:      config.Document{Path: filepath.Join(target, config.RepositoryFile), Data: []byte(document)},
+		Repository: config.Document{Path: filepath.Join(target, config.RepositoryFile), Data: []byte(document)},
 	})
 	if err != nil {
 		t.Fatalf("Setup: resolve: %v", err)

@@ -72,7 +72,7 @@ func (c *command) bindAnalyze(set *flag.FlagSet) runner {
 // every analyzer printed, the renderings and the verdict, and returns the
 // verdict's exit code.
 func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (int, error) {
-	resolved, root, err := resolveConfiguration(a.set, a.target, a.central)
+	resolved, root, err := resolveConfiguration(ctx, a.set, a.target, a.central)
 	if err != nil {
 		return 0, err
 	}
@@ -81,11 +81,11 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 	if err != nil {
 		return 0, err
 	}
-	declared, err := a.readScope(root)
+	declared, err := a.readScope(ctx, root)
 	if err != nil {
 		return 0, err
 	}
-	opts := &render.Options{Template: template, BySize: reporters.Sort == config.SortSize}
+	opts := &render.Options{Template: template, BySize: reporters.BySize}
 	result, err := run.Analyze(ctx, &run.Request{
 		Resolved:    resolved,
 		Scope:       declared,
@@ -143,11 +143,11 @@ func (a *analyzeFlags) readTemplate(formats []vocab.Format) (*render.Template, e
 // target root; with no document the scope is the target alone. A document
 // that cannot be read is a command line the run refuses, and one the scope
 // schema refuses a failure of the run, as for every analyzer.
-func (a *analyzeFlags) readScope(root string) (*scope.Document, error) {
+func (a *analyzeFlags) readScope(ctx context.Context, root string) (*scope.Document, error) {
 	if a.scopePath == "" {
 		return &scope.Document{Target: scope.Module{Path: root}}, nil
 	}
-	declared, err := scope.Read(a.scopePath)
+	declared, err := scope.Read(ctx, a.scopePath)
 	switch {
 	case errors.Is(err, scope.ErrDocument):
 		return nil, fmt.Errorf("--scope=%s: %w", a.scopePath, err)

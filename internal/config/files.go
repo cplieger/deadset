@@ -1,14 +1,16 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 
+	"github.com/cplieger/atomicfile/v4"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/documents"
 )
 
 // RepositoryFile is the name of the repository configuration at the target root.
@@ -23,38 +25,45 @@ type Document struct {
 }
 
 // ReadDocuments reads the configuration documents one invocation names: the
-// repository configuration at the target root, which may be absent, and the central
-// configuration at central, which is read when central is not empty and must then
-// exist.
-func ReadDocuments(target, central string) (repository, centralDocument Document, err error) {
+// repository configuration at the target root, read as [documents.Read] reads
+// a document there, which may be absent, and the central configuration at
+// central, which is read when central is not empty and must then exist. A
+// document over [vocab.DocumentMaxBytes] is an [*Error].
+func ReadDocuments(ctx context.Context, target, central string) (repository, centralDocument Document, err error) {
 	repository = Document{Path: filepath.Join(target, RepositoryFile)}
-	repository.Data, err = readFile(repository.Path)
+	repository.Data, err = documents.Read(ctx, target, RepositoryFile)
 	if errors.Is(err, fs.ErrNotExist) {
 		repository.Data, err = nil, nil
 	}
-	if err != nil || central == "" {
-		return repository, Document{}, err
+	if err != nil {
+		return repository, Document{}, readError(repository.Path, err)
+	}
+	if central == "" {
+		return repository, Document{}, nil
 	}
 	centralDocument = Document{Path: central}
-	centralDocument.Data, err = readFile(central)
-	return repository, centralDocument, err
+	centralDocument.Data, err = readNamed(ctx, central)
+	if err != nil {
+		return repository, centralDocument, readError(central, err)
+	}
+	return repository, centralDocument, nil
 }
 
-// readFile reads one configuration document whole, refusing one larger than the
-// bound.
-func readFile(path string) ([]byte, error) {
+// readNamed reads the document at a path the invocation names, relative paths
+// included, which [atomicfile.ReadBounded] refuses.
+func readNamed(ctx context.Context, path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("read the configuration: %w", err)
+		return nil, err
 	}
 	defer func() { _ = file.Close() }()
+	return atomicfile.ReadBoundedFile(ctx, file, vocab.DocumentMaxBytes)
+}
 
-	data, err := io.ReadAll(io.LimitReader(file, vocab.ConfigMaxBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("read the configuration %s: %w", path, err)
+// readError is the error reading the configuration at path failed with.
+func readError(path string, err error) error {
+	if errors.Is(err, atomicfile.ErrFileTooLarge) {
+		return &Error{Message: fmt.Sprintf("%s: the configuration is larger than the %d bytes one may hold", path, vocab.DocumentMaxBytes)}
 	}
-	if len(data) > vocab.ConfigMaxBytes {
-		return nil, &Error{Message: fmt.Sprintf("%s: the configuration is larger than the %d bytes one may hold", path, vocab.ConfigMaxBytes)}
-	}
-	return data, nil
+	return fmt.Errorf("read the configuration: %w", err)
 }

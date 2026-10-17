@@ -7,7 +7,6 @@ import (
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/policy"
 )
 
@@ -91,12 +90,12 @@ func TestApply_leavesAnAnalyzersFindingAsTheAnalyzerWroteIt(t *testing.T) {
 func TestApply_keepsTheCanonicalOrderUnderEitherSort(t *testing.T) {
 	t.Parallel()
 
-	for _, sort := range []config.Sort{config.SortSize, config.SortPosition} {
+	for _, bySize := range []bool{true, false} {
 		r := merged(t, "two-reports-no-edges")
 		before := codes(r)
-		policy.Apply(r, &policy.Options{Sort: sort})
+		policy.Apply(r, &policy.Options{BySize: bySize})
 		if got := codes(r); !slices.Equal(got, before) {
-			t.Errorf("Apply(sort %s) = %q, want the canonical order %q", sort, got, before)
+			t.Errorf("Apply(by size %t) = %q, want the canonical order %q", bySize, got, before)
 		}
 	}
 }
@@ -110,7 +109,7 @@ func TestApply_boundsTheFindingsAndCountsWhatItOmits(t *testing.T) {
 	r := merged(t, "two-reports-no-edges")
 	want := r.Totals
 	want.Omitted = 2
-	policy.Apply(r, &policy.Options{Sort: config.SortSize, MaxFindings: 2})
+	policy.Apply(r, &policy.Options{BySize: true, MaxFindings: 2})
 	if got := codes(r); !slices.Equal(got, []string{"DS1001/deadset-go", "DS1002/deadset-go"}) {
 		t.Errorf("Apply(max 2 by size) findings = %q, want the two largest", got)
 	}
