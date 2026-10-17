@@ -86,7 +86,7 @@ func (c *command) dispatch(args []string, stdout, stderr io.Writer) int {
 	defer stop()
 	code, err := runVerb(ctx, stdout, stderr)
 	if err != nil {
-		return failed(stderr, err, set.Usage)
+		return failed(ctx, stderr, err, set.Usage)
 	}
 	return code
 }

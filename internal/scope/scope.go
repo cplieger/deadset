@@ -20,9 +20,6 @@ import (
 	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
-// ErrDocument reports a scope document the Contract's scope schema refuses.
-var ErrDocument = errors.New("scope: the document is refused")
-
 var schema = sync.OnceValues(func() (*document.Schema, error) {
 	return document.Compile(spec.Contract, "contract/scope.schema.json")
 })
@@ -64,9 +61,9 @@ type wireModule struct {
 // Read reads the scope document at path, resolving a relative path inside it
 // against the directory that holds it. A document larger than
 // [vocab.DocumentMaxBytes], one that is not strict JSON and one the scope
-// schema refuses are errors satisfying errors.Is(err, [ErrDocument]) that name
-// the file and the JSON Pointer at fault; an unreadable document wraps the
-// read's error, so an absent one satisfies errors.Is(err, fs.ErrNotExist).
+// schema refuses are errors that name the file and the JSON Pointer at fault;
+// an unreadable document wraps the read's error, so an absent one satisfies
+// errors.Is(err, fs.ErrNotExist).
 func Read(ctx context.Context, path string) (*Document, error) {
 	compiled, err := schema()
 	if err != nil {
@@ -78,14 +75,14 @@ func Read(ctx context.Context, path string) (*Document, error) {
 	}
 	data, err := atomicfile.ReadBounded(ctx, absolute, vocab.DocumentMaxBytes)
 	if errors.Is(err, atomicfile.ErrFileTooLarge) {
-		return nil, fmt.Errorf("%w: %s: the document is larger than the %d bytes one may hold", ErrDocument, path, vocab.DocumentMaxBytes)
+		return nil, fmt.Errorf("scope: %s: the document is larger than the %d bytes one may hold", path, vocab.DocumentMaxBytes)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scope: %w", err)
 	}
 	var read wire
 	if err := compiled.Unmarshal(data, &read); err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", ErrDocument, path, err)
+		return nil, fmt.Errorf("scope: %s: %w", path, err)
 	}
 	base := filepath.Dir(absolute)
 	resolve := func(p string) string {

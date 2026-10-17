@@ -9,12 +9,11 @@
 // cancelled run each leave the run with no report from that source, and [Run]
 // then returns no report from any source. Every refusal of a read is an
 // [*Error] naming the provider entry and the report path, and every refusal of
-// a handshake a [*HandshakeError] naming the provider entry and its command;
-// the exit code the run returns for one is the caller's to decide.
+// a handshake a [*HandshakeError] naming the provider entry and its command,
+// each wrapped in the class of failure it is where it names one.
 package source
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"slices"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
@@ -50,7 +50,8 @@ type Files struct {
 
 // Outcome is what one source left: its report or the refusal of its read,
 // and what it printed, which is held whole rather than streamed so two
-// sources' lines never interleave.
+// sources' lines never interleave. After [Run], Printed is what the source
+// printed beside the failure lines Run relays, [failure.Quoted].
 type Outcome struct {
 	Report *report.Report
 	Err    error
@@ -71,24 +72,19 @@ type Outcome struct {
 }
 
 // SetupFailed reports whether a setup failure ended the source's run: the
-// failure code and a line the setup-failure prefix opens.
+// failure code and a class line of the setup group.
 func (o *Outcome) SetupFailed() bool {
-	if o.Exit != vocab.ExitFailure {
-		return false
-	}
-	for line := range bytes.Lines(o.Printed) {
-		if bytes.HasPrefix(line, []byte(vocab.SetupFailurePrefix)) {
-			return true
-		}
-	}
-	return false
+	relayed, ok := errors.AsType[*failure.Error](o.Err)
+	return ok && o.Exit == vocab.ExitFailure && relayed.Setup()
 }
 
 // Run produces every source's outcome at once, each handed files[i], and
-// returns them in the order of sources. When any source leaves no report,
-// every outcome's report is dropped and the error joins every refusal in that
-// order, so no source's findings stand as the run's result beside another's
-// failure.
+// returns them in the order of sources. The refusal of a source that ended
+// with the failure code is the failures it printed, relayed, and everything
+// else every source printed is kept [failure.Quoted]. When any source
+// leaves no report, every outcome's report is dropped and the error joins
+// every refusal in that order, so no source's findings stand as the run's
+// result beside another's failure.
 func Run(ctx context.Context, sources []Source, files []Files) ([]Outcome, error) {
 	outcomes := make([]Outcome, len(sources))
 	var running sync.WaitGroup
@@ -98,6 +94,11 @@ func Run(ctx context.Context, sources []Source, files []Files) ([]Outcome, error
 	running.Wait()
 	var failures []error
 	for i := range outcomes {
+		if o := &outcomes[i]; o.Exit == vocab.ExitFailure {
+			o.Err, o.Printed = failure.Relayed(o.Analyzer, o.Printed)
+		} else {
+			o.Printed = failure.Quoted(o.Analyzer, o.Printed)
+		}
 		if outcomes[i].Err != nil {
 			failures = append(failures, outcomes[i].Err)
 		}

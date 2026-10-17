@@ -14,6 +14,7 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/scope"
 )
 
@@ -80,15 +81,6 @@ type Source struct {
 	Index int
 }
 
-// SetupError is a run that ends with the failure code for want of something
-// the project provides, of one setup-failure class.
-type SetupError struct {
-	Class  string
-	Detail string
-}
-
-func (e *SetupError) Error() string { return e.Class + ": " + e.Detail }
-
 // UnclaimedError is a declared consumer no analyzer of the run claims a
 // language of, which the run refuses as the invocation that declared it.
 type UnclaimedError struct {
@@ -106,7 +98,7 @@ func (e *UnclaimedError) Error() string {
 
 // Make plans the run in asks for, from what tree holds. A target in which the
 // census finds no language, and a declared consumer that is absent, is no
-// directory or holds no language, is a [*SetupError]; a language in scope no
+// directory or holds no language, is a setup [*failure.Error]; a language in scope no
 // provider entry claims is a [*config.Error], before any consumer is read;
 // consumers no analyzer claims are [*UnclaimedError]s, joined.
 func Make(in *Input, tree Tree) (*Plan, error) {
@@ -162,26 +154,8 @@ func inScope(in *Input, tree Tree) ([]vocab.Language, error) {
 	return found, nil
 }
 
-// noProgram is the setup failure of a target holding no program of any
-// language, naming what each language reads one from.
-func noProgram(root string) *SetupError {
-	rows := vocab.LanguageRows()
-	reads := make([]string, 0, len(rows))
-	for i := range rows {
-		row := &rows[i]
-		from := strings.Join(row.Markers, " or ")
-		if row.ProgramWithoutMarker {
-			from += " or a " + strings.Join(row.Extensions, " or ") + " file"
-			if len(row.Companions) > 0 {
-				from += " beside " + strings.Join(row.Companions, " or ")
-			}
-		}
-		reads = append(reads, string(row.Language)+" reads one from "+from)
-	}
-	return &SetupError{Class: vocab.SetupNoProgram, Detail: fmt.Sprintf(
-		"no file under %s puts a language in scope, so it holds no program (%s): run from the directory that holds one, or name the languages to analyze in analysis.languages",
-		root, strings.Join(reads, "; "),
-	)}
+func noProgram(root string) *failure.Error {
+	return failure.Wrap(vocab.SetupNoProgram, fmt.Errorf("no file under %s puts a language in scope, so it holds no program", root))
 }
 
 // claimed refuses a provider list that leaves languages in scope with no
@@ -206,13 +180,13 @@ func consumerLanguages(path string, tree Tree) ([]vocab.Language, error) {
 	languages, err := tree.Languages(path)
 	switch {
 	case err != nil:
-		return nil, &SetupError{Class: vocab.SetupMissingConsumer, Detail: fmt.Sprintf(
+		return nil, failure.New(vocab.SetupMissingConsumer, fmt.Sprintf(
 			"the declared consumer %s cannot be read, and no finding is computed without it: %v; check it out at that path", path, err,
-		)}
+		))
 	case len(languages) == 0:
-		return nil, &SetupError{Class: vocab.SetupMissingConsumer, Detail: fmt.Sprintf(
+		return nil, failure.New(vocab.SetupMissingConsumer, fmt.Sprintf(
 			"the declared consumer %s holds no language in scope, and no finding is computed without it; check it out at that path", path,
-		)}
+		))
 	}
 	return languages, nil
 }

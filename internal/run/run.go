@@ -20,6 +20,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/documents"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/merge"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/policy"
@@ -100,10 +101,6 @@ type Result struct {
 	Written []rendering
 }
 
-// ErrRunDir reports a run directory that exists, or whose parent does not,
-// which the request named.
-var ErrRunDir = errors.New("the run directory cannot be created")
-
 // Analyze runs one analysis. An error is a run that produced no merged report,
 // or a rendering that could not be written beside it; the result is returned
 // with it once the run directory exists.
@@ -167,6 +164,15 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	return result, err
 }
 
+// runDirectory creates the run directory path names, or one of its own when
+// it names none.
+func runDirectory(path string) (*rundir.Dir, error) {
+	if path == "" {
+		return rundir.CreateTemp()
+	}
+	return rundir.Create(path)
+}
+
 // open makes every planned source, before anything is written, so a command
 // that resolves to nothing leaves no run directory behind.
 func open(req *Request, planned *plan.Plan) ([]source.Source, error) {
@@ -185,19 +191,6 @@ func open(req *Request, planned *plan.Plan) ([]source.Source, error) {
 		}
 	}
 	return sources, errors.Join(failures...)
-}
-
-// runDirectory creates the run directory path names, or one of its own when
-// it names none.
-func runDirectory(path string) (*rundir.Dir, error) {
-	if path == "" {
-		return rundir.CreateTemp()
-	}
-	dir, err := rundir.Create(path)
-	if errors.Is(err, os.ErrExist) || errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("%w: %w", ErrRunDir, err)
-	}
-	return dir, err
 }
 
 // handedFiles is one source's files in the run directory.
@@ -278,7 +271,7 @@ func merged(outcomes []source.Outcome, accepted []string, version string) (*repo
 func writeFiles(dir *rundir.Dir, req *Request, r *report.Report) ([]rendering, error) {
 	root, err := os.OpenRoot(req.Root)
 	if err != nil {
-		return nil, err
+		return nil, failure.Wrap(vocab.RunUnwrittenOutput, fmt.Errorf("render beside the merged report: %w", err))
 	}
 	defer func() { _ = root.Close() }()
 	opts := *req.Render
@@ -291,7 +284,7 @@ func writeFiles(dir *rundir.Dir, req *Request, r *report.Report) ([]rendering, e
 		}
 		var document bytes.Buffer
 		if err := render.Render(&document, format, r, &opts); err != nil {
-			return written, err
+			return written, failure.Wrap(vocab.RunUnwrittenOutput, fmt.Errorf("render %s beside the merged report: %w", format, err))
 		}
 		if err := dir.WriteRendering(suffix, document.Bytes()); err != nil {
 			return written, err

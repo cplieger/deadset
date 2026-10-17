@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 )
 
 // develVersion is the version of a build the toolchain stamped no module
@@ -22,8 +23,10 @@ const develVersion = "0.0.0-devel"
 // and the Contract version it implements, one to a line.
 func (*command) bindVersion(*flag.FlagSet) runner {
 	return func(_ context.Context, stdout, _ io.Writer) (int, error) {
-		_, err := fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), vocab.ContractVersion)
-		return vocab.ExitClean, err
+		if _, err := fmt.Fprintf(stdout, "deadset %s\ncontract %s\n", version(), vocab.ContractVersion); err != nil {
+			return 0, failure.Wrap(vocab.RunUnwrittenOutput, fmt.Errorf("write the version: %w", err))
+		}
+		return vocab.ExitClean, nil
 	}
 }
 

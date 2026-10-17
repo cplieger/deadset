@@ -8,6 +8,7 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 )
 
 // errUnresolvedEdge is a pending finding whose edge no input report evaluates
@@ -99,19 +100,20 @@ func (index edgeIndex) strongestOther(e *report.EdgeEvaluation, dropped map[comp
 }
 
 // resolve decides every dead evaluation of the working set: a pending finding
-// whose edge no other side evaluates ends the merge with an
-// [*unresolvedError]; the components rules 2 and 4 drop, run to a fixpoint,
-// leave the findings; every other pending finding is promoted and united; one
-// stale-edge finding is emitted per edge with a wholly absent side. The
-// working set then holds no dead evaluation. merger is the merging product's
-// name, which prefixes the component of every finding resolve emits.
+// whose edge no other side evaluates ends the merge with the run failure
+// unresolved-edge, wrapping an [*unresolvedError]; the components rules 2 and
+// 4 drop, run to a fixpoint, leave the findings; every other pending finding
+// is promoted and united; one stale-edge finding is emitted per edge with a
+// wholly absent side. The working set then holds no dead evaluation. merger
+// is the merging product's name, which prefixes the component of every
+// finding resolve emits.
 func (r *records) resolve(inputs []Input, merger string) error {
 	report.SortTotal(r.evaluations, report.CompareEvaluations)
 	index := indexEvaluations(r.evaluations)
 	dead := deadEvaluations(r.evaluations)
 	for _, e := range dead {
 		if _, evaluated := index.strongestOther(e, nil); !evaluated {
-			return unresolved(e, inputs)
+			return failure.Wrap(vocab.RunUnresolvedEdge, unresolved(e, inputs))
 		}
 	}
 	dropped := dropComponents(dead, index)

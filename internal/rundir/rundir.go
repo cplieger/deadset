@@ -8,7 +8,8 @@
 //
 // A run directory belongs to one run. [Create] refuses a directory that
 // already exists and every write refuses a file that already exists, so no
-// file one run reads can be left over from another.
+// file one run reads can be left over from another. A directory or a file
+// that cannot be made is a document the run cannot write.
 package rundir
 
 import (
@@ -20,6 +21,8 @@ import (
 	"strings"
 
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 )
 
 // The files of a run directory that no provider entry keys.
@@ -45,10 +48,10 @@ type Dir struct {
 func Create(path string) (*Dir, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("rundir: create the run directory: %w", err)
+		return nil, unwritten(fmt.Errorf("rundir: create the run directory: %w", err))
 	}
 	if err := os.Mkdir(absolute, 0o750); err != nil {
-		return nil, fmt.Errorf("rundir: create the run directory: %w", err)
+		return nil, unwritten(fmt.Errorf("rundir: create the run directory: %w", err))
 	}
 	return &Dir{path: absolute}, nil
 }
@@ -58,7 +61,7 @@ func Create(path string) (*Dir, error) {
 func CreateTemp() (*Dir, error) {
 	path, err := os.MkdirTemp("", "deadset-run-")
 	if err != nil {
-		return nil, fmt.Errorf("rundir: create the run directory: %w", err)
+		return nil, unwritten(fmt.Errorf("rundir: create the run directory: %w", err))
 	}
 	return &Dir{path: path}, nil
 }
@@ -150,15 +153,17 @@ func (e Entry) file(kind string) string {
 func writeOnce(path string, data []byte) (err error) {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return fmt.Errorf("rundir: %w", err)
+		return unwritten(fmt.Errorf("rundir: %w", err))
 	}
 	defer func() {
 		if closeErr := file.Close(); err == nil && closeErr != nil {
-			err = fmt.Errorf("rundir: %w", closeErr)
+			err = unwritten(fmt.Errorf("rundir: %w", closeErr))
 		}
 	}()
 	if _, err := file.Write(data); err != nil {
-		return fmt.Errorf("rundir: %w", err)
+		return unwritten(fmt.Errorf("rundir: %w", err))
 	}
 	return nil
 }
+
+func unwritten(err error) error { return failure.Wrap(vocab.RunUnwrittenOutput, err) }

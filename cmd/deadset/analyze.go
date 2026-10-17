@@ -15,6 +15,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/run"
 	"github.com/cplieger/deadset/v2/internal/scope"
@@ -99,15 +100,13 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 		Open:        a.open,
 	})
 	switch {
-	case errors.Is(err, run.ErrRunDir):
-		return 0, &usageError{err: err, option: "run-dir"}
 	case isUnclaimed(err):
 		return 0, &usageError{err: err, option: scopeOption}
 	case err != nil:
 		return 0, err
 	}
 	if err := printResult(stdout, result, opts, reporters); err != nil {
-		return 0, err
+		return 0, failure.Wrap(vocab.RunUnwrittenOutput, err)
 	}
 	return a.verdict(stderr, result.Merged, reporters.FailOn), nil
 }
@@ -141,16 +140,14 @@ func (a *analyzeFlags) readTemplate(formats []vocab.Format) (*render.Template, e
 
 // readScope reads the scope document --scope names, whose target must be the
 // target root; with no document the scope is the target alone. A document
-// that cannot be read is a command line the run refuses, and one the scope
-// schema refuses a failure of the run, as for every analyzer.
+// that cannot be read or that the scope schema refuses is a command line the
+// run refuses.
 func (a *analyzeFlags) readScope(ctx context.Context, root string) (*scope.Document, error) {
 	if a.scopePath == "" {
 		return &scope.Document{Target: scope.Module{Path: root}}, nil
 	}
 	declared, err := scope.Read(ctx, a.scopePath)
 	switch {
-	case errors.Is(err, scope.ErrDocument):
-		return nil, fmt.Errorf("--scope=%s: %w", a.scopePath, err)
 	case err != nil:
 		return nil, &usageError{err: err, option: scopeOption}
 	case !sameDirectory(declared.Target.Path, root):
@@ -172,11 +169,11 @@ func sameDirectory(a, b string) bool {
 	return err == nil && os.SameFile(first, second)
 }
 
-// printOutcomes writes what every analyzer printed, whole and in analyzer
-// name order, each setup failure followed by the line telling how to analyze
-// the target without that analyzer. It returns every failed write of an
-// analyzer that refused nothing itself; an analyzer's own refusal stands for
-// a failed write of its output.
+// printOutcomes writes what every analyzer printed, as source.Run left it, in
+// analyzer name order, each setup failure followed by the line telling how to
+// analyze the target without that analyzer. It returns every failed write of
+// an analyzer that refused nothing itself; an analyzer's own refusal stands
+// for a failed write of its output.
 func printOutcomes(stderr io.Writer, outcomes []source.Outcome) error {
 	var failures []error
 	for _, o := range source.ByName(outcomes) {
@@ -191,7 +188,10 @@ func printOutcomes(stderr io.Writer, outcomes []source.Outcome) error {
 			failures = append(failures, fmt.Errorf("analyzer %s, exit %d: copy what it printed: %w", o.Analyzer, o.Exit, err))
 		}
 	}
-	return errors.Join(failures...)
+	if len(failures) > 0 {
+		return failure.Wrap(vocab.RunUnwrittenOutput, errors.Join(failures...))
+	}
+	return nil
 }
 
 // workaround is the line telling how to analyze the target without the

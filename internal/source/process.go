@@ -22,6 +22,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/document"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
@@ -155,12 +156,13 @@ type Process struct {
 // entry's command is resolved here, once: a command holding a separator is a
 // path, taken as it is when it is absolute, and any other is a name looked up
 // on PATH, so the handshake and the analysis run one path whatever PATH
-// becomes. A command that resolves to no executable is a [*CommandError]. The
-// describe verb's standard error goes to diagnostics.
+// becomes. A command that resolves to no executable is a [*CommandError], the
+// run failure missing-analyzer. The describe verb's standard error goes to
+// diagnostics, [failure.Quoted].
 func Open(planned *plan.Source, dir string, diagnostics io.Writer) (*Process, error) {
 	command := planned.Entry.Command
 	refuse := func(err error) (*Process, error) {
-		return nil, &CommandError{Err: err, Name: planned.Entry.Name, Index: planned.Index}
+		return nil, failure.Wrap(vocab.RunMissingAnalyzer, &CommandError{Err: err, Name: planned.Entry.Name, Index: planned.Index})
 	}
 	if strings.ContainsRune(command, '/') || strings.ContainsRune(command, filepath.Separator) {
 		if !filepath.IsAbs(command) {
@@ -191,41 +193,51 @@ type description struct {
 // is one the describe schema admits, names the provider entry's name, claims
 // every language the run hands it, records a conformance pass and reads one
 // of the accepted report schema versions; otherwise it returns a
-// [*HandshakeError].
+// [*HandshakeError], the run failure missing-analyzer for a command that
+// cannot be read or started and unadmitted-analyzer for any other.
 func (p *Process) Admit(ctx context.Context, kept rundir.Entry, accepted []string) error {
-	refuse := func(err error) error { return &HandshakeError{Err: err, Analyzer: p.name, Command: p.command} }
+	refuse := func(class string, err error) error {
+		return failure.Wrap(class, &HandshakeError{Err: err, Analyzer: p.name, Command: p.command})
+	}
 	digest, err := artifactDigest(p.command)
 	if err != nil {
-		return refuse(err)
+		return refuse(vocab.RunMissingAnalyzer, err)
 	}
 	p.digest = digest
 
-	var printed bytes.Buffer
+	var printed, diagnosed bytes.Buffer
 	cmd := command(ctx, p.command, p.dir, "describe")
 	cmd.Stdout = &printed
-	cmd.Stderr = p.diagnostics
+	cmd.Stderr = &diagnosed
 	exit, runErr := wait(ctx, cmd)
 	if cmd.Process == nil {
-		return refuse(runErr)
+		return refuse(vocab.RunMissingAnalyzer, runErr)
 	}
-	keepErr := kept.WriteDescribe(printed.Bytes())
+	if p.diagnostics != nil {
+		if _, writeErr := p.diagnostics.Write(failure.Quoted(p.name, diagnosed.Bytes())); writeErr != nil {
+			runErr = cmp.Or(runErr, writeErr)
+		}
+	}
+	if keepErr := kept.WriteDescribe(printed.Bytes()); keepErr != nil {
+		return keepErr
+	}
 	switch {
-	case runErr != nil || keepErr != nil:
-		return refuse(errors.Join(runErr, keepErr))
+	case runErr != nil:
+		return refuse(vocab.RunUnadmittedAnalyzer, runErr)
 	case exit != 0:
-		return refuse(fmt.Errorf("exited %d: %w", exit, ErrDescribeExited))
+		return refuse(vocab.RunUnadmittedAnalyzer, fmt.Errorf("exited %d: %w", exit, ErrDescribeExited))
 	}
 
 	compiled, err := describeSchema()
 	if err != nil {
-		return refuse(err)
+		return err
 	}
 	var described description
 	if err := compiled.Unmarshal(printed.Bytes(), &described); err != nil {
-		return refuse(fmt.Errorf("%w: %w", ErrDescription, err))
+		return refuse(vocab.RunUnadmittedAnalyzer, fmt.Errorf("%w: %w", ErrDescription, err))
 	}
 	if err := p.admit(&described, accepted); err != nil {
-		return refuse(err)
+		return refuse(vocab.RunUnadmittedAnalyzer, err)
 	}
 	return nil
 }
@@ -260,15 +272,21 @@ func (p *Process) admit(described *description, accepted []string) error {
 
 // Produce runs the analyze verb with the three paths the analyzer CLI
 // contract passes and reads the report it wrote, which must name the provider
-// entry as its analyzer.
+// entry as its analyzer. A report path already taken is the run failure
+// unwritten-output, and a command that does not start missing-analyzer.
 func (p *Process) Produce(ctx context.Context, files Files) Outcome {
 	out := Outcome{Analyzer: p.name, Languages: p.languages, Digest: p.digest, Exit: -1}
 	refuse := func(err error) Outcome {
 		out.Err = &Error{Err: err, Analyzer: p.name, Report: files.Report, Exit: out.Exit}
 		return out
 	}
+	classed := func(class string, err error) Outcome {
+		refuse(err)
+		out.Err = failure.Wrap(class, out.Err)
+		return out
+	}
 	if _, err := os.Lstat(files.Report); !errors.Is(err, fs.ErrNotExist) {
-		return refuse(cmp.Or(err, ErrReportExists))
+		return classed(vocab.RunUnwrittenOutput, cmp.Or(err, ErrReportExists))
 	}
 
 	var printed bytes.Buffer
@@ -278,6 +296,8 @@ func (p *Process) Produce(ctx context.Context, files Files) Outcome {
 	exit, err := wait(ctx, cmd)
 	out.Exit, out.Printed = exit, printed.Bytes()
 	switch {
+	case err != nil && cmd.Process == nil:
+		return classed(vocab.RunMissingAnalyzer, err)
 	case err != nil:
 		return refuse(err)
 	case exit == vocab.ExitUsage:
@@ -314,15 +334,21 @@ func command(ctx context.Context, path, dir string, args ...string) *exec.Cmd {
 	return cmd
 }
 
-// wait runs cmd and returns its exit code. A cancelled ctx fails the run with
-// the cancellation's cause whatever the analyzer returned.
+// wait runs cmd and returns its exit code, or -1 where it did not exit on its
+// own. A cancelled ctx fails the run with the cancellation's cause whatever
+// the analyzer returned; the code is kept so an analyzer that answered the
+// interrupt with exit code 3 is relayed.
 func wait(ctx context.Context, cmd *exec.Cmd) (int, error) {
 	err := cmd.Run()
 	state := cmd.ProcessState
+	code := -1
+	if state != nil && state.Exited() {
+		code = state.ExitCode()
+	}
 	switch {
 	case ctx.Err() != nil:
-		return -1, context.Cause(ctx)
-	case state == nil || !state.Exited():
+		return code, context.Cause(ctx)
+	case code == -1:
 		return -1, err
 	}
 	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {

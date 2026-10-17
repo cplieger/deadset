@@ -21,6 +21,7 @@ import (
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 	"github.com/cplieger/deadset/v2/internal/source"
@@ -134,7 +135,7 @@ func stubs(t *testing.T, held map[string]stub) *command {
 	return &command{open: func(planned *plan.Source, _ string, _ io.Writer) (source.Source, error) {
 		s, ok := held[planned.Entry.Name]
 		if !ok {
-			return nil, &source.CommandError{Err: fs.ErrNotExist, Name: planned.Entry.Name, Index: planned.Index}
+			return nil, failure.Wrap(vocab.RunMissingAnalyzer, &source.CommandError{Err: fs.ErrNotExist, Name: planned.Entry.Name, Index: planned.Index})
 		}
 		return &stubSource{t: t, stub: s, name: planned.Entry.Name, languages: planned.Languages}, nil
 	}}
@@ -231,7 +232,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 			setup: func(t *testing.T) (string, string, []string) {
 				return filepath.Join(t.TempDir(), "absent"), filepath.Join(t.TempDir(), "run"), nil
 			},
-			code: vocab.ExitFailure, names: []string{"the target"},
+			code: vocab.ExitFailure, names: []string{"setup failure: no-program: the target"},
 		},
 		{
 			name: "unreadable-central-configuration",
@@ -296,7 +297,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, _ := goTarget(t, goOnly, "")
 				return target, t.TempDir(), nil
 			},
-			code: vocab.ExitUsage, names: []string{"--run-dir"},
+			code: vocab.ExitFailure, names: []string{"run failure: unwritten-output: ", "file exists"},
 		},
 		{
 			name: "ts-analyzer-command-absent", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
@@ -305,16 +306,16 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 				return target, runDir, nil
 			},
-			code: vocab.ExitFailure, names: []string{"deadset-ts", "providers.analyzers[1]"},
+			code: vocab.ExitFailure, names: []string{"run failure: missing-analyzer: ", "deadset-ts", "providers.analyzers[1]"},
 		},
 		{
 			name:  "handshake-refused",
-			stubs: map[string]stub{"deadset-go": {admit: &source.HandshakeError{Err: source.ErrDescribedName, Analyzer: "deadset-go"}}},
+			stubs: map[string]stub{"deadset-go": {admit: failure.Wrap(vocab.RunUnadmittedAnalyzer, &source.HandshakeError{Err: source.ErrDescribedName, Analyzer: "deadset-go"})}},
 			setup: func(t *testing.T) (string, string, []string) {
 				target, runDir := goTarget(t, goOnly, "")
 				return target, runDir, nil
 			},
-			code: vocab.ExitFailure, names: []string{"deadset-go", "another name"},
+			code: vocab.ExitFailure, names: []string{"run failure: unadmitted-analyzer: ", "deadset-go", "another name"},
 		},
 		{
 			name:  "analyzer-refusing-its-configuration",
@@ -346,7 +347,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				writeFile(t, filepath.Join(target, "tsconfig.json"), []byte("{}\n"))
 				return target, runDir, nil
 			},
-			code: vocab.ExitFailure, names: []string{"deadset-ts", "exited 3"},
+			code: vocab.ExitFailure, names: []string{"run failure: product-fault: analyzer deadset-ts ended with exit code 3"},
 		},
 		{
 			name: "malformed-ignore-file", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
@@ -409,7 +410,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				}
 				return target, runDir, nil
 			},
-			code: vocab.ExitFailure, names: []string{"deadset-edges.json", "not a regular file"},
+			code: vocab.ExitFailure, names: []string{"setup failure: unreadable-document: deadset-edges.json", "not a regular file"},
 		},
 		{
 			name:  "pending-pair-unevaluated",
@@ -418,7 +419,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				target, runDir := goTarget(t, goOnly, "")
 				return target, runDir, nil
 			},
-			code: vocab.ExitFailure, names: []string{"wire/ServerEvent", "provides", "go://example.com/app/internal/wire#ServerEvent"},
+			code: vocab.ExitFailure, names: []string{"run failure: unresolved-edge: ", "wire/ServerEvent", "provides", "go://example.com/app/internal/wire#ServerEvent"},
 		},
 	}
 	for _, c := range cases {
@@ -464,7 +465,7 @@ func TestAnalyzeRefusesAScopeItCannotRoute(t *testing.T) {
 		code     int
 	}{
 		{name: "document-absent", code: vocab.ExitUsage, names: []string{"--scope", "scope.json", "no such file", "usage: deadset analyze"}},
-		{name: "member-undeclared", document: `{"target": {"path": "target"}, "network": true}`, code: vocab.ExitFailure, names: []string{"--scope", `"network"`}},
+		{name: "member-undeclared", document: `{"target": {"path": "target"}, "network": true}`, code: vocab.ExitUsage, names: []string{"--scope", `"network"`}},
 		{name: "another-target", document: `{"target": {"path": "go-consumer"}}`, code: vocab.ExitUsage, names: []string{"--scope", "go-consumer", "the target of the run"}},
 		{
 			name: "consumer-absent", document: `{"target": {"path": "target"}, "consumers": [{"path": "go-consumer"}, {"path": "gone"}]}`,
@@ -589,7 +590,8 @@ func TestAnalyzeWritesTheFileRenderingsBesideTheMergedReport(t *testing.T) {
 
 	unread, unreadRun := goTarget(t, []provider{both[0]}, "")
 	failed := analyzeWith(t, stubs(t, held), unread, unreadRun, "--formats=sarif")
-	if failed.code != vocab.ExitFailure || !strings.Contains(failed.stderr, "read internal/store/store.go") || failed.stdout != "" {
+	if failed.code != vocab.ExitFailure || !strings.Contains(failed.stderr, "run failure: unwritten-output: ") ||
+		!strings.Contains(failed.stderr, "read internal/store/store.go") || failed.stdout != "" {
 		t.Errorf("analyze(sources absent) = %d, stdout %q, stderr %q, want %d naming the read and no stdout", failed.code, failed.stdout, failed.stderr, vocab.ExitFailure)
 	}
 	if _, err := os.Stat(filepath.Join(unreadRun, "report.json")); err != nil {
@@ -597,10 +599,10 @@ func TestAnalyzeWritesTheFileRenderingsBesideTheMergedReport(t *testing.T) {
 	}
 }
 
-// What each analyzer printed reaches standard error whole and in analyzer
-// name order, and a setup failure of one is followed by the line naming the
-// language the other was handed and that analyzer, as the two ways to
-// analyze the rest; the run ends with the failure code.
+// What each analyzer printed beside its failure lines reaches standard error
+// in analyzer name order, a setup failure of one followed by the line naming
+// the language the other was handed and that analyzer, as the two ways to
+// analyze the rest, and then the failures; the run ends with the failure code.
 func TestAnalyzePrintsWhatEachAnalyzerPrintedAndTheWorkaround(t *testing.T) {
 	t.Parallel()
 
@@ -612,10 +614,13 @@ func TestAnalyzePrintsWhatEachAnalyzerPrintedAndTheWorkaround(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		ts   stub
-		want string
+		want []string
 	}{
-		{name: "both-failing", ts: stub{exit: 3, err: exited("deadset-ts", 3), printed: memory}, want: "\n" + setupFailure + memory},
-		{name: "the-other-reporting", ts: stub{report: tsFindings, exit: 1}, want: "\n" + setupFailure + workaround},
+		{
+			name: "both-failing", ts: stub{exit: 3, err: exited("deadset-ts", 3), printed: memory},
+			want: []string{"deadset-ts: " + memory, setupFailure, "product-fault: analyzer deadset-ts ended with exit code 3"},
+		},
+		{name: "the-other-reporting", ts: stub{report: tsFindings, exit: 1}, want: []string{workaround, setupFailure}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -626,8 +631,17 @@ func TestAnalyzePrintsWhatEachAnalyzerPrintedAndTheWorkaround(t *testing.T) {
 				"deadset-ts": c.ts,
 				"deadset-go": {exit: 3, err: exited("deadset-go", 3), printed: setupFailure},
 			}), target, runDir)
-			if got.code != vocab.ExitFailure || !strings.Contains(got.stderr, c.want) || got.stdout != "" {
-				t.Errorf("analyze = %d, stdout %q, stderr %q, want %d with %q", got.code, got.stdout, got.stderr, vocab.ExitFailure, c.want)
+			rest := got.stderr
+			for _, want := range c.want {
+				at := strings.Index(rest, want)
+				if at < 0 {
+					t.Errorf("analyze stderr = %q, want %q in that order", got.stderr, c.want)
+					break
+				}
+				rest = rest[at+len(want):]
+			}
+			if got.code != vocab.ExitFailure || got.stdout != "" {
+				t.Errorf("analyze = %d, stdout %q, want %d and nothing presented", got.code, got.stdout, vocab.ExitFailure)
 			}
 		})
 	}
@@ -683,15 +697,28 @@ func TestAnalyzeResolvesARelativeRunDirectoryAgainstTheWorkingDirectory(t *testi
 	}
 }
 
-// fakeAnalyzer writes an executable analyzer named name, claiming languages,
-// whose describe verb describes it with a conformance pass and whose analyze
-// verb records the directory it runs in, copies the published report written
-// to the path --report names and exits with exit. It returns the command and
-// the file holding the directory it ran in.
 func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, written string) (command, ranIn string) {
 	t.Helper()
 
 	dir := t.TempDir()
+	body, err := spec.Vectors.ReadFile(written)
+	if err != nil {
+		t.Fatalf("Setup: read %s: %v", written, err)
+	}
+	writeFile(t, filepath.Join(dir, "written.json"), body)
+	ranIn = filepath.Join(dir, "pwd")
+	command = scriptedAnalyzer(t, dir, name, languages, strings.Join([]string{
+		fmt.Sprintf(`pwd > '%s'`, ranIn),
+		`for argument in "$@"; do case "$argument" in --report=*) report="${argument#--report=}" ;; esac; done`,
+		fmt.Sprintf(`cp '%s/written.json' "$report"`, dir),
+		"exit " + strconv.Itoa(exit),
+	}, "\n"))
+	return command, ranIn
+}
+
+func scriptedAnalyzer(t *testing.T, dir, name string, languages []string, analyze string) string {
+	t.Helper()
+
 	described, err := json.Marshal(map[string]any{
 		"name": name, "version": "1.0.0", "contract_version": vocab.ContractVersion,
 		"schema_versions_accepted": []string{vocab.SchemaVersion}, "languages": languages,
@@ -701,19 +728,11 @@ func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, writt
 		t.Fatalf("Setup: encode the describe document: %v", err)
 	}
 	writeFile(t, filepath.Join(dir, "described.json"), described)
-	body, err := spec.Vectors.ReadFile(written)
-	if err != nil {
-		t.Fatalf("Setup: read %s: %v", written, err)
-	}
-	writeFile(t, filepath.Join(dir, "written.json"), body)
-	command, ranIn = filepath.Join(dir, "analyzer"), filepath.Join(dir, "pwd")
+	command := filepath.Join(dir, "analyzer")
 	script := strings.Join([]string{
 		"#!/bin/sh",
 		fmt.Sprintf(`if [ "$1" = describe ]; then cat '%s/described.json'; exit 0; fi`, dir),
-		fmt.Sprintf(`pwd > '%s'`, ranIn),
-		`for argument in "$@"; do case "$argument" in --report=*) report="${argument#--report=}" ;; esac; done`,
-		fmt.Sprintf(`cp '%s/written.json' "$report"`, dir),
-		"exit " + strconv.Itoa(exit),
+		analyze,
 		"",
 	}, "\n")
 	// A fork in a parallel test inherits the descriptor the script is written
@@ -725,7 +744,7 @@ func fakeAnalyzer(t *testing.T, name string, languages []string, exit int, writt
 	if err != nil {
 		t.Fatalf("Setup: write %s: %v", command, err)
 	}
-	return command, ranIn
+	return command
 }
 
 // The one run through analyzer processes: every file of the evidence keyed by

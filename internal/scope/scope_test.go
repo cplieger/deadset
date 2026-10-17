@@ -117,8 +117,8 @@ func TestReadRefusesEveryPublishedNegative(t *testing.T) {
 			path := written(t, negative.File, published(t, "examples/negatives/"+negative.File))
 			_, err := scope.Read(t.Context(), path)
 			at := path + ": " + cmp.Or(negative.InstancePath, "the document") + ": " + negative.Constraint + ": "
-			if !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), at) {
-				t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, ErrDocument) naming %q", negative.File, err, at)
+			if err == nil || !strings.Contains(err.Error(), at) {
+				t.Errorf("Read(%s) = %v, want an error naming %q", negative.File, err, at)
 			}
 		})
 	}
@@ -151,22 +151,22 @@ func TestReadRefusesWhatTheClosedDecodeRefuses(t *testing.T) {
 
 			path := written(t, "scope.json", []byte(c.body))
 			_, err := scope.Read(t.Context(), path)
-			if want := path + ": " + c.at; !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), want) ||
+			if want := path + ": " + c.at; err == nil || !strings.Contains(err.Error(), want) ||
 				(c.at == "") != errors.Is(err, document.ErrMalformed) {
-				t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, ErrDocument) naming %q", c.body, err, want)
+				t.Errorf("Read(%s) = %v, want an error naming %q", c.body, err, want)
 			}
 		})
 	}
 }
 
 // TestReadNamesAnAbsentDocument pins that a document that does not exist is an
-// error a caller can tell from one the schema refuses.
+// error a caller can tell as one.
 func TestReadNamesAnAbsentDocument(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "scope.json")
-	if _, err := scope.Read(t.Context(), path); !errors.Is(err, fs.ErrNotExist) || errors.Is(err, scope.ErrDocument) {
-		t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, fs.ErrNotExist) and not ErrDocument", path, err)
+	if _, err := scope.Read(t.Context(), path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, fs.ErrNotExist)", path, err)
 	}
 }
 
@@ -232,8 +232,8 @@ func TestReadRefusesADocumentOverTheBound(t *testing.T) {
 
 	body := []byte(`{"target": {"path": "` + strings.Repeat("a", vocab.DocumentMaxBytes) + `"}}`)
 	path := written(t, "scope.json", body)
-	if _, err := scope.Read(t.Context(), path); !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), "larger than") {
-		t.Errorf("Read(a document of %d bytes) = %v, want ErrDocument naming the bound", len(body), err)
+	if _, err := scope.Read(t.Context(), path); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("Read(a document of %d bytes) = %v, want an error naming the bound", len(body), err)
 	}
 }
 
