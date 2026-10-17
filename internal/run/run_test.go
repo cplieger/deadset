@@ -16,6 +16,7 @@ import (
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/run"
@@ -103,7 +104,9 @@ const twoAnalyzers = `{"target": {"kind": "library"}, "ts": {"entry_files": ["sr
 // document naming every module by its identity source, hands each analyzer
 // the consumers of its languages, in a scope document of its own where that
 // is only some of them, and the configuration of its languages alone, runs
-// each in the directory holding every module, and merges their reports.
+// each in the directory holding every module, merges their reports and writes
+// the SARIF rendering from the lines below the target root that their
+// target-relative positions name.
 func TestAnalyzeHandsEachSourceItsFiles(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +127,11 @@ func TestAnalyzeHandsEachSourceItsFiles(t *testing.T) {
 		"deadset-go": {name: "deadset-go", report: "vectors/merge/two-reports-no-edges/inputs/00-go.json"},
 		"deadset-ts": {name: "deadset-ts", report: "vectors/merge/two-reports-no-edges/inputs/01-ts.json"},
 	}
+	for _, path := range []string{"internal/store/store.go", "web/src/tabs.ts", "web/src/wire.ts"} {
+		writeFile(t, filepath.Join(target, path), strings.Repeat("line\n", 41))
+	}
 	req := request(t, target, twoAnalyzers, declared, recorders)
+	req.Resolved.Config.Reporters.Formats = []vocab.Format{vocab.FormatSARIF}
 	var started string
 	req.Started = func(dir string) { started = dir }
 
@@ -134,6 +141,9 @@ func TestAnalyzeHandsEachSourceItsFiles(t *testing.T) {
 	}
 	if started != req.RunDir || result.Merged == nil || len(result.Merged.MergedFrom) != 2 {
 		t.Fatalf("Analyze() = %+v, started %q, want the run directory %s and the merge of both reports", result, started, req.RunDir)
+	}
+	if len(result.Written) != 1 || result.Written[0].Format != vocab.FormatSARIF {
+		t.Errorf("Analyze() wrote %+v, want the SARIF rendering alone", result.Written)
 	}
 	var whole struct {
 		Target    struct{ ID string }

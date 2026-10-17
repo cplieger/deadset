@@ -340,30 +340,32 @@ func claims(r *report.Report) []string {
 // A library and one consumer referencing part of its published API, run
 // through the real analyzers with the archive's scope document and without it.
 // With it, the merged report names the consumer once under consumers.loaded,
-// every finding is certain and names it, and the unreferenced exported
-// function is reported. Without it, nothing is loaded, the default minimum
-// confidence withholds the published API's findings, and the minimum possible
-// reports each as possible, the function only the consumer calls among them.
+// every finding is certain and names it, the unreferenced exported function is
+// reported, and positions and SARIF locations stay target-relative with the
+// analyzers run above the target. Without it, nothing is loaded, the default
+// minimum confidence withholds the published API's findings, and the minimum
+// possible reports each as possible, the consumer-only function among them.
 func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 	t.Parallel()
 
 	for _, c := range []struct {
 		archive, consumer string
-		analyzers         []string
+		analyzers, files  []string
 		with, possible    []string
 	}{
 		{
-			archive: "go.txtar", analyzers: []string{"deadset-go"}, consumer: "example.com/consumer",
+			archive: "go.txtar", analyzers: []string{"deadset-go"}, consumer: "example.com/consumer", files: []string{"lib.go"},
 			with:     []string{"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]"},
 			possible: []string{"DS1003 Options.Spare possible []", "DS1001 Greet possible []", "DS1001 Farewell possible []"},
 		},
 		{
-			archive: "ts.txtar", analyzers: []string{"deadset-ts"}, consumer: "@example/consumer",
+			archive: "ts.txtar", analyzers: []string{"deadset-ts"}, consumer: "@example/consumer", files: []string{"lib.ts"},
 			with:     []string{"DS1003 Options.spare certain [@example/consumer]", "DS1001 farewell certain [@example/consumer]"},
 			possible: []string{"DS1003 Options.spare possible []", "DS1001 greet possible []", "DS1001 farewell possible []"},
 		},
 		{
 			archive: "mixed.txtar", analyzers: []string{"deadset-go", "deadset-ts"}, consumer: "example.com/consumer",
+			files: []string{"lib.go", "lib.ts"},
 			with: []string{
 				"DS1003 Options.Spare certain [example.com/consumer]", "DS1001 Farewell certain [example.com/consumer]",
 				"DS1003 Options.spare certain [example.com/consumer]", "DS1001 farewell certain [example.com/consumer]",
@@ -386,11 +388,12 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 				root     string
 				flags    []string
 				findings []string
+				files    []string
 				code     int
 				scoped   bool
 			}{
 				{
-					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with, code: vocab.ExitFindings,
+					name: "with-the-consumer", scoped: true, root: "lib", findings: c.with, files: c.files, code: vocab.ExitFindings,
 					loaded: []report.LoadedConsumer{{ID: c.consumer, Role: "consumer", Path: "consumer"}},
 				},
 				{name: "without-it", root: ".", code: vocab.ExitClean},
@@ -405,6 +408,9 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 					if run.scoped {
 						extra = append(extra, "--scope="+filepath.Join(base, "scope.json"))
 					}
+					if run.files != nil {
+						extra = append(extra, "--formats=sarif")
+					}
 					got := analyze(t, filepath.Join(base, "lib"), filepath.Join(base, "run"), extra...)
 					if got.code != run.code {
 						t.Fatalf("analyze(%s, %s) = %d, want %d\nstderr: %s", c.archive, run.name, got.code, run.code, got.stderr)
@@ -415,6 +421,12 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 					}
 					if found := claims(merged); !slices.Equal(found, run.findings) {
 						t.Errorf("analyze(%s, %s) findings = %q, want %q", c.archive, run.name, found, run.findings)
+					}
+					if run.files != nil {
+						positions, located := positionFiles(merged), sarifFiles(readSARIF(t, filepath.Join(base, "run", "report.json.sarif")))
+						if !slices.Equal(positions, run.files) || !slices.Equal(located, run.files) {
+							t.Errorf("analyze(%s, %s) positions name %q and SARIF locations %q, want %q", c.archive, run.name, positions, located, run.files)
+						}
 					}
 					var names []string
 					for _, from := range merged.MergedFrom {
@@ -430,12 +442,41 @@ func TestAnalyzeClassesALibrarysFindingsByTheConsumersItLoads(t *testing.T) {
 	}
 }
 
+// positionFiles is the sorted set of files the positions of r's findings name.
+func positionFiles(r *report.Report) []string {
+	named := map[string]bool{}
+	for i := range r.Findings {
+		named[r.Findings[i].Position.Path] = true
+	}
+	return slices.Sorted(maps.Keys(named))
+}
+
+// sarifFiles is the sorted set of files the locations of log's results name.
+func sarifFiles(log *sarifLog) []string {
+	named := map[string]bool{}
+	for _, run := range log.Runs {
+		for _, result := range run.Results {
+			for _, at := range result.Locations {
+				named[at.PhysicalLocation.ArtifactLocation.URI] = true
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(named))
+}
+
 // sarifLog is the members of a SARIF log a run's rendering is checked by.
 type sarifLog struct {
 	Runs []struct {
 		Results []struct {
 			RuleID              string            `json:"ruleId"`
 			PartialFingerprints map[string]string `json:"partialFingerprints"`
+			Locations           []struct {
+				PhysicalLocation struct {
+					ArtifactLocation struct {
+						URI string `json:"uri"`
+					} `json:"artifactLocation"`
+				} `json:"physicalLocation"`
+			} `json:"locations"`
 		} `json:"results"`
 	} `json:"runs"`
 }

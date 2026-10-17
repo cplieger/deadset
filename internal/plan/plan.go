@@ -48,8 +48,8 @@ type Input struct {
 // Plan is one run's decisions.
 type Plan struct {
 	// Dir is the directory every analyzer runs in, the deepest one holding
-	// every path the scope names, because a report names its paths relative
-	// to the directory its analyzer runs in.
+	// every path the scope names, because a report names its target root and
+	// its loaded consumers relative to the directory its analyzer runs in.
 	Dir string
 
 	// Scope is the run's scope document: the declared one with every module

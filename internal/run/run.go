@@ -75,8 +75,8 @@ type Request struct {
 	// analyzer process its provider entry names.
 	Open func(planned *plan.Source, dir string, diagnostics io.Writer) (source.Source, error)
 
-	// Root is the target root, which every path of a report is relative to
-	// and which a rendering reads source lines below.
+	// Root is the target root, which every position of a report is relative
+	// to and which a rendering reads source lines below.
 	Root string
 
 	// RunDir is the run directory to create, or empty for one under the
