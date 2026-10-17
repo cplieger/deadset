@@ -1,6 +1,7 @@
 package source_test
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/scope"
 	"github.com/cplieger/deadset/v2/internal/source"
@@ -96,13 +98,16 @@ func TestProduceReadsTheReportARealAnalyzerWrites(t *testing.T) {
 }
 
 // The Go analyzer over a module importing a package nothing provides exits
-// with the failure code and its setup-failure line is held as it printed it.
-func TestProduceHoldsARealAnalyzersSetupFailure(t *testing.T) {
+// with the failure code, and its setup-failure line is relayed as its class.
+func TestRunRelaysARealAnalyzersSetupFailure(t *testing.T) {
 	t.Parallel()
 
 	p, files := goRun(t, "package app\n\nimport \"example.com/app/gen\"\n\nvar V = gen.X\n")
-	got := p.Produce(t.Context(), files)
-	if got.Report != nil || got.Exit != vocab.ExitFailure || !got.SetupFailed() || !strings.HasPrefix(string(got.Printed), "setup failure: missing-module: app.go:") {
-		t.Errorf("Produce(deadset-go over a missing module) = exit %d, printed %q, %v, want a setup failure naming app.go", got.Exit, got.Printed, got.Err)
+	outcomes, err := source.Run(t.Context(), []source.Source{p}, []source.Files{files})
+	got := outcomes[0]
+	relayed, ok := errors.AsType[*failure.Error](err)
+	if got.Report != nil || got.Exit != vocab.ExitFailure || !got.SetupFailed() || !ok ||
+		relayed.Failures[0].Class != vocab.SetupMissingModule || !strings.HasPrefix(relayed.Failures[0].Detail, "app.go:") {
+		t.Errorf("Run(deadset-go over a missing module) = exit %d, printed %q, %v, want the setup failure missing-module naming app.go", got.Exit, got.Printed, err)
 	}
 }

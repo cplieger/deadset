@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 )
 
 // node is one key of the closed key list with the keys below it, in the
@@ -51,7 +52,7 @@ func (r *Resolved) Print(w io.Writer) error {
 		return err
 	}
 	if _, err := w.Write(document); err != nil {
-		return fmt.Errorf("write the resolved configuration: %w", err)
+		return failure.Wrap(vocab.RunUnwrittenOutput, fmt.Errorf("write the resolved configuration: %w", err))
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/scope"
 )
@@ -232,8 +233,8 @@ func TestMakeRefuses(t *testing.T) {
 
 func setupClass(class string) func(error) bool {
 	return func(err error) bool {
-		failure, ok := errors.AsType[*plan.SetupError](err)
-		return ok && failure.Class == class
+		held, ok := errors.AsType[*failure.Error](err)
+		return ok && len(held.Failures) == 1 && held.Failures[0].Class == class
 	}
 }
 

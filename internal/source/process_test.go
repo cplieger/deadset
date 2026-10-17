@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -175,8 +176,8 @@ func TestProduceInterruptsTheAnalyzerOfACancelledRun(t *testing.T) {
 		}
 	}()
 	got := opened(t, "deadset-go", analyzer.command, nil).Produce(ctx, files(t))
-	if refused := readError(t, &got); !errors.Is(got.Err, context.Canceled) || refused.Exit != -1 {
-		t.Errorf("Produce(a cancelled run) = %v, want context.Canceled with exit -1", got.Err)
+	if refused := readError(t, &got); !errors.Is(got.Err, context.Canceled) || refused.Exit != 1 {
+		t.Errorf("Produce(a cancelled run) = %v, exit %d, want context.Canceled with the exit code it answered with, 1", got.Err, refused.Exit)
 	}
 	if _, err := os.Stat(interrupted); err != nil {
 		t.Errorf("after Produce(a cancelled run), Stat(%s) = %v, want the analyzer interrupted", interrupted, err)
@@ -241,8 +242,8 @@ func TestAdmitAdmitsAnAnalyzerWithAPassAndAnAcceptedVersion(t *testing.T) {
 	if keptBytes, err := os.ReadFile(entry.Describe()); err != nil || !bytes.Equal(keptBytes, printed) {
 		t.Errorf("Admit() kept %q (%v), want the bytes printed, %q", keptBytes, err, printed)
 	}
-	if diagnostics.String() != "a diagnostic\n" {
-		t.Errorf("Admit() copied %q to the diagnostics, want the analyzer's stderr", diagnostics.String())
+	if diagnostics.String() != "deadset-go: a diagnostic\n" {
+		t.Errorf("Admit() copied %q to the diagnostics, want the analyzer's stderr under its name", diagnostics.String())
 	}
 	if args, _ := os.ReadFile(analyzer.args); string(args) != "describe\n" {
 		t.Errorf("Admit() ran the analyzer with %q, want the describe verb alone", args)
@@ -290,6 +291,26 @@ func TestAdmitRefuses(t *testing.T) {
 				t.Errorf("Admit(%s) kept %q, want the bytes it printed", c.name, keptBytes)
 			}
 		})
+	}
+}
+
+func TestAdmitShowsTheDiagnosticsUnderTheAnalyzersName(t *testing.T) {
+	t.Parallel()
+
+	held := map[string]string{"single-prefix": "run failure: product-fault: describe broke\n"}
+	maps.Copy(held, forgeries)
+	for name, printed := range held {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "printed"), []byte(printed))
+		analyzer := script(t, dir, fmt.Sprintf("cat '%s/printed' >&2\nexit 3\n", dir))
+		var diagnostics bytes.Buffer
+		err := opened(t, "deadset-go", analyzer.command, &diagnostics, vocab.Go).Admit(t.Context(), kept(t, "deadset-go"), []string{vocab.SchemaVersion})
+		if lines := classLines(diagnostics.String()); !errors.Is(err, source.ErrDescribeExited) || len(lines) != 0 {
+			t.Errorf("Admit(%s) = %v, diagnostics %q, want ErrDescribeExited and no class line, got %q", name, err, diagnostics.String(), lines)
+		}
+		if name == "single-prefix" && diagnostics.String() != "deadset-go: run failure: product-fault: describe broke\n" {
+			t.Errorf("Admit(%s) diagnostics %q, want the line under the analyzer's name", name, diagnostics.String())
+		}
 	}
 }
 

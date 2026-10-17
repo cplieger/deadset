@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,7 +9,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/documents"
-	"github.com/cplieger/deadset/v2/internal/plan"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/run"
 	"github.com/cplieger/deadset/v2/internal/source"
 )
@@ -32,30 +33,60 @@ func (e *usageError) Error() string {
 
 func (e *usageError) Unwrap() error { return e.err }
 
-// failed prints err and returns the exit code of a run it ended. A setup
-// failure prints its setup-failure line. A configuration, a shared document
-// or a command line the run refuses, and an analyzer exiting with the usage
-// code, having refused a value of the configuration it was given, is
-// [vocab.ExitUsage]: each is fixed by changing what the run was asked to do.
-// The usage text follows a refusal of the command line or the configuration.
-// It does not follow a refused shared document, whose message names the
-// document and the value, or an analyzer's refusal, which printed its own.
-// Every other error is [vocab.ExitFailure], the code of a run that produced no
-// answer.
-func failed(stderr io.Writer, err error, printUsage func()) int {
-	if setup, ok := errors.AsType[*plan.SetupError](err); ok {
-		fmt.Fprintf(stderr, "%s%s\n", vocab.SetupFailurePrefix, setup)
-		return vocab.ExitFailure
+// failed prints err and returns the exit code of a run it ended. What the
+// run refuses ([refused]) is [vocab.ExitUsage], fixed by changing what the run
+// was asked to do; the usage text follows a refused command line or
+// configuration, not a refused shared document or an analyzer's refusal,
+// which name their own fault. Every other run is [vocab.ExitFailure] and
+// prints its failures in the order err joins them, after any refusal beside
+// them. An interrupt is one interrupted-run failure where the first error the
+// cancellation ended stands, or last when none did.
+func failed(ctx context.Context, stderr io.Writer, err error, printUsage func()) int {
+	cause := context.Cause(ctx)
+	if cause == nil && refused(err) {
+		fmt.Fprintf(stderr, "%s: %v\n", run.Product, err)
+		_, analyzer := errors.AsType[*source.Error](err)
+		if _, shared := errors.AsType[*documents.Error](err); !analyzer && !shared {
+			printUsage()
+		}
+		return vocab.ExitUsage
 	}
-	fmt.Fprintf(stderr, "%s: %v\n", run.Product, err)
-	if !refused(err) {
-		return vocab.ExitFailure
+	interrupt := cause != nil
+	var failures []failure.Failure
+	for _, one := range joined(err) {
+		switch {
+		case cause != nil && (errors.Is(one, cause) || errors.Is(one, context.Canceled)):
+			if interrupt {
+				failures = append(failures, interrupted(cause)...)
+				interrupt = false
+			}
+		case refused(one):
+			fmt.Fprintf(stderr, "%s: %v\n", run.Product, one)
+		default:
+			failures = append(failures, failure.Of(one)...)
+		}
 	}
-	_, analyzer := errors.AsType[*source.Error](err)
-	if _, shared := errors.AsType[*documents.Error](err); !analyzer && !shared {
-		printUsage()
+	if interrupt {
+		failures = append(failures, interrupted(cause)...)
 	}
-	return vocab.ExitUsage
+	_ = failure.Write(stderr, failures)
+	return vocab.ExitFailure
+}
+
+func interrupted(cause error) []failure.Failure {
+	return failure.Wrap(vocab.RunInterruptedRun, fmt.Errorf("the run stopped: %w", cause)).Failures
+}
+
+func joined(err error) []error {
+	several, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return []error{err}
+	}
+	var held []error
+	for _, one := range several.Unwrap() {
+		held = append(held, joined(one)...)
+	}
+	return held
 }
 
 // refused reports whether err, read through every error it wraps, refuses

@@ -18,6 +18,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/run"
 	"github.com/cplieger/deadset/v2/internal/rundir"
@@ -88,7 +89,7 @@ func request(t *testing.T, target, document string, declared *scope.Document, re
 		Open: func(planned *plan.Source, dir string, _ io.Writer) (source.Source, error) {
 			r, ok := recorders[planned.Entry.Name]
 			if !ok {
-				return nil, &source.CommandError{Err: fs.ErrNotExist, Name: planned.Entry.Name, Index: planned.Index}
+				return nil, failure.Wrap(vocab.RunMissingAnalyzer, &source.CommandError{Err: fs.ErrNotExist, Name: planned.Entry.Name, Index: planned.Index})
 			}
 			r.dir = dir
 			return r, nil
@@ -221,7 +222,7 @@ func TestAnalyzeStopsAtTheFirstStageThatFails(t *testing.T) {
 	}
 }
 
-// A run directory that exists is refused as the request's.
+// A run directory that exists is a document the run cannot write.
 func TestAnalyzeRefusesARunDirectoryThatExists(t *testing.T) {
 	t.Parallel()
 
@@ -229,7 +230,8 @@ func TestAnalyzeRefusesARunDirectoryThatExists(t *testing.T) {
 	writeFile(t, filepath.Join(target, "go.mod"), "module example.com/app\n")
 	req := request(t, target, twoAnalyzers, &scope.Document{Target: scope.Module{Path: target}}, map[string]*recorder{"deadset-go": {name: "deadset-go"}})
 	req.RunDir = t.TempDir()
-	if _, err := run.Analyze(t.Context(), req); !errors.Is(err, run.ErrRunDir) || !errors.Is(err, fs.ErrExist) {
-		t.Errorf("Analyze(an existing run directory) = %v, want ErrRunDir and fs.ErrExist", err)
+	_, err := run.Analyze(t.Context(), req)
+	if held, ok := errors.AsType[*failure.Error](err); !ok || held.Failures[0].Class != vocab.RunUnwrittenOutput || !errors.Is(err, fs.ErrExist) {
+		t.Errorf("Analyze(an existing run directory) = %v, want the run failure unwritten-output and fs.ErrExist", err)
 	}
 }

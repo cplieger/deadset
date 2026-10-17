@@ -24,6 +24,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/document"
 	"github.com/cplieger/deadset-spec/v8/suppress"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 )
 
 // Error is a shared document the run refuses; its message names the file and
@@ -56,7 +57,8 @@ func Read(ctx context.Context, target, name string) ([]byte, error) {
 
 // Check refuses the first malformed shared document at the target root target
 // as an [*Error], one over the bound [Read] holds it to included. An absent
-// document is none, and one that cannot be read is a failure of the run.
+// document is none, and one that cannot be read is the setup failure
+// unreadable-document.
 func Check(ctx context.Context, target string) error {
 	edges, err := edgesSchema()
 	if err != nil {
@@ -77,7 +79,7 @@ func Check(ctx context.Context, target string) error {
 		case errors.Is(err, atomicfile.ErrFileTooLarge):
 			return &Error{err: fmt.Errorf("%s: the document is larger than the %d bytes one may hold", held.name, vocab.DocumentMaxBytes)}
 		case err != nil:
-			return fmt.Errorf("read the shared document %s: %w", held.name, err)
+			return failure.Wrap(vocab.SetupUnreadableDocument, fmt.Errorf("%s cannot be read: %w", held.name, err))
 		}
 		if err := held.check(data); err != nil {
 			return &Error{err: err}
