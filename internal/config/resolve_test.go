@@ -1,7 +1,10 @@
 package config_test
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -16,7 +19,7 @@ import (
 func TestResolve_ranksFlagThenRepositoryThenCentralThenDefault(t *testing.T) {
 	t.Parallel()
 
-	flags := []byte(`{"reporters.fail_on": "allow"}`)
+	flags := map[vocab.Key]json.RawMessage{vocab.KeyReportersFailOn: json.RawMessage(`"allow"`)}
 	repository := config.Document{Path: "repo/deadset.json", Data: []byte(`{"target": {"kind": "library"}, "reporters": {"fail_on": "warn"}}`)}
 	central := config.Document{Path: "central.json", Data: []byte(`{"target": {"kind": "library"}, "reporters": {"fail_on": "deny"}}`)}
 	bare := config.Document{Path: "repo/deadset.json", Data: []byte(`{"target": {"kind": "library"}}`)}
@@ -48,7 +51,6 @@ func TestResolve_ranksFlagThenRepositoryThenCentralThenDefault(t *testing.T) {
 			t.Parallel()
 
 			in := c.in
-			in.ContractVersion = testContractVersion
 			r, err := config.Resolve(&in)
 			if err != nil {
 				t.Fatalf("Resolve(%s) = error %v", c.name, err)
@@ -69,9 +71,8 @@ func TestResolve_severityResolvesPerCode(t *testing.T) {
 	t.Parallel()
 
 	r, err := config.Resolve(&config.Inputs{
-		ContractVersion: testContractVersion,
-		Repository:      config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": "library"}, "severity": {"DS1501": "allow"}}`)},
-		Central:         config.Document{Path: "central.json", Data: []byte(`{"severity": {"DS1501": "deny", "DS14": "warn"}}`)},
+		Repository: config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": "library"}, "severity": {"DS1501": "allow"}}`)},
+		Central:    config.Document{Path: "central.json", Data: []byte(`{"severity": {"DS1501": "deny", "DS14": "warn"}}`)},
 	})
 	if err != nil {
 		t.Fatalf("Resolve(per-code severity) = error %v", err)
@@ -98,7 +99,8 @@ func TestResolve_severityResolvesPerCode(t *testing.T) {
 }
 
 // A document naming a key the closed key list does not declare, or naming one key
-// twice, is refused naming the key, so a typo is never a setting silently ignored.
+// twice, is refused naming the key, so a typo is never a setting silently ignored;
+// a key written twice is named as the strict reader names it, by itself.
 func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 	t.Parallel()
 
@@ -113,10 +115,12 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 		{name: "key-in-the-go-section", document: `{"go": {"test_files": []}}`, at: "go.test_files"},
 		{name: "member-of-the-delimiter-pair", document: `{"analysis": {"template_delimiters": {"left": "<", "right": ">", "middle": "|"}}}`, at: "analysis.template_delimiters.middle"},
 		{name: "member-of-a-matrix-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "cgo": true}]}}`, at: "analysis.configurations[0].cgo"},
+		{name: "empty-member-of-a-section", document: `{"target": {"kind": "library", "": 1}}`, at: `key "target." is not implemented`},
+		{name: "empty-severity-key", document: `{"severity": {"": "warn"}}`, at: `key "severity." is not implemented`},
 		{name: "duplicated-section", document: `{"target": {"kind": "library"}, "target": {"kind": "application"}}`, at: "target"},
-		{name: "duplicated-nested-key", document: `{"target": {"kind": "library", "kind": "application"}}`, at: "target.kind"},
-		{name: "duplicated-member-of-an-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "os": "darwin"}]}}`, at: "analysis.configurations[0].os"},
-		{name: "duplicated-severity-code", document: `{"severity": {"DS1501": "warn", "DS1501": "deny"}}`, at: "severity.DS1501"},
+		{name: "duplicated-nested-key", document: `{"target": {"kind": "library", "kind": "application"}}`, at: `"kind"`},
+		{name: "duplicated-member-of-an-entry", document: `{"analysis": {"configurations": [{"id": "a", "os": "linux", "arch": "amd64", "os": "darwin"}]}}`, at: `"os"`},
+		{name: "duplicated-severity-code", document: `{"severity": {"DS1501": "warn", "DS1501": "deny"}}`, at: `"DS1501"`},
 		{name: "severity-key-spelling", document: `{"severity": {"DS1": "warn"}}`, at: "severity.DS1"},
 		{name: "severity-code-the-contract-fixes", document: `{"severity": {"DS9003": "warn"}}`, at: "severity.DS9003"},
 		{name: "severity-family-holding-a-fixed-code", document: `{"severity": {"DS90": "allow"}}`, at: "severity.DS90"},
@@ -142,7 +146,8 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 
 // A value outside what its key declares is refused naming the place in the value:
 // a build matrix entry is exactly one of its two shapes, the delimiter pair names
-// both delimiters, and every other value is of its declared type and set.
+// both delimiters, every other value is of its declared type and set, and a key of
+// a language's own section is checked as every other key is.
 func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 	t.Parallel()
 
@@ -164,9 +169,14 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 		{name: "fractional-count", document: `{"reporters": {"max_findings": 1.5}}`, at: "reporters.max_findings"},
 		{name: "list-shorter-than-its-minimum", document: `{"reporters": {"formats": []}}`, at: "reporters.formats"},
 		{name: "list-entry-outside-its-set", document: `{"analysis": {"languages": ["go", "rust"]}}`, at: "analysis.languages[1]"},
-		{name: "list-entry-repeated", document: `{"roots": {"patterns": ["go://a#B", "go://a#B"]}}`, at: "roots.patterns[1]"},
+		{name: "list-entry-repeated", document: `{"roots": {"patterns": ["go://a#B", "go://a#B"]}}`, at: "roots.patterns"},
 		{name: "exemption-class-spelling", document: `{"exemptions": {"disabled": ["Template_Field"]}}`, at: "exemptions.disabled[0]"},
-		{name: "component-extension-repeated", document: `{"ts": {"component_extensions": [".vue", ".vue"]}}`, at: "ts.component_extensions[1]"},
+		{name: "component-extension-repeated", document: `{"ts": {"component_extensions": [".vue", ".vue"]}}`, at: "ts.component_extensions"},
+		{name: "exemption-class-outside-the-vocabulary", document: `{"exemptions": {"disabled": ["no-such-class"]}}`, at: "exemptions.disabled[0]"},
+		{name: "ts-entry-of-no-shape", document: `{"ts": {"serializers": [{"symbol": "go://a#B"}]}}`, at: "ts.serializers[0].symbol"},
+		{name: "ts-list-shorter-than-its-minimum", document: `{"ts": {"test_files": [], "entry_files": [7]}}`, at: "ts.entry_files[0]"},
+		{name: "integer-with-an-exponent", document: `{"reporters": {"max_findings": 1e2}}`, at: "reporters.max_findings"},
+		{name: "provider-name-repeated", document: `{"providers": {"analyzers": [{"name": "a", "languages": ["go"], "command": "a"}, {"name": "a", "languages": ["ts"], "command": "b"}]}}`, at: "providers.analyzers[1].name"},
 		{name: "roots-complete-of-another-type", document: `{"ts": {"roots_complete": "yes"}}`, at: "ts.roots_complete"},
 		{name: "severity-outside-its-set", document: `{"severity": {"DS1501": "error"}}`, at: "severity.DS1501"},
 		{name: "contract-version-spelling", document: `{"contract_version": "3.0"}`, at: "contract_version"},
@@ -197,25 +207,25 @@ func TestResolve_refusesAValueOutsideItsDeclaration(t *testing.T) {
 }
 
 // A target kind written per language is refused naming its first fault: an
-// undeclared member in the document's order, then a language left out, then a
-// language given a value that is not a kind, the languages in the Contract's
-// order. Each message names the source, the path and the values it admits.
+// undeclared member, then a language left out, then a language given a value
+// that is not a kind, members in ascending order. Each message names the source
+// and the path, and a refused value names the value without the kinds admitted.
 func TestResolve_refusesATargetKindAtItsFirstFault(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		kind     string
-		at       string
-		admitted string
+		name  string
+		kind  string
+		at    string
+		value string
 	}{
-		{name: "undeclared-members-in-document-order", kind: `{"zz": "library", "py": "library", "go": "application"}`, at: "target.kind.zz", admitted: `"go", "ts"`},
-		{name: "undeclared-after-a-refused-value", kind: `{"go": "service", "ts": "library", "py": "library"}`, at: "target.kind.py", admitted: `"go", "ts"`},
-		{name: "missing-after-a-refused-value", kind: `{"go": "service"}`, at: "target.kind.ts", admitted: `"go", "ts"`},
-		{name: "refused-values-in-the-contracts-order", kind: `{"ts": "service", "go": "service"}`, at: "target.kind.go", admitted: `"application", "library"`},
-		{name: "member-of-another-type", kind: `{"go": "application", "ts": 1}`, at: "target.kind.ts", admitted: `"application", "library"`},
-		{name: "string-outside-its-set", kind: `"service"`, at: "target.kind", admitted: `"application", "library"`},
-		{name: "number", kind: `1`, at: "target.kind", admitted: `"application", "library", or an object naming the kind of each of "go", "ts"`},
+		{name: "undeclared-members-in-ascending-order", kind: `{"zz": "library", "py": "library", "go": "application"}`, at: "target.kind.py"},
+		{name: "undeclared-after-a-refused-value", kind: `{"go": "service", "ts": "library", "py": "library"}`, at: "target.kind.py"},
+		{name: "missing-after-a-refused-value", kind: `{"go": "service"}`, at: "target.kind.ts"},
+		{name: "refused-values-in-ascending-order", kind: `{"ts": "service", "go": "service"}`, at: "target.kind.go", value: `"service"`},
+		{name: "member-of-another-type", kind: `{"go": "application", "ts": 1}`, at: "target.kind.ts"},
+		{name: "string-outside-its-set", kind: `"service"`, at: "target.kind", value: `"service"`},
+		{name: "number", kind: `1`, at: "target.kind"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -226,11 +236,11 @@ func TestResolve_refusesATargetKindAtItsFirstFault(t *testing.T) {
 			if !isRefusal {
 				t.Fatalf("Resolve(%s) = error %v, want a *config.Error naming %q", c.kind, err, c.at)
 			}
-			if named := strings.Contains(refusal.Message, ": "+c.at+": ") || strings.Contains(refusal.Message, `"`+c.at+`"`); !named {
-				t.Errorf("Resolve(%s) = %q, want the message to name %q", c.kind, refusal, c.at)
+			if named := strings.HasPrefix(refusal.Message, "deadset.json: "+c.at+": ") || strings.Contains(refusal.Message, `"`+c.at+`"`); !named {
+				t.Errorf("Resolve(%s) = %q, want the message to name deadset.json and %q", c.kind, refusal, c.at)
 			}
-			if !strings.HasPrefix(refusal.Message, "deadset.json: ") || !strings.Contains(refusal.Message, c.admitted) {
-				t.Errorf("Resolve(%s) = %q, want it to name deadset.json and the values %s", c.kind, refusal, c.admitted)
+			if c.value != "" && (!strings.Contains(refusal.Message, c.value) || strings.Contains(refusal.Message, "library")) {
+				t.Errorf("Resolve(%s) = %q, want the message to name %s and no admitted kind", c.kind, refusal, c.value)
 			}
 		})
 	}
@@ -243,9 +253,8 @@ func TestResolve_readsTheTargetKindInEitherShapeAsOneSetting(t *testing.T) {
 	t.Parallel()
 
 	r, err := config.Resolve(&config.Inputs{
-		ContractVersion: testContractVersion,
-		Repository:      config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": {"ts": "library", "go": "application"}}}`)},
-		Central:         config.Document{Path: "central.json", Data: []byte(`{"target": {"kind": "library"}}`)},
+		Repository: config.Document{Path: "deadset.json", Data: []byte(`{"target": {"kind": {"ts": "library", "go": "application"}}}`)},
+		Central:    config.Document{Path: "central.json", Data: []byte(`{"target": {"kind": "library"}}`)},
 	})
 	if err != nil {
 		t.Fatalf("Resolve(a per-language kind over a string) = error %v", err)
@@ -263,7 +272,7 @@ func TestResolve_readsTheTargetKindInEitherShapeAsOneSetting(t *testing.T) {
 			t.Errorf("Print() carries the provenance entry %q, want one for target.kind alone", name)
 		}
 	}
-	for _, languages := range [][]string{{"go"}, {"ts"}, {"go", "ts"}} {
+	for _, languages := range [][]vocab.Language{{vocab.Go}, {vocab.TS}, {vocab.Go, vocab.TS}} {
 		document, err := r.Split(languages...)
 		if err != nil {
 			t.Fatalf("Split(%q) = error %v", languages, err)
@@ -284,13 +293,12 @@ func TestResolve_requiresTheTargetKind(t *testing.T) {
 		in   *config.Inputs
 		name string
 	}{
-		{name: "no-source", in: &config.Inputs{ContractVersion: testContractVersion, Repository: config.Document{Path: "deadset.json"}}},
+		{name: "no-source", in: &config.Inputs{Repository: config.Document{Path: "deadset.json"}}},
 		{name: "language-in-scope", in: fromRepository(`{"analysis": {"languages": ["go"]}}`)},
 		{name: "both-documents-silent", in: &config.Inputs{
-			ContractVersion: testContractVersion,
-			Flags:           []byte(`{"analysis.languages": ["go", "ts"]}`),
-			Repository:      config.Document{Path: "deadset.json", Data: []byte(`{"analysis": {"min_confidence": "certain"}}`)},
-			Central:         config.Document{Path: "central.json", Data: []byte(`{"reporters": {"fail_on": "warn"}}`)},
+			Flags:      map[vocab.Key]json.RawMessage{vocab.KeyAnalysisLanguages: json.RawMessage(`["go", "ts"]`)},
+			Repository: config.Document{Path: "deadset.json", Data: []byte(`{"analysis": {"min_confidence": "certain"}}`)},
+			Central:    config.Document{Path: "central.json", Data: []byte(`{"reporters": {"fail_on": "warn"}}`)},
 		}},
 	}
 	for _, c := range refused {
@@ -309,9 +317,8 @@ func TestResolve_requiresTheTargetKind(t *testing.T) {
 	}
 
 	r, err := config.Resolve(&config.Inputs{
-		ContractVersion: testContractVersion,
-		Repository:      config.Document{Path: "deadset.json"},
-		Central:         config.Document{Path: "central.json", Data: []byte(`{"target": {"kind": "application"}}`)},
+		Repository: config.Document{Path: "deadset.json"},
+		Central:    config.Document{Path: "central.json", Data: []byte(`{"target": {"kind": "application"}}`)},
 	})
 	if err != nil {
 		t.Fatalf("Resolve(the central configuration alone supplying the target kind) = error %v, want it to resolve", err)
@@ -329,7 +336,7 @@ func TestResolve_contractVersion(t *testing.T) {
 	cases := []struct {
 		name, document, want string
 	}{
-		{name: "absent", document: `{"target": {"kind": "library"}}`, want: testContractVersion},
+		{name: "absent", document: `{"target": {"kind": "library"}}`, want: vocab.ContractVersion},
 		{name: "named", document: `{"contract_version": "2.4.0", "target": {"kind": "library"}}`, want: "2.4.0"},
 	}
 	for _, c := range cases {
@@ -344,25 +351,6 @@ func TestResolve_contractVersion(t *testing.T) {
 				t.Errorf("Resolve(%s) contract_version = %v, want %q", c.document, got, c.want)
 			}
 		})
-	}
-}
-
-// The value of a key of a language's own section that the key list gives no
-// check passes through unread: the analyzer of that language reads and checks it.
-func TestResolve_passesALanguageSectionThroughUnread(t *testing.T) {
-	t.Parallel()
-
-	r, err := config.Resolve(fromRepository(`{"target": {"kind": "library"}, "ts": {"test_files": [], "entry_files": [7]}}`))
-	if err != nil {
-		t.Fatalf("Resolve(a ts section its analyzer would refuse) = error %v, want the section passed through", err)
-	}
-	want := map[string]any{
-		"test_files": []any{}, "entry_files": []any{float64(7)},
-		"component_extensions": []any{".vue", ".svelte", ".astro"}, "disabled_conventions": []any{},
-		"injection_registrations": []any{}, "lifecycle_contracts": []any{}, "serializers": []any{}, "roots_complete": false,
-	}
-	if got := printed(t, r).Values["ts"]; !reflect.DeepEqual(got, want) {
-		t.Errorf("Resolve(a ts section its analyzer would refuse) ts = %v, want it as written %v", got, want)
 	}
 }
 
@@ -382,10 +370,62 @@ func TestResolve_readsTheOrchestratorSettings(t *testing.T) {
 		t.Errorf("Resolve(orchestrator settings).Config.Languages = %v, want %v", r.Config.Languages, want)
 	}
 	want := config.Reporters{
-		Formats: []vocab.Format{vocab.FormatSARIF, vocab.FormatText}, Sort: config.SortSize,
-		Cascade: config.CascadeFull, MaxFindings: 25, FailOn: vocab.Warn,
+		Formats: []vocab.Format{vocab.FormatSARIF, vocab.FormatText}, BySize: true, MaxFindings: 25, FailOn: vocab.Warn,
 	}
 	if !reflect.DeepEqual(r.Config.Reporters, want) {
 		t.Errorf("Resolve(orchestrator settings).Config.Reporters = %+v, want %+v", r.Config.Reporters, want)
+	}
+}
+
+// A count is read up to the maximum the configuration schema declares, held as
+// the largest int where that is smaller, and a count above it is refused naming
+// the setting and the document, the repository's or the central one.
+func TestResolve_readsACountUpToItsMaximum(t *testing.T) {
+	t.Parallel()
+
+	const maximum int64 = 9007199254740991
+	most := fmt.Sprintf(`{"target": {"kind": "library"}, "reporters": {"max_findings": %d}}`, maximum)
+	above := fmt.Sprintf(`{"target": {"kind": "library"}, "reporters": {"max_findings": %d}}`, maximum+1)
+	held := int(min(maximum, int64(math.MaxInt)))
+	cases := []struct {
+		in      *config.Inputs
+		name    string
+		refuses string
+	}{
+		{name: "repository-at-the-maximum", in: fromRepository(most)},
+		{name: "central-at-the-maximum", in: &config.Inputs{Central: config.Document{Path: "central.json", Data: []byte(most)}}},
+		{name: "repository-above-it", in: fromRepository(above), refuses: "deadset.json"},
+		{name: "central-above-it", in: &config.Inputs{Central: config.Document{Path: "central.json", Data: []byte(above)}}, refuses: "central.json"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			r, err := config.Resolve(c.in)
+			if c.refuses == "" {
+				if err != nil || r.Config.Reporters.MaxFindings != held {
+					t.Fatalf("Resolve(%s) = %v, error %v, want max_findings %d", c.name, r, err, held)
+				}
+				return
+			}
+			refusal, isRefusal := errors.AsType[*config.Error](err)
+			if !isRefusal || !strings.Contains(refusal.Message, c.refuses) || !strings.Contains(refusal.Message, "reporters.max_findings") {
+				t.Errorf("Resolve(%s) = error %v, want a *config.Error naming %s and reporters.max_findings", c.name, err, c.refuses)
+			}
+		})
+	}
+}
+
+// A setting no option supplies is refused when the command line's settings
+// carry it.
+func TestResolve_refusesAFlagSettingNoOptionSupplies(t *testing.T) {
+	t.Parallel()
+
+	in := fromRepository(`{"target": {"kind": "library"}}`)
+	in.Flags = map[vocab.Key]json.RawMessage{vocab.KeyAnalysisTemplateDirs: json.RawMessage(`[]`)}
+	_, err := config.Resolve(in)
+	refusal, isRefusal := errors.AsType[*config.Error](err)
+	if !isRefusal || !strings.Contains(refusal.Message, "analysis.template_dirs") || !strings.Contains(refusal.Message, "no flag supplies it") {
+		t.Errorf("Resolve(a flag setting of analysis.template_dirs) = error %v, want a *config.Error naming the key", err)
 	}
 }

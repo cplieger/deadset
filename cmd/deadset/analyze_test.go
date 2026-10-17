@@ -249,7 +249,7 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				}
 				return target, filepath.Join(t.TempDir(), "run"), nil
 			},
-			code: vocab.ExitUsage, names: []string{"deadset.json", "is a directory"},
+			code: vocab.ExitUsage, names: []string{"deadset.json", "not a regular file"},
 		},
 		{
 			name: "template-format-without-a-template",
@@ -347,6 +347,69 @@ func TestAnalyzeExitCodes(t *testing.T) {
 				return target, runDir, nil
 			},
 			code: vocab.ExitFailure, names: []string{"deadset-ts", "exited 3"},
+		},
+		{
+			name: "malformed-ignore-file", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
+			setup: func(t *testing.T) (string, string, []string) {
+				target, runDir := goTarget(t, goOnly, "")
+				writeFile(t, filepath.Join(target, "deadset-ignore.json"), []byte(`{"ignore": [`))
+				return target, runDir, nil
+			},
+			code: vocab.ExitUsage, names: []string{"deadset-ignore.json"}, absent: []string{"usage: deadset analyze", "run directory"},
+		},
+		{
+			name: "baseline-row-of-another-scheme-malformed", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
+			setup: func(t *testing.T) (string, string, []string) {
+				target, runDir := goTarget(t, goOnly, "")
+				writeFile(t, filepath.Join(target, "deadset-baseline.json"),
+					[]byte(`{"baseline": [{"code": "ds1001", "symbol": "ts://@example/app/a.ts#A", "path": "a.ts", "reason": "recorded"}]}`))
+				return target, runDir, nil
+			},
+			code: vocab.ExitUsage, names: []string{"deadset-baseline.json", `"ds1001"`}, absent: []string{"usage: deadset analyze", "run directory"},
+		},
+		{
+			name: "edge-naming-a-wildcard", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
+			setup: func(t *testing.T) (string, string, []string) {
+				target, runDir := goTarget(t, goOnly, "")
+				writeFile(t, filepath.Join(target, "deadset-edges.json"),
+					[]byte(`{"edges": {"wire": {"provides": "go://example.com/app#*", "used_by": "ts://@example/app/a.ts#A"}}}`))
+				return target, runDir, nil
+			},
+			code: vocab.ExitUsage, names: []string{"deadset-edges.json", "/edges/wire/provides"}, absent: []string{"usage: deadset analyze", "run directory"},
+		},
+		{
+			name: "edge-identifier-written-twice", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
+			setup: func(t *testing.T) (string, string, []string) {
+				target, runDir := goTarget(t, goOnly, "")
+				writeFile(t, filepath.Join(target, "deadset-edges.json"), []byte(`{"edges": {`+
+					`"wire": {"provides": "go://example.com/app#A", "used_by": "ts://@example/app/a.ts#A"}, `+
+					`"wire": {"provides": "go://example.com/app#B", "used_by": "ts://@example/app/a.ts#B"}}}`))
+				return target, runDir, nil
+			},
+			code: vocab.ExitUsage, names: []string{"deadset-edges.json", "wire"}, absent: []string{"usage: deadset analyze", "run directory"},
+		},
+		{
+			name: "shared-documents-well-formed", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
+			setup: func(t *testing.T) (string, string, []string) {
+				target, runDir := goTarget(t, goOnly, "")
+				writeFile(t, filepath.Join(target, "deadset-ignore.json"),
+					[]byte(`{"ignore": [{"code": "DS1001", "symbol": "js://example/app/a.js#A", "path": "a.js", "reason": "Its own analyzer adjudicates it."}]}`))
+				writeFile(t, filepath.Join(target, "deadset-baseline.json"), []byte(`{"baseline": []}`))
+				writeFile(t, filepath.Join(target, "deadset-edges.json"), []byte(`{"edges": {}}`))
+				return target, runDir, nil
+			},
+			code: vocab.ExitFindings, names: []string{"run directory"},
+		},
+		{
+			name: "shared-document-unreadable", stubs: map[string]stub{"deadset-go": {report: goFindings, exit: 1}},
+			setup: func(t *testing.T) (string, string, []string) {
+				target, runDir := goTarget(t, goOnly, "")
+				if err := os.Mkdir(filepath.Join(target, "deadset-edges.json"), 0o750); err != nil {
+					t.Fatalf("Setup: %v", err)
+				}
+				return target, runDir, nil
+			},
+			code: vocab.ExitFailure, names: []string{"deadset-edges.json", "not a regular file"},
 		},
 		{
 			name:  "pending-pair-unevaluated",

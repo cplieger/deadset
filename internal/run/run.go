@@ -1,5 +1,5 @@
-// Package run is the order of one analysis by the orchestrator: plan, open
-// every source, lay out the run directory, admit every source, produce every
+// Package run is the order of one analysis by the orchestrator: check the
+// shared documents, plan, open every source, lay out the run directory, admit every source, produce every
 // report, merge them, shape the merged report and write it with every
 // rendering that is a file beside it. Each stage's decision belongs to the
 // package that makes it; this one holds only their order and what one stage
@@ -19,6 +19,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
+	"github.com/cplieger/deadset/v2/internal/documents"
 	"github.com/cplieger/deadset/v2/internal/merge"
 	"github.com/cplieger/deadset/v2/internal/plan"
 	"github.com/cplieger/deadset/v2/internal/policy"
@@ -107,6 +108,9 @@ var ErrRunDir = errors.New("the run directory cannot be created")
 // or a rendering that could not be written beside it; the result is returned
 // with it once the run directory exists.
 func Analyze(ctx context.Context, req *Request) (*Result, error) {
+	if err := documents.Check(ctx, req.Root); err != nil {
+		return nil, err
+	}
 	planned, err := plan.Make(&plan.Input{Scope: req.Scope, Languages: req.Resolved.Config.Languages, Providers: req.Resolved.Config.Providers}, plan.Disk{})
 	if err != nil {
 		return nil, err
@@ -153,7 +157,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	}
 	policy.Apply(result.Merged, &policy.Options{
 		Severity:    req.Resolved.Severity,
-		Sort:        req.Resolved.Config.Reporters.Sort,
+		BySize:      req.Resolved.Config.Reporters.BySize,
 		MaxFindings: req.Resolved.Config.Reporters.MaxFindings,
 	})
 	if refused := dir.WriteMerged(result.Merged); refused != nil {
@@ -228,11 +232,7 @@ func prepare(dir *rundir.Dir, resolved *config.Resolved, planned *plan.Plan, sou
 // hand writes one source's configuration, the split of resolved for its
 // languages, and its own scope document where it has one.
 func hand(dir *rundir.Dir, entry rundir.Entry, resolved *config.Resolved, planned *plan.Source) (handedFiles, error) {
-	languages := make([]string, len(planned.Languages))
-	for i, language := range planned.Languages {
-		languages[i] = string(language)
-	}
-	split, err := resolved.Split(languages...)
+	split, err := resolved.Split(planned.Languages...)
 	if err != nil {
 		return handedFiles{}, err
 	}

@@ -15,14 +15,13 @@ deadset.json includes generated files, so the analysis judges its declarations.
 -- deadset-edges.json --
 {
   "description": "The wire type the server relays, paired with the TypeScript interface generated from it.",
-  "edges": [
-    {
-      "id": "wire/ServerEvent",
+  "edges": {
+    "wire/ServerEvent": {
       "because": "generated",
       "provides": "go://example.com/server/internal/wire#ServerEvent",
       "used_by": "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
     }
-  ]
+  }
 }
 -- go.mod --
 module example.com/server

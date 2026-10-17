@@ -36,7 +36,6 @@ func goRun(t *testing.T, text string) (*source.Process, source.Files) {
 	writeFile(t, filepath.Join(target, "go.mod"), []byte("module example.com/app\n\ngo 1.27\n"))
 	writeFile(t, filepath.Join(target, "app.go"), []byte(text))
 	resolved, err := config.Resolve(&config.Inputs{
-		ContractVersion: vocab.ContractVersion,
 		Repository: config.Document{
 			Path: filepath.Join(target, config.RepositoryFile),
 			Data: []byte(`{"target": {"kind": "library"}, "reporters": {"formats": ["json", "github"], "max_findings": 1}}`),

@@ -98,9 +98,7 @@ func (c *command) dispatch(args []string, stdout, stderr io.Writer) int {
 func (c *command) flags(verb *vocab.Verb) (*flag.FlagSet, runner) {
 	set := flag.NewFlagSet(run.Product+" "+verb.Name, flag.ContinueOnError)
 	runVerb := binders[verb.Name](c, set)
-	if slices.ContainsFunc(verb.Options, func(name string) bool { o, _ := vocab.OptionOf(name); return o.Setting != "" }) {
-		config.RegisterFlags(set)
-	}
+	config.RegisterFlags(set, verb.Options)
 	var defined []string
 	set.VisitAll(func(f *flag.Flag) { defined = append(defined, f.Name) })
 	if want := slices.Sorted(slices.Values(verb.Options)); !slices.Equal(defined, want) {
@@ -128,7 +126,7 @@ func verbUsage(verb *vocab.Verb) string {
 	spelled := make([]string, len(verb.Options))
 	for i, name := range verb.Options {
 		o, _ := vocab.OptionOf(name)
-		spelled[i] = "--" + o.Name + "=" + strings.ToUpper(o.Value)
+		spelled[i] = "--" + o.Name + "=" + strings.ToUpper(string(o.Value))
 		fmt.Fprintf(&line, " [%s]", spelled[i])
 		width = max(width, len(spelled[i]))
 	}

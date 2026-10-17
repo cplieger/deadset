@@ -10,10 +10,6 @@ import (
 	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
-// edgesDocument is the target-relative path of the document that declares
-// edges, where a document-level finding sits.
-const edgesDocument = "deadset-edges.json"
-
 // staleEdgeKind is the stale-edge finding's kind in the issue-kind vocabulary.
 var staleEdgeKind, _ = vocab.KindOf(vocab.StaleCrossLanguageEdge)
 
@@ -75,7 +71,7 @@ func staleEdge(edge string, held, stale []report.EdgeSide, component string) rep
 		Code:              staleEdgeKind.Code,
 		Kind:              staleEdgeKind.Name,
 		Language:          vocab.Language(language),
-		Position:          report.Position{Path: edgesDocument, Line: 1, Column: 1, EndLine: 1},
+		Position:          report.Position{Path: vocab.EdgesFileName, Line: 1, Column: 1, EndLine: 1},
 		Symbol:            report.Symbol{Ref: stale[0].Symbol, Kind: "edge", Name: edge, SizeLines: 1},
 		ReachabilityClass: vocab.Certain,
 		Confidence:        vocab.Certain,

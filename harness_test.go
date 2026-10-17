@@ -107,8 +107,7 @@ type recordedEvaluation struct {
 // edgesDocument is the edges document an archive declares.
 type edgesDocument struct {
 	Description string `json:"description"`
-	Edges       []struct {
-		ID       string `json:"id"`
+	Edges       map[string]struct {
 		Because  string `json:"because"`
 		Provides string `json:"provides"`
 		UsedBy   string `json:"used_by"`
@@ -458,8 +457,11 @@ func readEdge(t *testing.T, archive string) declaredEdge {
 	if len(edges.Edges) != 1 {
 		t.Fatalf("%s declares %d edges, want 1", archive, len(edges.Edges))
 	}
-	edge := edges.Edges[0]
-	return declaredEdge{id: edge.ID, provides: edge.Provides, usedBy: edge.UsedBy}
+	var declared declaredEdge
+	for id, edge := range edges.Edges {
+		declared = declaredEdge{id: id, provides: edge.Provides, usedBy: edge.UsedBy}
+	}
+	return declared
 }
 
 // scopeName is the scope document, inside a run's directory, every analyzer

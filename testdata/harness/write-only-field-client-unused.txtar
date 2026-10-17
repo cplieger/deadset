@@ -15,14 +15,13 @@ deadset.json includes generated files, so the analysis judges its declarations.
 -- deadset-edges.json --
 {
   "description": "The field the browser client reads, paired with the property generated from it.",
-  "edges": [
-    {
-      "id": "wire/ServerEvent.Kind",
+  "edges": {
+    "wire/ServerEvent.Kind": {
       "because": "generated",
       "provides": "go://example.com/server/internal/wire#ServerEvent.Kind",
       "used_by": "ts://@example/web/src/wire/types.gen.ts#ServerEvent.kind"
     }
-  ]
+  }
 }
 -- go.mod --
 module example.com/server

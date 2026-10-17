@@ -1,15 +1,15 @@
-// Package config resolves the deadset configuration for the orchestrator. It reads
-// the closed key list the Contract declares from the command line, the repository
-// configuration and the central configuration, applies them in that rank over each
-// key's documented default, records the source of every resolved setting, and
-// splits the result into the document each analyzer receives.
+// Package config resolves the deadset configuration for the orchestrator. It
+// reads the closed key list of the Contract's generated setting table from the
+// command line, the repository configuration and the central configuration,
+// applies them in that rank over each key's default, records the source of
+// every resolved setting, and splits the result into the document each
+// analyzer receives, holding the keys the table delivers to its languages.
 //
-// The orchestrator reads the settings the Contract gives every product and the ones
-// it gives the orchestrator, and those are the fields of [config]. A setting the
-// Contract gives every analyzer is checked here, because every analyzer reads it the
-// same way, and is otherwise only passed on. A key of a language's own section
-// belongs to that language's analyzer: its name is part of the closed key list, and
-// its value passes through unread.
+// Every document is checked whole against the Contract's configuration
+// schema before any analyzer runs, every language's section included: the
+// orchestrator is the one product that reads the whole document, so a fault
+// in any key ends the run here, with the usage code. The orchestrator reads
+// the settings of [config] by their keys.
 package config
 
 import "github.com/cplieger/deadset-spec/v8/vocab"
@@ -27,38 +27,23 @@ type config struct {
 	Reporters Reporters
 }
 
-// Reporters is the reporters section: how the merged findings are rendered and
-// which of them fail the run.
+// Reporters is the reporters settings the orchestrator applies to the merged
+// report: its renderings, the failing severity, the most findings it keeps,
+// and whether reporters.sort puts the largest deletion first.
 type Reporters struct {
-	Sort        Sort
-	Cascade     cascade
 	FailOn      vocab.Severity
 	Formats     []vocab.Format
 	MaxFindings int
+	BySize      bool
 }
 
-// Sort is the order findings are rendered in.
-type Sort string
+// sortBySize is the reporters.sort value that puts the largest deletion first.
+const sortBySize = "size"
 
-// The orders: position is the canonical order, size puts the largest deletion first.
-const (
-	SortPosition Sort = "position"
-	SortSize     Sort = "size"
-)
-
-// cascade is how much of a dead component a rendering lists.
-type cascade string
-
-// The cascade renderings: roots lists a component's roots, full every member.
-const (
-	cascadeRoots cascade = "roots"
-	CascadeFull  cascade = "full"
-)
-
-// Error is a configuration the orchestrator refuses: a document that is not one
-// instance of the closed key list, a key it does not implement, a resolution no
-// source supplied a required setting for, or a provider list in which no entry
-// claims a language in scope. Every refusal exits with the usage code.
+// Error is a configuration the orchestrator refuses: a document the
+// configuration schema refuses, a resolution no source supplied a required
+// setting for, or a provider list in which no entry claims a language in
+// scope. Every refusal exits with the usage code.
 type Error struct {
 	Message string
 }

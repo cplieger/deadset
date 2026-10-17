@@ -14,8 +14,8 @@ import (
 func (*command) bindPrintConfig(set *flag.FlagSet) runner {
 	target := set.String("target", ".", "")
 	central := set.String("central", "", "")
-	return func(_ context.Context, stdout, _ io.Writer) (int, error) {
-		resolved, _, err := resolveConfiguration(set, *target, *central)
+	return func(ctx context.Context, stdout, _ io.Writer) (int, error) {
+		resolved, _, err := resolveConfiguration(ctx, set, *target, *central)
 		if err != nil {
 			return 0, err
 		}

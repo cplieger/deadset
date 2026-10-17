@@ -50,6 +50,10 @@ The keys are those of the contract's [configuration schema](https://github.com/c
 | `reporters.sort` | `position` | `position`, or `size` to list the largest deletion first |
 | `reporters.max_findings` | `0` | The most findings the report lists. `0` lists every one, and the exit code always counts every finding |
 
+## Documents at the target root
+
+Before any analyzer runs, deadset checks the documents every analyzer reads at the target root: the ignore file `deadset-ignore.json`, the baseline `deadset-baseline.json` and the edges document `deadset-edges.json`. A run exits with 2 on one that is not strict JSON, that the contract refuses or that is larger than 1 MiB, every entry checked whatever its language, and names the document and the entry. An absent document is none. A document that cannot be read ends the run with exit code 3, as does one that is not a regular file inside the target root, such as a symbolic link to a file outside it or a named pipe. Whether a symbol reference is valid in its language stays the check of that language's analyzer.
+
 ## How languages are detected
 
 With `analysis.languages` empty, deadset reads the names of the files under the target, never their contents. Go is in scope when the tree holds a `go.mod` or a `.go` file. TypeScript is in scope when it holds a `tsconfig*.json`, the one file its analyzer reads a program from. Each language skips the directories its analyzer skips. Go skips `node_modules`, `testdata`, `vendor` and every directory whose name starts with a full stop or an underscore. TypeScript skips only `node_modules` and `.git`, so a `tsconfig.json` under `.config` or `testdata` puts it in scope. A tree with no language in scope ends the run with exit code 3 and the line `setup failure: no-program`.

@@ -53,18 +53,17 @@ A Go type that only its generated TypeScript client uses has no reference in Go.
 ```json
 {
   "description": "The wire type the server relays, paired with the TypeScript interface generated from it.",
-  "edges": [
-    {
-      "id": "wire/ServerEvent",
+  "edges": {
+    "wire/ServerEvent": {
       "because": "generated",
       "provides": "go://example.com/server/internal/wire#ServerEvent",
       "used_by": "ts://@example/web/src/wire/types.gen.ts#ServerEvent"
     }
-  ]
+  }
 }
 ```
 
-deadset reports the pair only when both sides are unused. A TypeScript file whose leading comments mark it generated keeps every declaration in it, so set `analysis.generated_files` to `include` in `deadset.json` for deadset to judge the generated side. An edge whose side neither analyzer finds is reported as `DS9005`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v8.0.0/docs/edges.md) describes the format.
+Each edge sits under its own identifier, so one identifier names one edge. deadset reports the pair only when both sides are unused. A TypeScript file whose leading comments mark it generated keeps every declaration in it, so set `analysis.generated_files` to `include` in `deadset.json` for deadset to judge the generated side. An edge whose side neither analyzer finds is reported as `DS9005`. [Cross-language edges](https://github.com/cplieger/deadset-spec/blob/v8.0.0/docs/edges.md) describes the format.
 
 ### Checking a library against its consumers
 

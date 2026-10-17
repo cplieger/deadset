@@ -76,7 +76,7 @@ func TestReadResolvesEveryPathAgainstTheDocumentsDirectory(t *testing.T) {
 			t.Parallel()
 
 			path := written(t, c.name, published(t, "examples/scope/"+c.name))
-			got, err := scope.Read(path)
+			got, err := scope.Read(t.Context(), path)
 			if err != nil {
 				t.Fatalf("Read(%s) = %v, want the published example read", c.name, err)
 			}
@@ -115,7 +115,7 @@ func TestReadRefusesEveryPublishedNegative(t *testing.T) {
 			t.Parallel()
 
 			path := written(t, negative.File, published(t, "examples/negatives/"+negative.File))
-			_, err := scope.Read(path)
+			_, err := scope.Read(t.Context(), path)
 			at := path + ": " + cmp.Or(negative.InstancePath, "the document") + ": " + negative.Constraint + ": "
 			if !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), at) {
 				t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, ErrDocument) naming %q", negative.File, err, at)
@@ -150,7 +150,7 @@ func TestReadRefusesWhatTheClosedDecodeRefuses(t *testing.T) {
 			t.Parallel()
 
 			path := written(t, "scope.json", []byte(c.body))
-			_, err := scope.Read(path)
+			_, err := scope.Read(t.Context(), path)
 			if want := path + ": " + c.at; !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), want) ||
 				(c.at == "") != errors.Is(err, document.ErrMalformed) {
 				t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, ErrDocument) naming %q", c.body, err, want)
@@ -165,7 +165,7 @@ func TestReadNamesAnAbsentDocument(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "scope.json")
-	if _, err := scope.Read(path); !errors.Is(err, fs.ErrNotExist) || errors.Is(err, scope.ErrDocument) {
+	if _, err := scope.Read(t.Context(), path); !errors.Is(err, fs.ErrNotExist) || errors.Is(err, scope.ErrDocument) {
 		t.Errorf("Read(%s) = %v, want an error satisfying errors.Is(err, fs.ErrNotExist) and not ErrDocument", path, err)
 	}
 }
@@ -230,9 +230,9 @@ func TestRootIsTheDeepestDirectoryHoldingEveryPath(t *testing.T) {
 func TestReadRefusesADocumentOverTheBound(t *testing.T) {
 	t.Parallel()
 
-	body := []byte(`{"target": {"path": "` + strings.Repeat("a", vocab.ConfigMaxBytes) + `"}}`)
+	body := []byte(`{"target": {"path": "` + strings.Repeat("a", vocab.DocumentMaxBytes) + `"}}`)
 	path := written(t, "scope.json", body)
-	if _, err := scope.Read(path); !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), "larger than") {
+	if _, err := scope.Read(t.Context(), path); !errors.Is(err, scope.ErrDocument) || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("Read(a document of %d bytes) = %v, want ErrDocument naming the bound", len(body), err)
 	}
 }
@@ -272,7 +272,7 @@ func TestEncodeWritesWhatReadReadsBack(t *testing.T) {
 			if c.want != "" && string(encoded) != c.want {
 				t.Errorf("Encode() =\n%s\nwant\n%s", encoded, c.want)
 			}
-			read, err := scope.Read(written(t, "scope.json", encoded))
+			read, err := scope.Read(t.Context(), written(t, "scope.json", encoded))
 			if err != nil || !reflect.DeepEqual(read, &c.document) {
 				t.Errorf("Read(Encode()) = %+v, %v, want %+v", read, err, c.document)
 			}

@@ -5,17 +5,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
+	"strings"
+	"sync"
+
+	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
-// Print writes the resolved configuration, every key in the closed key list's order
-// and the severity codes in ascending order, followed by the provenance object that
-// names where each setting came from, as one indented JSON object ending in a
-// newline. The output is an instance of the closed key list, and read back as a
-// repository configuration it resolves to the same configuration: resolution
-// ignores the provenance object.
+// node is one key of the closed key list with the keys below it, in the
+// table's order.
+type node struct {
+	name     string
+	children []*node
+	key      vocab.ConfigKey
+}
+
+// keyTree is the closed key list as the document nests it.
+var keyTree = sync.OnceValue(func() *node {
+	root := &node{}
+	held := map[vocab.Key]*node{"": root}
+	for _, key := range vocab.ConfigKeys() {
+		at, name := "", string(key.Key)
+		if cut := strings.LastIndexByte(name, '.'); cut >= 0 {
+			at, name = name[:cut], name[cut+1:]
+		}
+		child := &node{key: key, name: name}
+		parent := held[vocab.Key(at)]
+		parent.children = append(parent.children, child)
+		held[key.Key] = child
+	}
+	return root
+})
+
+// Print writes the resolved configuration, every key in the closed key list's
+// order and the members of a keyed section in ascending order, followed by the
+// provenance object that names where each setting came from, as one indented
+// JSON object ending in a newline. The output is an instance of the
+// configuration schema, and read back as a repository configuration it
+// resolves to the same configuration: resolution ignores the provenance
+// object.
 func (r *Resolved) Print(w io.Writer) error {
-	document, err := r.render(func(string, *node) bool { return true })
+	document, err := r.render(func(*vocab.ConfigKey) bool { return true })
 	if err != nil {
 		return err
 	}
@@ -25,36 +56,14 @@ func (r *Resolved) Print(w io.Writer) error {
 	return nil
 }
 
-// Split returns the configuration document an analyzer claiming languages receives,
-// in the form Print writes. It holds every key the Contract gives every product or
-// every analyzer, and the section of each language named, and leaves out the keys
-// the orchestrator alone reads, the reporter settings it applies to the merged
-// report, and the section of every other language; its provenance object names the
-// source of each setting it holds. The build matrix is passed whole: an analysis
-// reads the entries of the shape its language is built from and leaves the others
-// to the analysis that reads them.
-func (r *Resolved) Split(languages ...string) ([]byte, error) {
-	return r.render(func(path string, key *node) bool {
-		if slices.Contains(mergedReporterSettings, path) {
-			return false
-		}
-		switch key.owner {
-		case orchestrator:
-			return false
-		case languageAnalyzer:
-			// A language's section goes to the analyzers of the languages named,
-			// and the keys inside it go with it.
-			return key.kind != section || slices.Contains(languages, key.name)
-		case everyProduct, everyAnalyzer:
-		}
-		return true
+// Split returns the configuration document an analyzer claiming languages
+// receives, in the form Print writes: every key the setting table delivers to
+// one of the languages, and the provenance of each setting it holds.
+func (r *Resolved) Split(languages ...vocab.Language) ([]byte, error) {
+	return r.render(func(key *vocab.ConfigKey) bool {
+		return slices.ContainsFunc(languages, key.DeliveredTo)
 	})
 }
-
-// mergedReporterSettings are the settings the orchestrator applies once, to the
-// merged report in its canonical order. A maximum an analyzer applied to its own
-// report would change what the merge reads.
-var mergedReporterSettings = []string{"reporters.formats", "reporters.max_findings"}
 
 // member is one member of an object written in a fixed order. A value is an
 // object, a JSON document, or a string.
@@ -65,14 +74,16 @@ type member struct {
 
 // render writes the resolved configuration as one indented JSON object, holding the
 // keys include admits and the provenance of each setting among them.
-func (r *Resolved) render(include func(path string, key *node) bool) ([]byte, error) {
+func (r *Resolved) render(include func(*vocab.ConfigKey) bool) ([]byte, error) {
 	var paths []string
-	document := r.object(&r.keys, "", include, &paths)
+	document := r.object(keyTree(), include, &paths)
 	provenance := make([]member, len(paths))
 	for i, path := range paths {
 		provenance[i] = member{name: path, value: r.provenance[path]}
 	}
-	document = append(document, member{name: provenanceSection, value: provenance})
+	if key, _ := vocab.ConfigKeyOf(vocab.KeyProvenance); include(&key) {
+		document = append(document, member{name: string(vocab.KeyProvenance), value: provenance})
+	}
 
 	compact, err := appendValue(nil, document)
 	if err != nil {
@@ -86,42 +97,41 @@ func (r *Resolved) render(include func(path string, key *node) bool) ([]byte, er
 	return indented.Bytes(), nil
 }
 
-// object returns the members of the section n at the dotted path at that include
-// admits, and appends the path of each setting among them to paths.
-func (r *Resolved) object(n *node, at string, include func(path string, key *node) bool, paths *[]string) []member {
+// object returns the members below n that include admits, and appends the
+// path of each setting among them to paths.
+func (r *Resolved) object(n *node, include func(*vocab.ConfigKey) bool, paths *[]string) []member {
 	members := []member{}
-	for i := range n.children {
-		key := &n.children[i]
-		path := joinKey(at, key.name)
-		if !include(path, key) {
+	for _, child := range n.children {
+		key := &child.key
+		if !include(key) {
 			continue
 		}
-		switch key.kind {
-		case section:
-			members = append(members, member{name: key.name, value: r.object(key, path, include, paths)})
-		case setting, passThrough:
-			members = append(members, member{name: key.name, value: r.values[path]})
-			*paths = append(*paths, path)
-		case codes:
-			members = append(members, member{name: key.name, value: r.codes(paths)})
-		case annotations:
+		switch key.Role {
+		case vocab.RoleSection:
+			members = append(members, member{name: child.name, value: r.object(child, include, paths)})
+		case vocab.RoleSetting:
+			members = append(members, member{name: child.name, value: r.values[key.Key]})
+			*paths = append(*paths, string(key.Key))
+		case vocab.RoleKeyed:
+			members = append(members, member{name: child.name, value: r.keyedMembers(key.Key, paths)})
+		case vocab.RoleIgnored:
 		}
 	}
 	return members
 }
 
-// codes returns the resolved severity object, its codes in ascending order, and
-// appends the path of each code to paths, or the object's own path when it is
-// empty.
-func (r *Resolved) codes(paths *[]string) []member {
-	codes := sortedKeys(r.severity)
-	if len(codes) == 0 {
-		*paths = append(*paths, severitySection)
+// keyedMembers returns a resolved keyed section, its members in ascending
+// order, and appends the path of each member to paths, or the section's own
+// path when it is empty.
+func (r *Resolved) keyedMembers(key vocab.Key, paths *[]string) []member {
+	names := slices.Sorted(maps.Keys(r.keyed[key]))
+	if len(names) == 0 {
+		*paths = append(*paths, string(key))
 	}
-	members := make([]member, len(codes))
-	for i, code := range codes {
-		members[i] = member{name: code, value: r.severity[code]}
-		*paths = append(*paths, joinKey(severitySection, code))
+	members := make([]member, len(names))
+	for i, name := range names {
+		members[i] = member{name: name, value: r.keyed[key][name]}
+		*paths = append(*paths, joinKey(string(key), name))
 	}
 	return members
 }
