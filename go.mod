@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/cplieger/atomicfile/v4 v4.1.0
-	github.com/cplieger/deadset-spec/v8 v8.0.0-dev.13
+	github.com/cplieger/deadset-spec/v8 v8.0.0-dev.14
 	pgregory.net/rapid v1.3.0
 )
 
