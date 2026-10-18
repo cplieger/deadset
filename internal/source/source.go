@@ -61,6 +61,14 @@ type Outcome struct {
 	Analyzer  string
 	Languages []vocab.Language
 
+	// LeftOut is, for an [Outcome.Omitted] source, those of its languages no
+	// source the run keeps was handed, which the run leaves out of scope.
+	LeftOut []vocab.Language
+
+	// Dropped is, for an [Outcome.Omitted] source, the paths of the declared
+	// consumers the run leaves out with its LeftOut.
+	Dropped []string
+
 	// Digest is the digest of the artifact that produced the report, as the
 	// merged report's merged_from names it.
 	Digest string
@@ -69,6 +77,10 @@ type Outcome struct {
 
 	// Exit is the exit code, or -1 where no process exited on its own.
 	Exit int
+
+	// Omitted reports a source [Run] left out of the run, with no report and
+	// no refusal: it found no program of the languages a census handed it.
+	Omitted bool
 }
 
 // SetupFailed reports whether a setup failure ended the source's run: the
@@ -78,27 +90,45 @@ func (o *Outcome) SetupFailed() bool {
 	return ok && o.Exit == vocab.ExitFailure && relayed.Setup()
 }
 
-// Run produces every source's outcome at once, each handed files[i], and
-// returns them in the order of sources. The refusal of a source that ended
-// with the failure code is the failures it printed, relayed, and everything
-// else every source printed is kept [failure.Quoted]. When any source
-// leaves no report, every outcome's report is dropped and the error joins
-// every refusal in that order, so no source's findings stand as the run's
-// result beside another's failure.
-func Run(ctx context.Context, sources []Source, files []Files) ([]Outcome, error) {
+// foundNoProgram reports whether the source's one failure is the setup
+// failure no-program.
+func (o *Outcome) foundNoProgram() bool {
+	relayed, ok := errors.AsType[*failure.Error](o.Err)
+	return ok && o.Exit == vocab.ExitFailure && len(relayed.Failures) == 1 && relayed.Failures[0].Class == vocab.SetupNoProgram
+}
+
+// Run produces every source's outcome at once, each handed files[i], in the
+// order of sources. A source that ended with the failure code refuses with the
+// failures it printed, relayed; all else every source printed is kept
+// [failure.Quoted]. Where detected, a census put the languages in scope, and a
+// source whose one failure is no-program is [Outcome.Omitted], as
+// languages.json states, unless every source is. Any other refusal drops every
+// report, and the error joins the refusals in order, so no source's findings
+// stand beside another's failure.
+func Run(ctx context.Context, sources []Source, files []Files, detected bool) ([]Outcome, error) {
 	outcomes := make([]Outcome, len(sources))
 	var running sync.WaitGroup
 	for i := range sources {
 		running.Go(func() { outcomes[i] = sources[i].Produce(ctx, files[i]) })
 	}
 	running.Wait()
-	var failures []error
+	printed := make([][]byte, len(outcomes))
+	noProgram := make([]bool, len(outcomes))
 	for i := range outcomes {
-		if o := &outcomes[i]; o.Exit == vocab.ExitFailure {
+		o := &outcomes[i]
+		printed[i] = o.Printed
+		if o.Exit == vocab.ExitFailure {
 			o.Err, o.Printed = failure.Relayed(o.Analyzer, o.Printed)
 		} else {
 			o.Printed = failure.Quoted(o.Analyzer, o.Printed)
 		}
+		noProgram[i] = o.foundNoProgram()
+	}
+	if detected && slices.Contains(noProgram, false) {
+		omit(outcomes, noProgram, printed)
+	}
+	var failures []error
+	for i := range outcomes {
 		if outcomes[i].Err != nil {
 			failures = append(failures, outcomes[i].Err)
 		}
@@ -110,6 +140,24 @@ func Run(ctx context.Context, sources []Source, files []Files) ([]Outcome, error
 		outcomes[i].Report = nil
 	}
 	return outcomes, errors.Join(failures...)
+}
+
+// omit leaves out every outcome noProgram marks, keeping what it printed
+// quoted, with the languages of it no kept outcome was handed.
+func omit(outcomes []Outcome, noProgram []bool, printed [][]byte) {
+	var kept []vocab.Language
+	for i := range outcomes {
+		if !noProgram[i] {
+			kept = append(kept, outcomes[i].Languages...)
+		}
+	}
+	for i := range outcomes {
+		if noProgram[i] {
+			o := &outcomes[i]
+			o.Err, o.Printed, o.Omitted = nil, failure.Quoted(o.Analyzer, printed[i]), true
+			o.LeftOut = slices.DeleteFunc(slices.Clone(o.Languages), func(l vocab.Language) bool { return slices.Contains(kept, l) })
+		}
+	}
 }
 
 // ByName is every outcome in analyzer-name order, the order their printed

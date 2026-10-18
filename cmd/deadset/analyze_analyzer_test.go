@@ -90,6 +90,69 @@ func TestAnalyzeRunsTheGoAnalyzerOverAGoModule(t *testing.T) {
 	}
 }
 
+// A Go module whose only JavaScript the TypeScript analyzer leaves out for what
+// git, a convention or the file itself says of it puts TypeScript in scope,
+// and the TypeScript analyzer's no-program leaves it out: the run is the Go
+// analyzer's alone, as it is with no JavaScript at all.
+func TestAnalyzeLeavesOutJavaScriptItsAnalyzerFindsNoProgramIn(t *testing.T) {
+	t.Parallel()
+	goAnalyzerOnPath(t)
+	analyzerOnPath(t, "deadset-ts")
+
+	minified := "var a=" + strings.Repeat("1+", 6000) + "1;\n"
+	for name, files := range map[string]map[string]string{
+		"git-ignored":       {".gitignore": "web/generated.js\n", "web/generated.js": "export const x = 1;\n"},
+		"convention-output": {"package.json": `{"name": "app", "dependencies": {"next": "15.0.0"}}`, "node_modules/next/package.json": `{"name": "next", "version": "15.0.0"}`, ".next/server/page.js": "export const x = 1;\n"},
+		"minified-content":  {"assets/app.js": minified},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			target, runDir := goModule(t, "package main\n\nfunc main() {}\n")
+			for file, body := range files {
+				writeFile(t, filepath.Join(target, filepath.FromSlash(file)), []byte(body))
+			}
+			got := analyze(t, target, runDir)
+			if got.code != vocab.ExitClean || !strings.Contains(got.stderr, `deadset-ts found no program, so the run leaves "ts" out of scope`) {
+				t.Fatalf("analyze(%s) = %d, want %d and TypeScript left out\nstdout: %s\nstderr: %s", name, got.code, vocab.ExitClean, got.stdout, got.stderr)
+			}
+			merged := mergedReport(t, runDir)
+			if len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != "deadset-go" {
+				t.Errorf("the merged report was merged from %+v, want the Go analyzer alone", merged.MergedFrom)
+			}
+		})
+	}
+}
+
+// A target whose Go module sits below its root, beside JavaScript only that
+// the TypeScript analyzer leaves out, is named in the merged report as it is
+// with no JavaScript at all, not "." as a target two languages load.
+func TestAnalyzeNamesATargetWhoseJavaScriptIsLeftOutAsWithNoJavaScript(t *testing.T) {
+	t.Parallel()
+	goAnalyzerOnPath(t)
+	analyzerOnPath(t, "deadset-ts")
+
+	identity := map[bool]string{}
+	for _, javaScript := range []bool{false, true} {
+		base := t.TempDir()
+		target, runDir := filepath.Join(base, "target"), filepath.Join(base, "run")
+		writeFile(t, filepath.Join(target, "services", "api", "go.mod"), []byte("module example.com/api\n\ngo 1.27\n"))
+		writeFile(t, filepath.Join(target, "services", "api", "main.go"), []byte("package main\n\nfunc main() {}\n"))
+		writeFile(t, filepath.Join(target, "deadset.json"), []byte(`{"target": {"kind": "application"}}`+"\n"))
+		if javaScript {
+			writeFile(t, filepath.Join(target, "assets", "app.js"), []byte("var a="+strings.Repeat("1+", 6000)+"1;\n"))
+		}
+		got := analyze(t, target, runDir)
+		if got.code != vocab.ExitClean {
+			t.Fatalf("analyze(JavaScript %t) = %d, want %d\nstdout: %s\nstderr: %s", javaScript, got.code, vocab.ExitClean, got.stdout, got.stderr)
+		}
+		identity[javaScript] = mergedReport(t, runDir).Target.Identity
+	}
+	if identity[true] != identity[false] || identity[false] != "example.com/api" {
+		t.Errorf("the merged report names the target %q beside the JavaScript left out and %q with none, want example.com/api both times", identity[true], identity[false])
+	}
+}
+
 // A run of the Go analyzer alone over each harness variant holds the Go side's
 // pending finding, and no report of the run evaluates the edge's other side,
 // so the run exits with the failure code naming the edge, the pending side and

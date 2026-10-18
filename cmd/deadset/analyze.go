@@ -171,15 +171,19 @@ func sameDirectory(a, b string) bool {
 
 // printOutcomes writes what every analyzer printed, as source.Run left it, in
 // analyzer name order, each setup failure followed by the line telling how to
-// analyze the target without that analyzer. It returns every failed write of
-// an analyzer that refused nothing itself; an analyzer's own refusal stands
-// for a failed write of its output.
+// analyze the target without that analyzer, and each omitted analyzer by its
+// [omission] line. It returns every failed write
+// of an analyzer that refused nothing itself; an analyzer's own refusal
+// stands for a failed write of its output.
 func printOutcomes(stderr io.Writer, outcomes []source.Outcome) error {
 	var failures []error
 	for _, o := range source.ByName(outcomes) {
 		shown := o.Printed
-		if o.SetupFailed() {
-			shown = append(slices.Clip(shown), workaround(outcomes, o.Analyzer)...)
+		switch {
+		case o.SetupFailed():
+			shown = append(slices.Clip(shown), workaround(outcomes, o)...)
+		case o.Omitted:
+			shown = append(slices.Clip(shown), omission(o)...)
 		}
 		if len(shown) == 0 {
 			continue
@@ -195,15 +199,18 @@ func printOutcomes(stderr io.Writer, outcomes []source.Outcome) error {
 }
 
 // workaround is the line telling how to analyze the target without the
-// analyzer named failed: the configuration that hands the run only the
-// languages of the analyzers that left a report, or those analyzers run
-// alone. With no such analyzer it is empty.
-func workaround(outcomes []source.Outcome, failed string) string {
+// failed analyzer: the configuration that hands the run only the languages of
+// the analyzers that left a report and that the failed one was not handed,
+// where there are any, or those analyzers run alone. With no such analyzer it
+// is empty.
+func workaround(outcomes []source.Outcome, failed *source.Outcome) string {
 	var languages, names []string
 	for i := range outcomes {
-		if outcomes[i].Err == nil {
+		if outcomes[i].Err == nil && !outcomes[i].Omitted {
 			for _, language := range outcomes[i].Languages {
-				languages = append(languages, strconv.Quote(string(language)))
+				if !slices.Contains(failed.Languages, language) {
+					languages = append(languages, strconv.Quote(string(language)))
+				}
 			}
 			names = append(names, outcomes[i].Analyzer)
 		}
@@ -212,8 +219,35 @@ func workaround(outcomes []source.Outcome, failed string) string {
 		return ""
 	}
 	slices.Sort(names)
+	alone := strings.Join(names, " and ")
+	if len(languages) == 0 {
+		return fmt.Sprintf("%s: to analyze the target without %s, run %s alone\n", run.Product, failed.Analyzer, alone)
+	}
 	return fmt.Sprintf("%s: to analyze the target without %s, set analysis.languages: [%s] or run %s alone\n",
-		run.Product, failed, strings.Join(slices.Compact(slices.Sorted(slices.Values(languages))), ", "), strings.Join(names, " and "))
+		run.Product, failed.Analyzer, strings.Join(slices.Compact(slices.Sorted(slices.Values(languages))), ", "), alone)
+}
+
+// omission is the line naming the languages the run left out because their
+// analyzer found no program of them, and the consumers it left out with them,
+// or, where another analyzer the run kept covers each, saying the run goes on
+// without that analyzer.
+func omission(o *source.Outcome) string {
+	if len(o.LeftOut) == 0 {
+		return fmt.Sprintf("%s: %s found no program, so the run goes on without it\n", run.Product, o.Analyzer)
+	}
+	languages := make([]string, len(o.LeftOut))
+	for i, language := range o.LeftOut {
+		languages[i] = strconv.Quote(string(language))
+	}
+	line := fmt.Sprintf("%s: %s found no program, so the run leaves %s out of scope", run.Product, o.Analyzer, strings.Join(languages, ", "))
+	switch len(o.Dropped) {
+	case 0:
+	case 1:
+		line += ", and with it the consumer " + o.Dropped[0]
+	default:
+		line += ", and with it the consumers " + strings.Join(o.Dropped, ", ")
+	}
+	return line + "\n"
 }
 
 // printResult writes to stdout every rendering the formats name that is a

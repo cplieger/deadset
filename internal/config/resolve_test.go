@@ -126,7 +126,7 @@ func TestResolve_refusesAKeyOutsideTheKeyList(t *testing.T) {
 		{name: "severity-family-holding-a-fixed-code", document: `{"severity": {"DS90": "allow"}}`, at: "severity.DS90"},
 		{name: "severity-code-of-no-kind", document: `{"severity": {"DS2999": "warn"}}`, at: "severity.DS2999"},
 		{name: "severity-family-of-no-kind", document: `{"severity": {"DS29": "warn"}}`, at: "severity.DS29"},
-		{name: "severity-code-of-a-reserved-family", document: `{"severity": {"DS1801": "warn"}}`, at: "severity.DS1801"},
+		{name: "severity-code-past-a-live-familys-kinds", document: `{"severity": {"DS1806": "warn"}}`, at: "severity.DS1806"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

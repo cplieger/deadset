@@ -1,9 +1,10 @@
 // Package run is the order of one analysis by the orchestrator: check the
-// shared documents, plan, open every source, lay out the run directory, admit every source, produce every
-// report, merge them, shape the merged report and write it with every
-// rendering that is a file beside it. Each stage's decision belongs to the
-// package that makes it; this one holds only their order and what one stage
-// hands the next.
+// shared documents, plan, open every source, lay out the run directory, admit
+// every source, produce every report, produce again those whose scope a plan
+// without the languages left out changes, merge them, shape the merged report
+// and write it with every rendering that is a file beside it. Each stage's
+// decision belongs to the package that makes it; this one holds only their
+// order and what one stage hands the next.
 package run
 
 import (
@@ -14,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
@@ -108,7 +110,9 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if err := documents.Check(ctx, req.Root); err != nil {
 		return nil, err
 	}
-	planned, err := plan.Make(&plan.Input{Scope: req.Scope, Languages: req.Resolved.Config.Languages, Providers: req.Resolved.Config.Providers}, plan.Disk{})
+	in := plan.Input{Scope: req.Scope, Languages: req.Resolved.Config.Languages, Providers: req.Resolved.Config.Providers}
+	census := plan.NewCensus(plan.Disk{})
+	planned, err := plan.Make(&in, census)
 	if err != nil {
 		return nil, err
 	}
@@ -138,11 +142,10 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if len(refused) > 0 {
 		return result, errors.Join(refused...)
 	}
-	paths := make([]source.Files, len(handed))
-	for i := range handed {
-		paths[i] = handed[i].files
+	outcomes, err := source.Run(ctx, sources, files(handed), planned.Detected)
+	if err == nil {
+		err = narrow(ctx, &narrowing{in: in, tree: census, planned: planned, dir: dir, resolved: req.Resolved, sources: sources}, outcomes)
 	}
-	outcomes, err := source.Run(ctx, sources, paths)
 	if req.Print != nil {
 		err = errors.Join(err, req.Print(outcomes))
 	}
@@ -199,6 +202,15 @@ type handedFiles struct {
 	files source.Files
 }
 
+// files is the files of every handed source, in order.
+func files(handed []handedFiles) []source.Files {
+	paths := make([]source.Files, len(handed))
+	for i := range handed {
+		paths[i] = handed[i].files
+	}
+	return paths
+}
+
 // prepare writes the run's scope document and, per source, its configuration
 // and any scope document of its own.
 func prepare(dir *rundir.Dir, resolved *config.Resolved, planned *plan.Plan, sources []source.Source) ([]handedFiles, error) {
@@ -246,11 +258,115 @@ func hand(dir *rundir.Dir, entry rundir.Entry, resolved *config.Resolved, planne
 	return handedFiles{entry: entry, files: source.Files{Scope: scopePath, Config: entry.Config(), Report: entry.Report()}}, nil
 }
 
-// merged is the merge of every outcome's report.
-func merged(outcomes []source.Outcome, accepted []string, version string) (*report.Report, error) {
-	inputs := make([]merge.Input, len(outcomes))
+// narrowing is what [narrow] reads of a run whose sources have produced.
+type narrowing struct {
+	tree     plan.Tree
+	planned  *plan.Plan
+	dir      *rundir.Dir
+	resolved *config.Resolved
+	in       plan.Input
+	sources  []source.Source
+}
+
+// narrow plans the run again without the languages the outcomes leave out,
+// over the census the first plan read, names on each outcome that leaves a
+// language out the consumers [plan.Plan.Dropped] leaves out with it, and
+// produces again, in the run directory's [rundir.Dir.Rerun], every kept source
+// whose scope document that plan changes, replacing its outcome, so no
+// language left out names a module a kept analyzer reads.
+func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error {
 	for i := range outcomes {
-		inputs[i] = merge.Input{Report: outcomes[i].Report, Digest: outcomes[i].Digest}
+		n.in.Omitted = append(n.in.Omitted, outcomes[i].LeftOut...)
+	}
+	if len(n.in.Omitted) == 0 {
+		return nil
+	}
+	narrowed, err := plan.Make(&n.in, n.tree)
+	if err != nil {
+		return err
+	}
+	dropWith(outcomes, narrowed.Dropped)
+	again := *narrowed
+	again.Sources = nil
+	var sources []source.Source
+	var at []int
+	for i := range n.planned.Sources {
+		if outcomes[i].Omitted {
+			continue
+		}
+		// Both plans read one census and a kept source's languages are all
+		// kept, so the narrowed plan routes its entry.
+		k := slices.IndexFunc(narrowed.Sources, func(s plan.Source) bool { return s.Index == n.planned.Sources[i].Index })
+		changed, refused := rescoped(n.planned, &n.planned.Sources[i], narrowed, &narrowed.Sources[k])
+		if refused != nil {
+			return refused
+		}
+		if changed {
+			again.Sources = append(again.Sources, narrowed.Sources[k])
+			sources, at = append(sources, n.sources[i]), append(at, i)
+		}
+	}
+	if len(sources) == 0 {
+		return nil
+	}
+	dir, err := n.dir.Rerun()
+	if err != nil {
+		return err
+	}
+	handed, err := prepare(dir, n.resolved, &again, sources)
+	if err != nil {
+		return err
+	}
+	// Not detected: each of these found a program before, so a no-program
+	// now is a failure and leaves out nothing more.
+	reran, err := source.Run(ctx, sources, files(handed), false)
+	for j, i := range at {
+		outcomes[i] = reran[j]
+	}
+	return err
+}
+
+// dropWith names each dropped consumer on every outcome that left out a
+// language it holds.
+func dropWith(outcomes []source.Outcome, dropped []plan.Dropped) {
+	for _, d := range dropped {
+		for i := range outcomes {
+			if slices.ContainsFunc(outcomes[i].LeftOut, func(l vocab.Language) bool { return slices.Contains(d.Languages, l) }) {
+				outcomes[i].Dropped = append(outcomes[i].Dropped, d.Path)
+			}
+		}
+	}
+}
+
+// rescoped reports whether the scope document the source was handed under
+// before differs from the one it is handed under after.
+func rescoped(before *plan.Plan, was *plan.Source, after *plan.Plan, is *plan.Source) (bool, error) {
+	old, err := handedScope(before, was).Encode()
+	if err != nil {
+		return false, err
+	}
+	now, err := handedScope(after, is).Encode()
+	if err != nil {
+		return false, err
+	}
+	return !bytes.Equal(old, now), nil
+}
+
+// handedScope is the scope document the planned source reads.
+func handedScope(p *plan.Plan, s *plan.Source) *scope.Document {
+	if s.Scope != nil {
+		return s.Scope
+	}
+	return &p.Scope
+}
+
+// merged is the merge of the report of every outcome not omitted.
+func merged(outcomes []source.Outcome, accepted []string, version string) (*report.Report, error) {
+	inputs := make([]merge.Input, 0, len(outcomes))
+	for i := range outcomes {
+		if !outcomes[i].Omitted {
+			inputs = append(inputs, merge.Input{Report: outcomes[i].Report, Digest: outcomes[i].Digest})
+		}
 	}
 	conformance, err := merge.Conformance()
 	if err != nil {

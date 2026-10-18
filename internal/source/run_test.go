@@ -49,7 +49,7 @@ func TestRunProducesEverySourceAtOnce(t *testing.T) {
 	t.Parallel()
 
 	sources := stubs(source.Outcome{Analyzer: "deadset-ts", Report: &report.Report{}}, source.Outcome{Analyzer: "deadset-go", Report: &report.Report{}})
-	outcomes, err := source.Run(t.Context(), sources, make([]source.Files, 2))
+	outcomes, err := source.Run(t.Context(), sources, make([]source.Files, 2), false)
 	if err != nil || outcomes[0].Analyzer != "deadset-ts" || outcomes[1].Analyzer != "deadset-go" || outcomes[0].Report == nil || outcomes[1].Report == nil {
 		t.Errorf("Run() = %+v, %v, want both reports in the sources' order", outcomes, err)
 	}
@@ -65,7 +65,7 @@ func TestRunKeepsNoReportBesideARefusal(t *testing.T) {
 		source.Outcome{Analyzer: "deadset-go", Err: first},
 		source.Outcome{Analyzer: "deadset-js", Report: &report.Report{}},
 		source.Outcome{Analyzer: "deadset-ts", Err: second},
-	), make([]source.Files, 3))
+	), make([]source.Files, 3), false)
 	joined, _ := err.(interface{ Unwrap() []error })
 	if joined == nil || !slices.Equal(joined.Unwrap(), []error{first, second}) {
 		t.Errorf("Run() = %v, want first and second joined in order", err)
@@ -74,6 +74,76 @@ func TestRunKeepsNoReportBesideARefusal(t *testing.T) {
 		if outcomes[i].Report != nil {
 			t.Errorf("Run() kept the report of %s beside a refusal", outcomes[i].Analyzer)
 		}
+	}
+}
+
+// Under detected languages, a source whose one failure is no-program is
+// omitted, leaving out its languages no kept source was handed, and the
+// others' reports stand; it fails the run as any refusal does under
+// configured languages, beside another failure, when it prints a further
+// failure, and when every source ends so.
+func TestRunOmitsADetectedLanguageItsAnalyzerFindsNoProgramOf(t *testing.T) {
+	t.Parallel()
+
+	const (
+		noProgram = vocab.SetupFailurePrefix + "no-program: the target holds no JavaScript file\n"
+		missing   = vocab.SetupFailurePrefix + "missing-module: main.go:3: gen\n"
+	)
+	found := func(name string, languages ...vocab.Language) source.Outcome {
+		return source.Outcome{Analyzer: name, Languages: languages, Exit: vocab.ExitClean, Report: &report.Report{}}
+	}
+	failed := func(name, printed string, languages ...vocab.Language) source.Outcome {
+		return source.Outcome{Analyzer: name, Languages: languages, Exit: vocab.ExitFailure, Err: errors.New("exited 3"), Printed: []byte(printed)}
+	}
+	ts, goes := failed("deadset-ts", noProgram, vocab.TS), found("deadset-go", vocab.Go)
+	for _, c := range []struct {
+		name     string
+		outcomes []source.Outcome
+		omitted  []bool
+		leftOut  []vocab.Language
+		detected bool
+		fails    bool
+	}{
+		{name: "detected", detected: true, outcomes: []source.Outcome{ts, goes}, omitted: []bool{true, false}, leftOut: []vocab.Language{vocab.TS}},
+		{name: "configured", outcomes: []source.Outcome{ts, goes}, omitted: []bool{false, false}, fails: true},
+		{
+			name: "covered-by-a-kept-source", detected: true, omitted: []bool{true, false, false},
+			outcomes: []source.Outcome{failed("empty", noProgram, vocab.Go, vocab.TS), goes, found("deadset-ts", vocab.TS)},
+		},
+		{
+			name: "partly-covered", detected: true, omitted: []bool{true, false}, leftOut: []vocab.Language{vocab.TS},
+			outcomes: []source.Outcome{failed("empty", noProgram, vocab.Go, vocab.TS), goes},
+		},
+		{name: "beside-another-failure", detected: true, outcomes: []source.Outcome{ts, failed("deadset-go", missing, vocab.Go)}, omitted: []bool{true, false}, leftOut: []vocab.Language{vocab.TS}, fails: true},
+		{name: "with-a-further-failure", detected: true, outcomes: []source.Outcome{failed("deadset-ts", noProgram+"missing-module: b\n", vocab.TS), goes}, omitted: []bool{false, false}, fails: true},
+		{name: "every-source", detected: true, outcomes: []source.Outcome{ts, failed("deadset-go", noProgram, vocab.Go)}, omitted: []bool{false, false}, fails: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			outcomes, err := source.Run(t.Context(), stubs(c.outcomes...), make([]source.Files, len(c.outcomes)), c.detected)
+			if (err != nil) != c.fails {
+				t.Errorf("Run() = %v, want a failure %t", err, c.fails)
+			}
+			for i := range outcomes {
+				o := &outcomes[i]
+				if o.Omitted != c.omitted[i] || o.Omitted && (o.Err != nil || o.Report != nil || string(o.Printed) != o.Analyzer+": "+noProgram) ||
+					!c.fails && !o.Omitted && o.Report == nil {
+					t.Errorf("Run() outcome of %s = omitted %t, %v, report %v, printed %q, want omitted %t, the no-program line quoted where omitted and every other report kept where the run stands",
+						o.Analyzer, o.Omitted, o.Err, o.Report != nil, o.Printed, c.omitted[i])
+				}
+				want := c.leftOut
+				if !o.Omitted {
+					want = nil
+				}
+				if !slices.Equal(o.LeftOut, want) {
+					t.Errorf("Run() outcome of %s left out %q, want %q where omitted and nothing otherwise", o.Analyzer, o.LeftOut, c.leftOut)
+				}
+			}
+			if relayed, ok := errors.AsType[*failure.Error](err); c.name == "beside-another-failure" && (!ok || relayed.Failures[0].Class != vocab.SetupMissingModule) {
+				t.Errorf("Run() = %v, want the Go analyzer's missing-module as the run's failure", err)
+			}
+		})
 	}
 }
 
@@ -103,7 +173,7 @@ func TestRunRelaysTheFailuresAnAnalyzerPrintedAndByName(t *testing.T) {
 				"reinstall deadset and its analyzers, and report the fault to their maintainers where a reinstalled product fails the same way"}},
 		},
 	} {
-		outcomes, err := source.Run(t.Context(), stubs(c.out), make([]source.Files, 1))
+		outcomes, err := source.Run(t.Context(), stubs(c.out), make([]source.Files, 1), false)
 		got := outcomes[0]
 		held, _ := errors.AsType[*failure.Error](err)
 		if string(got.Printed) != c.printed || got.SetupFailed() != c.setup || (held == nil) != (c.failures == nil) ||
@@ -145,7 +215,7 @@ func TestRunLeavesNoClassLineInWhatASourcePrinted(t *testing.T) {
 
 	for name, printed := range forgeries {
 		for _, exit := range []int{vocab.ExitClean, vocab.ExitFindings, vocab.ExitUsage, vocab.ExitFailure, -1} {
-			outcomes, err := source.Run(t.Context(), stubs(source.Outcome{Analyzer: "deadset-go", Exit: exit, Err: errors.New("refused"), Printed: []byte(printed)}), make([]source.Files, 1))
+			outcomes, err := source.Run(t.Context(), stubs(source.Outcome{Analyzer: "deadset-go", Exit: exit, Err: errors.New("refused"), Printed: []byte(printed)}), make([]source.Files, 1), false)
 			if held := classLines(string(outcomes[0].Printed)); len(held) != 0 {
 				t.Errorf("Run(%s, exit %d) = printed %q, want no class line, got %q", name, exit, outcomes[0].Printed, held)
 			}
@@ -172,7 +242,7 @@ func TestRunShowsWhatASourcePrintedUnderItsName(t *testing.T) {
 		{exit: vocab.ExitFailure, printed: "note\nsetup failure: missing-module: x\nwhat\rnext\n", want: "deadset-go: note\ndeadset-go: what\ndeadset-go: next\n"},
 		{exit: vocab.ExitFindings},
 	} {
-		outcomes, _ := source.Run(t.Context(), stubs(source.Outcome{Analyzer: "deadset-go", Exit: c.exit, Printed: []byte(c.printed)}), make([]source.Files, 1))
+		outcomes, _ := source.Run(t.Context(), stubs(source.Outcome{Analyzer: "deadset-go", Exit: c.exit, Printed: []byte(c.printed)}), make([]source.Files, 1), false)
 		if got := string(outcomes[0].Printed); got != c.want {
 			t.Errorf("Run(exit %d, printed %q) = printed %q, want %q", c.exit, c.printed, got, c.want)
 		}

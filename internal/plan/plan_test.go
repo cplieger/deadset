@@ -80,8 +80,8 @@ func TestMakeRoutesEachConsumerToTheAnalyzersOfItsLanguages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Make() = %v", err)
 	}
-	if got.Dir != "/w" || !slices.Equal(got.Languages, both) || len(got.Sources) != 2 {
-		t.Fatalf("Make() = %+v, want the directory /w, both languages and two sources", got)
+	if got.Dir != "/w" || !slices.Equal(got.Languages, both) || !got.Detected || len(got.Sources) != 2 {
+		t.Fatalf("Make() = %+v, want the directory /w, both languages detected and two sources", got)
 	}
 	for i, want := range [][]string{{"/w/go", "/w/both"}, {"/w/ts", "/w/both"}} {
 		source := &got.Sources[i]
@@ -105,7 +105,8 @@ func TestMakeRoutesEachConsumerToTheAnalyzersOfItsLanguages(t *testing.T) {
 
 // Every module is handed under the declared name, else the one the identity
 // source of the first row of a language it is loaded in declares, every run;
-// a target several languages load that no source names is ".".
+// a target several languages load that no source names is ".". A language the
+// run left out loads no module, so it names none.
 func TestMakeNamesEveryModule(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +115,7 @@ func TestMakeNamesEveryModule(t *testing.T) {
 		scope     *scope.Document
 		name      string
 		languages []string
+		omitted   []vocab.Language
 		target    string
 		ids       []string
 	}{
@@ -135,6 +137,20 @@ func TestMakeNamesEveryModule(t *testing.T) {
 			scope: declared(), target: ".",
 		},
 		{name: "one-language-no-name", languages: []string{"go"}, edit: func(t *tree) { delete(t.names, "/w/app/go.mod") }, scope: declared()},
+		{
+			name: "no-go-module-both-loaded", edit: func(t *tree) { delete(t.names, "/w/app/go.mod"); delete(t.names, "/w/both/go.mod") },
+			scope: declared("both"), target: "@example/app", ids: []string{"@example/both"},
+		},
+		{
+			name: "no-go-module-typescript-left-out", omitted: []vocab.Language{vocab.TS},
+			edit:  func(t *tree) { delete(t.names, "/w/app/go.mod"); delete(t.names, "/w/both/go.mod") },
+			scope: declared("both"), ids: []string{""},
+		},
+		{
+			name: "no-name-typescript-left-out", omitted: []vocab.Language{vocab.TS},
+			edit:  func(t *tree) { delete(t.names, "/w/app/go.mod"); delete(t.names, "/w/app/package.json") },
+			scope: declared(),
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -143,7 +159,7 @@ func TestMakeNamesEveryModule(t *testing.T) {
 			if c.edit != nil {
 				c.edit(tr)
 			}
-			got, err := plan.Make(&plan.Input{Scope: c.scope, Languages: c.languages, Providers: []config.Provider{goEntry, tsEntry}}, tr)
+			got, err := plan.Make(&plan.Input{Scope: c.scope, Languages: c.languages, Omitted: c.omitted, Providers: []config.Provider{goEntry, tsEntry}}, tr)
 			if err != nil {
 				t.Fatalf("Make() = %v", err)
 			}
@@ -158,14 +174,92 @@ func TestMakeNamesEveryModule(t *testing.T) {
 	}
 }
 
-// A configured language set replaces the census, in the rows' order.
+// A declared consumer every language of which the run left out is dropped
+// with them, and named in no scope document; a consumer holding a language in
+// scope beside one left out is kept.
+func TestMakeDropsAConsumerOfOnlyALanguageLeftOut(t *testing.T) {
+	t.Parallel()
+
+	got, err := plan.Make(&plan.Input{Scope: declared("go", "ts", "both"), Omitted: []vocab.Language{vocab.TS}, Providers: []config.Provider{goEntry, tsEntry}}, workspace())
+	if err != nil {
+		t.Fatalf("Make() = %v", err)
+	}
+	var kept []string
+	for _, consumer := range got.Scope.Consumers {
+		kept = append(kept, consumer.Path)
+	}
+	if !slices.Equal(kept, []string{"/w/go", "/w/both"}) || len(got.Dropped) != 1 || got.Dropped[0].Path != "/w/ts" || !slices.Equal(got.Dropped[0].Languages, []vocab.Language{vocab.TS}) {
+		t.Errorf("Make() keeps %q and drops %+v, want /w/go and /w/both kept and /w/ts dropped with ts", kept, got.Dropped)
+	}
+	if len(got.Sources) != 1 || got.Sources[0].Scope != nil {
+		t.Errorf("Make() = %+v, want the Go analyzer alone, reading the run's scope", got.Sources)
+	}
+}
+
+// A declared consumer holding a language left out beside one neither left out
+// nor in scope is not dropped: no analyzer the run keeps claims a language of
+// it, so the run refuses it.
+func TestMakeRefusesAConsumerOfALeftOutLanguageAndOneOutOfScope(t *testing.T) {
+	t.Parallel()
+
+	census := workspace()
+	census.languages["/w/schema"] = []vocab.Language{vocab.TS, vocab.Proto}
+	got, err := plan.Make(&plan.Input{Scope: declared("go", "schema"), Omitted: []vocab.Language{vocab.TS}, Providers: []config.Provider{goEntry, tsEntry}}, census)
+	refused, ok := errors.AsType[*plan.UnclaimedError](err)
+	if !ok || refused.Path != "/w/schema" || !slices.Equal(refused.Languages, []vocab.Language{vocab.TS, vocab.Proto}) {
+		t.Errorf("Make() = %+v, %v, want /w/schema refused as holding ts and proto, no analyzer of the run claiming either", got, err)
+	}
+}
+
+// countingTree counts the questions asked of the tree it reads.
+type countingTree struct {
+	tree             plan.Tree
+	languages, names int
+}
+
+func (c *countingTree) Languages(dir string) ([]vocab.Language, error) {
+	c.languages++
+	return c.tree.Languages(dir)
+}
+
+func (c *countingTree) Name(dir string, source vocab.IdentitySource) (string, bool, error) {
+	c.names++
+	return c.tree.Name(dir, source)
+}
+
+// A Census asks its tree each question once, a failed read included, and
+// answers it again as the tree did.
+func TestCensusAsksEachQuestionOnce(t *testing.T) {
+	t.Parallel()
+
+	counted := &countingTree{tree: workspace()}
+	census := plan.NewCensus(counted)
+	goMod := vocab.LanguageRows()[0].IdentitySource
+	for range 2 {
+		if languages, err := census.Languages("/w/app"); err != nil || !slices.Equal(languages, both) {
+			t.Errorf("Languages(/w/app) = %v, %v, want go and ts", languages, err)
+		}
+		if _, err := census.Languages("/w/gone"); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("Languages(/w/gone) = %v, want fs.ErrNotExist", err)
+		}
+		if name, found, err := census.Name("/w/app", goMod); err != nil || !found || name != "example.com/app" {
+			t.Errorf("Name(/w/app, %+v) = %q, %t, %v, want example.com/app", goMod, name, found, err)
+		}
+	}
+	if counted.languages != 2 || counted.names != 1 {
+		t.Errorf("the tree was asked %d censuses and %d names, want 2 and 1", counted.languages, counted.names)
+	}
+}
+
+// A configured language set replaces the census, in the rows' order, and the
+// plan records that no census decided it.
 func TestMakeTakesTheConfiguredLanguages(t *testing.T) {
 	t.Parallel()
 
 	got, err := plan.Make(&plan.Input{Scope: declared(), Languages: []string{"ts", "go"}, Providers: []config.Provider{goEntry, tsEntry}},
 		&tree{languages: map[string][]vocab.Language{}})
-	if err != nil || !slices.Equal(got.Languages, both) {
-		t.Errorf("Make(languages ts, go over an empty tree) = %+v, %v, want go and ts", got, err)
+	if err != nil || !slices.Equal(got.Languages, both) || got.Detected {
+		t.Errorf("Make(languages ts, go over an empty tree) = %+v, %v, want go and ts, not detected", got, err)
 	}
 }
 
@@ -243,6 +337,9 @@ func TestDiskReadsEveryRowsIdentitySource(t *testing.T) {
 	t.Parallel()
 
 	for _, row := range vocab.LanguageRows() {
+		if row.IdentitySource.File == "" {
+			continue
+		}
 		if _, _, err := (plan.Disk{}).Name(t.TempDir(), row.IdentitySource); err != nil {
 			t.Errorf("Disk.Name(%s's %+v) = %v, want a reader", row.Language, row.IdentitySource, err)
 		}

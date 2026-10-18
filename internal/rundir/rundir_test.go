@@ -143,6 +143,21 @@ func TestCreateRefusesAnExistingDirectory(t *testing.T) {
 	}
 }
 
+// TestRerunMakesARunDirectoryInsideOnce pins that the files of a source run
+// again lie in a directory of their own inside the run's, made once.
+func TestRerunMakesARunDirectoryInsideOnce(t *testing.T) {
+	t.Parallel()
+
+	dir, path := created(t)
+	rerun, err := dir.Rerun()
+	if err != nil || filepath.Dir(rerun.Path()) != path || filepath.Dir(rerun.Scope()) != rerun.Path() {
+		t.Fatalf("Rerun() = %v, %v, want a run directory inside %s", rerun, err, path)
+	}
+	if _, err := dir.Rerun(); !errors.Is(err, fs.ErrExist) {
+		t.Errorf("Rerun() a second time = %v, want an error satisfying errors.Is(err, fs.ErrExist)", err)
+	}
+}
+
 // TestCreateTempMakesAnEmptyDirectoryOfItsOwn pins that two runs given no
 // directory each get a fresh, empty one, at the path the run names.
 func TestCreateTempMakesAnEmptyDirectoryOfItsOwn(t *testing.T) {

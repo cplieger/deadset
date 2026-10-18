@@ -49,6 +49,9 @@ func TestLanguages(t *testing.T) {
 			files: map[string]string{"tool.go": goProgram},
 			want:  []vocab.Language{vocab.Go},
 		},
+		"go sources the go tool ignores by name": {
+			files: map[string]string{"_gen.go": goProgram, ".hidden.go": goProgram},
+		},
 		"module file below the root": {
 			files: map[string]string{"services/api/go.mod": "module example.com/api\n"},
 			want:  []vocab.Language{vocab.Go},
@@ -96,6 +99,36 @@ func TestLanguages(t *testing.T) {
 		},
 		"directories the typescript row skips": {
 			files: map[string]string{"node_modules/lib/tsconfig.json": "{}", ".git/tsconfig.json": "{}"},
+		},
+		"javascript project file alone": {
+			files: map[string]string{"jsconfig.json": "{}"},
+			want:  []vocab.Language{vocab.TS},
+		},
+		"named javascript project file": {
+			files: map[string]string{"web/jsconfig.app.json": "{}"},
+			want:  []vocab.Language{vocab.TS},
+		},
+		"manifest with javascript sources": {
+			files: map[string]string{"package.json": `{"name": "web"}`, "src/index.js": "module.exports = 1;\n"},
+			want:  []vocab.Language{vocab.TS},
+		},
+		"javascript sources without a manifest": {
+			files: map[string]string{"app.jsx": "export const App = () => null;\n", "esm.mjs": "export {};\n", "cjs.cjs": "module.exports = {};\n"},
+			want:  []vocab.Language{vocab.TS},
+		},
+		"jsx file whose name only looks minified": {
+			files: map[string]string{"view.min.jsx": "export const View = () => null;\n"},
+			want:  []vocab.Language{vocab.TS},
+		},
+		"javascript only in directories the typescript row skips and in minified names": {
+			files: map[string]string{
+				"node_modules/lib/index.js": "module.exports = 1;\n", ".git/hooks/check.mjs": "export {};\n",
+				"vendor.min.js": "var a=1;\n", "lib/legacy.min.cjs": "module.exports={};\n", "esm.min.mjs": "export{};\n",
+			},
+		},
+		"go module beside javascript sources": {
+			files: map[string]string{"go.mod": "module example.com/app\n", "main.go": goProgram, "web/static/app.js": "console.log(1);\n"},
+			want:  []vocab.Language{vocab.Go, vocab.TS},
 		},
 	}
 	for name, tc := range tests {

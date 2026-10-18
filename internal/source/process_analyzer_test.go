@@ -103,7 +103,7 @@ func TestRunRelaysARealAnalyzersSetupFailure(t *testing.T) {
 	t.Parallel()
 
 	p, files := goRun(t, "package app\n\nimport \"example.com/app/gen\"\n\nvar V = gen.X\n")
-	outcomes, err := source.Run(t.Context(), []source.Source{p}, []source.Files{files})
+	outcomes, err := source.Run(t.Context(), []source.Source{p}, []source.Files{files}, false)
 	got := outcomes[0]
 	relayed, ok := errors.AsType[*failure.Error](err)
 	if got.Report != nil || got.Exit != vocab.ExitFailure || !got.SetupFailed() || !ok ||

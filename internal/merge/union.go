@@ -2,7 +2,6 @@ package merge
 
 import (
 	"slices"
-	"strings"
 
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
@@ -87,7 +86,7 @@ func matchedRoots(inputs []Input) map[string]bool {
 	for i := range unmatched {
 		for root := range unmatched[i] {
 			for k := range inputs {
-				if reads(inputs[k].Report, root) && !unmatched[k][root] {
+				if vocab.ReadsRoot(inputs[k].Report.Analyzer.Languages, root) && !unmatched[k][root] {
 					matched[root] = true
 				}
 			}
@@ -105,12 +104,4 @@ func unmatchedRoots(r *report.Report) map[string]bool {
 		}
 	}
 	return unmatched
-}
-
-// reads reports whether r's analyzer reads the configured string root: one
-// whose language prefix names a language r covers, or one with no prefix
-// naming a language, which every analyzer reads.
-func reads(r *report.Report, root string) bool {
-	prefix, _, found := strings.Cut(root, "://")
-	return !found || strings.ContainsAny(prefix, "*?") || slices.Contains(r.Analyzer.Languages, vocab.Language(prefix))
 }

@@ -47,7 +47,7 @@ func (e *Error) Setup() bool { return isSetup(e.Failures[0].Class) }
 
 // fixes is the fix each class deadset names itself states after what fails.
 var fixes = map[string]string{
-	vocab.SetupNoProgram:          noProgramFix(),
+	vocab.SetupNoProgram:          noProgramFix(vocab.LanguageRows()),
 	vocab.SetupUnreadableDocument: "make it a regular file inside the target root that the run can read, or remove it",
 	vocab.RunUnwrittenOutput:      "name a path the run can write, or correct the template that renders it",
 	vocab.RunMissingAnalyzer:      "install the analyzer, or correct the command of its provider entry",
@@ -57,19 +57,17 @@ var fixes = map[string]string{
 	vocab.RunProductFault:         "reinstall deadset and its analyzers, and report the fault to their maintainers where a reinstalled product fails the same way",
 }
 
-func noProgramFix() string {
-	rows := vocab.LanguageRows()
+// noProgramFix is the fix of the setup failure no-program over rows: the
+// markers and the source extensions each row reads a program from.
+func noProgramFix(rows []vocab.LanguageRow) string {
 	reads := make([]string, 0, len(rows))
 	for i := range rows {
 		row := &rows[i]
-		from := strings.Join(row.Markers, " or ")
-		if row.ProgramWithoutMarker {
-			from += " or a " + strings.Join(row.Extensions, " or ") + " file"
-			if len(row.Companions) > 0 {
-				from += " beside " + strings.Join(row.Companions, " or ")
-			}
+		from := slices.Clone(row.Markers)
+		if len(row.Extensions) > 0 {
+			from = append(from, "a "+strings.Join(row.Extensions, " or ")+" file")
 		}
-		reads = append(reads, string(row.Language)+" reads one from "+from)
+		reads = append(reads, string(row.Language)+" reads one from "+strings.Join(from, " or "))
 	}
 	return "run from the directory that holds a program (" + strings.Join(reads, "; ") + "), or name the languages to analyze in " + string(vocab.KeyAnalysisLanguages)
 }
