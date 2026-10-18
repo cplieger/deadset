@@ -4,7 +4,8 @@
 // and any scope document of its own, each keyed by the entry's name because
 // two entries may claim one language; beside them it holds the run's scope
 // document, the merged report and the renderings of the merged report that
-// are files of their own.
+// are files of their own. The files of the analyzers a run produces again
+// over a narrowed scope lie in a directory of their own inside it, [Dir.Rerun].
 //
 // A run directory belongs to one run. [Create] refuses a directory that
 // already exists and every write refuses a file that already exists, so no
@@ -25,10 +26,12 @@ import (
 	"github.com/cplieger/deadset/v2/internal/failure"
 )
 
-// The files of a run directory that no provider entry keys.
+// The files of a run directory that no provider entry keys. rerunDir holds no
+// full stop, so no entry's file is named like it.
 const (
 	scopeFile  = "scope.json"
 	mergedFile = "report.json"
+	rerunDir   = "rerun"
 )
 
 // ErrName reports a provider entry name that cannot key a file of the run
@@ -68,6 +71,10 @@ func CreateTemp() (*Dir, error) {
 
 // Path is the run directory's absolute path.
 func (d *Dir) Path() string { return d.path }
+
+// Rerun makes the run directory, inside d, of the analyzers the run produces
+// again, refusing one that exists as [Create] does.
+func (d *Dir) Rerun() (*Dir, error) { return Create(filepath.Join(d.path, rerunDir)) }
 
 // Scope is the path of the scope document every analyzer of the run reads
 // unless its entry holds one of its own.

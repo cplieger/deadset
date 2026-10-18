@@ -144,9 +144,23 @@ func TestNoProgramNamesWhatALanguageReadsAProgramFrom(t *testing.T) {
 	t.Parallel()
 
 	detail := failure.Wrap(vocab.SetupNoProgram, errors.New("the target cannot be read")).Failures[0].Detail
-	for _, name := range []string{"go reads one from go.mod or a .go file", "ts reads one from tsconfig*.json", "run from the directory", "analysis.languages"} {
+	for _, name := range []string{"go reads one from go.mod or a .go file", "ts reads one from tsconfig*.json or jsconfig*.json or a .js or .jsx or .mjs or .cjs file", "run from the directory", "analysis.languages"} {
 		if !strings.Contains(detail, name) {
 			t.Errorf("the no-program failure %q, want it to name %q", detail, name)
 		}
+	}
+}
+
+// A row with no marker reads a program from its source files alone, and a row
+// with no extension from its markers alone, so neither part opens with "or".
+func TestNoProgramFixNamesOnlyThePartsARowHolds(t *testing.T) {
+	t.Parallel()
+
+	got := failure.NoProgramFix([]vocab.LanguageRow{
+		{Language: "x", Extensions: []string{".x", ".y"}},
+		{Language: "z", Markers: []string{"z.toml", "z.lock"}},
+	})
+	if want := "(x reads one from a .x or .y file; z reads one from z.toml or z.lock)"; !strings.Contains(got, want) {
+		t.Errorf("NoProgramFix() = %q, want it to hold %q", got, want)
 	}
 }

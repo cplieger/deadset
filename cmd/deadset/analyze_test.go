@@ -647,6 +647,104 @@ func TestAnalyzePrintsWhatEachAnalyzerPrintedAndTheWorkaround(t *testing.T) {
 	}
 }
 
+// The workaround offers only the languages the failed analyzer was not
+// handed, since one it was handed would run it again, and else the analyzers
+// that reported, run alone.
+func TestWorkaroundOffersOnlyWhatRunsWithoutTheFailedAnalyzer(t *testing.T) {
+	t.Parallel()
+
+	failed := source.Outcome{Analyzer: "deadset-go", Languages: []vocab.Language{vocab.Go}, Err: errors.New("failed")}
+	for _, c := range []struct {
+		name     string
+		reported source.Outcome
+		want     string
+	}{
+		{
+			name: "another-language", reported: source.Outcome{Analyzer: "deadset-ts", Languages: []vocab.Language{vocab.TS}},
+			want: `deadset: to analyze the target without deadset-go, set analysis.languages: ["ts"] or run deadset-ts alone` + "\n",
+		},
+		{
+			name: "the-same-language", reported: source.Outcome{Analyzer: "other-go", Languages: []vocab.Language{vocab.Go}},
+			want: "deadset: to analyze the target without deadset-go, run other-go alone\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := workaround([]source.Outcome{failed, c.reported}, &failed); got != c.want {
+				t.Errorf("workaround() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A TypeScript analyzer that finds no program of a target whose JavaScript a
+// census found leaves the language out: its lines are shown under its name,
+// the line naming the language left out follows, naming any declared consumer
+// of TypeScript alone left out with it, and the Go analyzer's report is the
+// run's. Under configured languages its no-program ends the run.
+func TestAnalyzeLeavesOutADetectedLanguageItsAnalyzerFindsNoProgramOf(t *testing.T) {
+	t.Parallel()
+
+	const noProgram = "setup failure: no-program: the target holds no JavaScript file a program is formed from\n"
+	const leftOut = `deadset: deadset-ts found no program, so the run leaves "ts" out of scope`
+	for _, c := range []struct {
+		name      string
+		extra     []string
+		want      []string
+		consumers []string
+		code      int
+	}{
+		{name: "detected", code: vocab.ExitFindings, want: []string{"deadset-ts: " + noProgram, leftOut + "\n"}},
+		{name: "consumer-of-typescript-alone", code: vocab.ExitFindings, consumers: []string{"web"}, want: []string{"deadset-ts: " + noProgram}},
+		{name: "consumers-of-typescript-alone", code: vocab.ExitFindings, consumers: []string{"web", "site"}, want: []string{"deadset-ts: " + noProgram}},
+		{name: "configured", extra: []string{"--languages=go,ts"}, code: vocab.ExitFailure, want: []string{"\n" + noProgram}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			target, runDir := goTarget(t, both, "")
+			writeFile(t, filepath.Join(target, "web", "generated.js"), []byte("export const x = 1;\n"))
+			extra := c.extra
+			if len(c.consumers) > 0 {
+				var paths, declared []string
+				for _, name := range c.consumers {
+					consumer := filepath.Join(filepath.Dir(target), name)
+					writeFile(t, filepath.Join(consumer, "tsconfig.json"), []byte("{}\n"))
+					paths, declared = append(paths, consumer), append(declared, fmt.Sprintf(`{"path": %q}`, consumer))
+				}
+				document := filepath.Join(filepath.Dir(target), "scope.json")
+				writeFile(t, document, fmt.Appendf(nil, `{"target": {"path": %q}, "consumers": [%s]}`, target, strings.Join(declared, ", ")))
+				extra = append(extra, "--scope="+document)
+				named := map[bool]string{false: ", and with it the consumer ", true: ", and with it the consumers "}[len(paths) > 1]
+				c.want = append(c.want, leftOut+named+strings.Join(paths, ", ")+"\n")
+			}
+			got := analyzeWith(t, stubs(t, map[string]stub{
+				"deadset-ts": {exit: 3, err: exited("deadset-ts", 3), printed: noProgram},
+				"deadset-go": {report: goFindings, exit: 1},
+			}), target, runDir, extra...)
+			if got.code != c.code {
+				t.Fatalf("analyze = %d, want %d\nstdout: %s\nstderr: %s", got.code, c.code, got.stdout, got.stderr)
+			}
+			for _, want := range c.want {
+				if !strings.Contains(got.stderr, want) {
+					t.Errorf("analyze stderr = %q, want %q", got.stderr, want)
+				}
+			}
+			if c.code == vocab.ExitFailure {
+				return
+			}
+			if lines := classLines(got.stderr); len(lines) != 0 {
+				t.Errorf("analyze stderr holds the class lines %q, want none", lines)
+			}
+			merged := mergedReport(t, runDir)
+			if len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != "deadset-go" {
+				t.Errorf("the merged report was merged from %+v, want the Go analyzer alone", merged.MergedFrom)
+			}
+		})
+	}
+}
+
 type refusingWriter struct{}
 
 func (refusingWriter) Write([]byte) (int, error) {

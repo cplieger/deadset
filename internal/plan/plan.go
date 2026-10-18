@@ -43,6 +43,10 @@ type Input struct {
 	// a census of the target decides them.
 	Languages []string
 
+	// Omitted is the languages the census found that the run leaves out,
+	// because their analyzers found no program of them.
+	Omitted []vocab.Language
+
 	Providers []config.Provider
 }
 
@@ -63,6 +67,14 @@ type Plan struct {
 	// Sources is one entry per provider entry the run invokes, in the
 	// provider list's order.
 	Sources []Source
+
+	// Dropped is every declared consumer the run leaves out with the
+	// languages [Input.Omitted] names, in the scope document's order.
+	Dropped []Dropped
+
+	// Detected reports whether a census of the target put Languages in
+	// scope, analysis.languages naming none.
+	Detected bool
 }
 
 // Source is one provider entry the run invokes and what it is handed.
@@ -79,6 +91,13 @@ type Source struct {
 
 	// Index is the entry's place in the provider list.
 	Index int
+}
+
+// Dropped is a declared consumer every language of which the run left out,
+// and those languages.
+type Dropped struct {
+	Path      string
+	Languages []vocab.Language
 }
 
 // UnclaimedError is a declared consumer no analyzer of the run claims a
@@ -98,9 +117,11 @@ func (e *UnclaimedError) Error() string {
 
 // Make plans the run in asks for, from what tree holds. A target in which the
 // census finds no language, and a declared consumer that is absent, is no
-// directory or holds no language, is a setup [*failure.Error]; a language in scope no
-// provider entry claims is a [*config.Error], before any consumer is read;
-// consumers no analyzer claims are [*UnclaimedError]s, joined.
+// directory or holds no language, is a setup [*failure.Error]; a language in
+// scope no provider entry claims is a [*config.Error], before any consumer is
+// read; a consumer every language of which in.Omitted names is
+// [Plan.Dropped]; other consumers no analyzer claims are [*UnclaimedError]s,
+// joined.
 func Make(in *Input, tree Tree) (*Plan, error) {
 	languages, err := inScope(in, tree)
 	if err != nil {
@@ -109,22 +130,14 @@ func Make(in *Input, tree Tree) (*Plan, error) {
 	if refused := claimed(in.Providers, languages); refused != nil {
 		return nil, refused
 	}
-	p := &Plan{Dir: in.Scope.Root(), Languages: languages, Scope: scope.Document{Workspace: in.Scope.Workspace}}
+	p := &Plan{Dir: in.Scope.Root(), Languages: languages, Detected: len(in.Languages) == 0, Scope: scope.Document{Workspace: in.Scope.Workspace}}
 	p.Scope.Target, err = named(in.Scope.Target, languages, true, tree)
 	if err != nil {
 		return nil, err
 	}
-	held := make([][]vocab.Language, len(in.Scope.Consumers))
-	for i, consumer := range in.Scope.Consumers {
-		if held[i], err = consumerLanguages(consumer.Path, tree); err != nil {
-			return nil, err
-		}
-		loaded := slices.DeleteFunc(slices.Clone(held[i]), func(l vocab.Language) bool { return !slices.Contains(languages, l) })
-		module, err := named(consumer, loaded, false, tree)
-		if err != nil {
-			return nil, err
-		}
-		p.Scope.Consumers = append(p.Scope.Consumers, module)
+	held, err := p.consumers(in, tree)
+	if err != nil {
+		return nil, err
 	}
 	if err := p.route(in.Providers, held); err != nil {
 		return nil, err
@@ -132,7 +145,32 @@ func Make(in *Input, tree Tree) (*Plan, error) {
 	return p, nil
 }
 
-// inScope is the configured language set, or the census of the target.
+// consumers names in p's scope document every declared consumer the run does
+// not drop, and returns the languages each of them holds, in that order.
+func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
+	var held [][]vocab.Language
+	for _, consumer := range in.Scope.Consumers {
+		holds, err := consumerLanguages(consumer.Path, tree)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(holds, func(l vocab.Language) bool { return !slices.Contains(in.Omitted, l) }) {
+			p.Dropped = append(p.Dropped, Dropped{Path: consumer.Path, Languages: holds})
+			continue
+		}
+		loaded := slices.DeleteFunc(slices.Clone(holds), func(l vocab.Language) bool { return !slices.Contains(p.Languages, l) })
+		module, err := named(consumer, loaded, false, tree)
+		if err != nil {
+			return nil, err
+		}
+		p.Scope.Consumers = append(p.Scope.Consumers, module)
+		held = append(held, holds)
+	}
+	return held, nil
+}
+
+// inScope is the configured language set, or the census of the target
+// without the languages the run left out.
 func inScope(in *Input, tree Tree) ([]vocab.Language, error) {
 	if len(in.Languages) > 0 {
 		var configured []vocab.Language
@@ -148,6 +186,7 @@ func inScope(in *Input, tree Tree) ([]vocab.Language, error) {
 	if err != nil {
 		return nil, err
 	}
+	found = slices.DeleteFunc(slices.Clone(found), func(l vocab.Language) bool { return slices.Contains(in.Omitted, l) })
 	if len(found) == 0 {
 		return nil, noProgram(in.Scope.Target.Path)
 	}

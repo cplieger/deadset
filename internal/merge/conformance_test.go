@@ -12,14 +12,16 @@ import (
 )
 
 // resultsDescription is the description the results document carries.
-const resultsDescription = "The merge's result over the published merge vectors of the corpus version named: " +
+const resultsDescription = "The merge's result over the published merge vectors of the corpus version named, " +
+	"those marked pending aside: " +
 	"a case passes when the merge writes its expected report byte for byte with its expected exit code, " +
 	"or refuses it with the refusal and the exit code it states. result is fail when any case fails."
 
 // TestTheConformanceRecordIsTheMergesAnswerOverThePublishedVectors runs every
-// published merge case and requires the committed results document to be what
-// that run produces, naming the pinned corpus version: the conformance block
-// a merged report carries is then the answer of this build's merge.
+// published merge case not marked pending and requires the committed results
+// document to be what that run produces, naming the pinned corpus version: the
+// conformance block a merged report carries is then the answer of this build's
+// merge.
 //
 // UPDATE_GOLDEN=1 writes the document instead of comparing it.
 func TestTheConformanceRecordIsTheMergesAnswerOverThePublishedVectors(t *testing.T) {

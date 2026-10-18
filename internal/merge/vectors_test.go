@@ -300,7 +300,8 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 	}
 }
 
-// caseNames is the name of every case directory of vectors/merge.
+// caseNames is the name of every case directory of vectors/merge but those
+// holding a pending file, which state a rule no product implements yet.
 func caseNames(t *testing.T) []string {
 	t.Helper()
 
@@ -310,8 +311,15 @@ func caseNames(t *testing.T) []string {
 	}
 	var names []string
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if !entry.IsDir() {
+			continue
+		}
+		_, err := fs.Stat(spec.Vectors, path.Join(vectorsDir, entry.Name(), "pending"))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			names = append(names, entry.Name())
+		case err != nil:
+			t.Fatalf("Setup: stat %s/%s/pending: %v", vectorsDir, entry.Name(), err)
 		}
 	}
 	if len(names) == 0 {

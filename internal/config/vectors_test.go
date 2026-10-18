@@ -29,7 +29,9 @@ var publishedCases = []string{
 	"member-written-as-null",
 	"missing-target-kind",
 	"provenance-on-input",
+	"provider-claims-schema-language-refused",
 	"provider-name-duplicated",
+	"provider-named-like-in-process-reader-refused",
 	"quoted-key-with-a-dot",
 	"resolved-configuration-round-trip",
 	"severity-key-names-no-kind",
@@ -114,6 +116,15 @@ func TestPublishedConfigurationVectors(t *testing.T) {
 			t.Parallel()
 
 			dir := path.Join("vectors/config", name)
+			var declared struct {
+				Pending string `json:"pending"`
+			}
+			if err := json.Unmarshal(caseFile(t, dir, "case.json"), &declared); err != nil {
+				t.Fatalf("Setup: decode %s/case.json: %v", dir, err)
+			}
+			if declared.Pending != "" {
+				t.Skipf("case %s is pending: %s", name, declared.Pending)
+			}
 			in := &config.Inputs{
 				Repository: config.Document{Path: "repository.json", Data: caseFile(t, dir, "repository.json")},
 				Central:    config.Document{Path: "central.json", Data: caseFile(t, dir, "central.json")},
