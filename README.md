@@ -41,7 +41,7 @@ On a Go module with one uncalled function, the run prints:
 main.go:5:6: function unused: unexported function has no reference in the target [certain] (DS1002)
 analyzer deadset-go <version> sha256:<digest of the deadset-go binary>
 summary: 1 finding (0 allow, 0 warn, 1 deny), 1 deletable line, 0 suppressions in effect, 0 reasons recorded, 0 stale suppressions, 0 pending, 0 omitted, across go
-remediation: for each failing finding, delete the symbol, wire it up so the program uses it, or record an adjudication with its reason in an inline directive or a deadset-ignore.json entry
+remediation: for each failing finding about a declaration: delete the symbol, or wire it up so the program uses it; or record an adjudication with its reason in an inline directive, a deadset-ignore.json entry or a deadset-baseline.json row
 ```
 
 It exits with 1, and standard error names the run directory that keeps every report. A run with no target kind exits with 2, and one with an analyzer missing from `PATH` exits with 3.

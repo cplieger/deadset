@@ -19,10 +19,10 @@ func TestDropWithNamesAConsumerOnEachOutcomeThatLeftOutALanguageOfIt(t *testing.
 		{Analyzer: "deadset-ts", Omitted: true, LeftOut: []vocab.Language{vocab.TS}},
 		{Analyzer: "proto", Omitted: true, LeftOut: []vocab.Language{vocab.Proto}},
 	}
-	dropWith(outcomes, []plan.Dropped{
+	dropWith(outcomes, &plan.Plan{Dropped: []plan.Dropped{
 		{Path: "/w/web", Languages: []vocab.Language{vocab.TS}},
 		{Path: "/w/schema", Languages: []vocab.Language{vocab.TS, vocab.Proto}},
-	})
+	}})
 	want := [][]string{nil, {"/w/web", "/w/schema"}, {"/w/schema"}}
 	for i := range outcomes {
 		if !slices.Equal(outcomes[i].Dropped, want[i]) {

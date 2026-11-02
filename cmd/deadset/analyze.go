@@ -13,6 +13,7 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/suppress"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/failure"
@@ -96,6 +97,7 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 		Version:     version(),
 		Diagnostics: stderr,
 		Started:     func(dir string) { fmt.Fprintf(stderr, "%s: the run directory is %s\n", run.Product, dir) },
+		Planned:     func(planned *plan.Plan) { _, _ = io.WriteString(stderr, unread(planned)) },
 		Print:       func(outcomes []source.Outcome) error { return printOutcomes(stderr, outcomes) },
 		Open:        a.open,
 	})
@@ -235,19 +237,28 @@ func omission(o *source.Outcome) string {
 	if len(o.LeftOut) == 0 {
 		return fmt.Sprintf("%s: %s found no program, so the run goes on without it\n", run.Product, o.Analyzer)
 	}
-	languages := make([]string, len(o.LeftOut))
-	for i, language := range o.LeftOut {
-		languages[i] = strconv.Quote(string(language))
+	return fmt.Sprintf("%s: %s found no program, so the run leaves %s out of scope%s\n", run.Product, o.Analyzer, plan.Quoted(o.LeftOut), with(o.Dropped))
+}
+
+// unread is the line naming the languages the plan leaves out because this
+// build holds no reader of them, and the consumers it leaves out with them,
+// or empty where it leaves none out.
+func unread(planned *plan.Plan) string {
+	if len(planned.Unread) == 0 {
+		return ""
 	}
-	line := fmt.Sprintf("%s: %s found no program, so the run leaves %s out of scope", run.Product, o.Analyzer, strings.Join(languages, ", "))
-	switch len(o.Dropped) {
+	return fmt.Sprintf("%s: this build of %s holds no reader of %s, so the run leaves %s out of scope%s\n",
+		run.Product, run.Product, plan.Quoted(planned.Unread), plan.Pronoun(planned.Unread), with(planned.DroppedWith(planned.Unread)))
+}
+
+func with(dropped []string) string {
+	switch len(dropped) {
 	case 0:
+		return ""
 	case 1:
-		line += ", and with it the consumer " + o.Dropped[0]
-	default:
-		line += ", and with it the consumers " + strings.Join(o.Dropped, ", ")
+		return ", and with it the consumer " + dropped[0]
 	}
-	return line + "\n"
+	return ", and with it the consumers " + strings.Join(dropped, ", ")
 }
 
 // printResult writes to stdout every rendering the formats name that is a
@@ -271,15 +282,47 @@ func printResult(stdout io.Writer, result *run.Result, opts *render.Options, rep
 		fmt.Fprintf(&out, "%s %s\n", w.Format, w.Path)
 	}
 	if render.Failing(&r.Totals.BySeverity, reporters.FailOn) {
-		out.WriteString(remediation)
+		out.WriteString(remediation(result.Failing))
 	}
 	_, err := io.WriteString(stdout, out.String())
 	return err
 }
 
-// remediation is what a run that a finding failed prints after its summary.
-const remediation = "remediation: for each failing finding, delete the symbol, wire it up so the program uses it, " +
-	"or record an adjudication with its reason in an inline directive or a deadset-ignore.json entry\n"
+// remediation is what a run that a finding failed prints after its summary:
+// a line per subject of a failing finding, in the order given, offering the
+// subject's remedy and each suppression that can name it.
+func remediation(failing []vocab.Subject) string {
+	var out strings.Builder
+	for _, subject := range failing {
+		row, _ := subject.Remedy()
+		fmt.Fprintf(&out, "remediation: for each failing finding about %s: %s; ", row.Names, row.Remedy)
+		if len(row.Suppressions) == 0 {
+			fmt.Fprintf(&out, "no suppression can name %s\n", row.Names)
+			continue
+		}
+		places := make([]string, len(row.Suppressions))
+		for i, mechanism := range row.Suppressions {
+			places[i] = suppressions[suppress.Mechanism(mechanism)]
+		}
+		fmt.Fprintf(&out, "or record an adjudication with its reason in %s\n", list(places))
+	}
+	return out.String()
+}
+
+// suppressions is the place a record of each mechanism is written, as the
+// remediation names it.
+var suppressions = map[suppress.Mechanism]string{
+	suppress.Inline:   "an inline directive",
+	suppress.Ignore:   "a " + suppress.IgnoreFileName + " entry",
+	suppress.Baseline: "a " + suppress.BaselineFileName + " row",
+}
+
+func list(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
+}
 
 // verdict names on stderr what the merged report holds that a reader acts on
 // whatever the exit code says, and returns the code the exit-code table gives

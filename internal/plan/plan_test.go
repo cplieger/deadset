@@ -196,18 +196,59 @@ func TestMakeDropsAConsumerOfOnlyALanguageLeftOut(t *testing.T) {
 	}
 }
 
-// A declared consumer holding a language left out beside one neither left out
-// nor in scope is not dropped: no analyzer the run keeps claims a language of
-// it, so the run refuses it.
-func TestMakeRefusesAConsumerOfALeftOutLanguageAndOneOutOfScope(t *testing.T) {
+// A language the census of the target or of a declared consumer alone puts
+// in scope that this build holds no reader of is left out, with every
+// declared consumer holding only languages left out, beside a language an
+// analyzer reads.
+func TestMakeLeavesOutALanguageThisBuildHoldsNoReaderOf(t *testing.T) {
 	t.Parallel()
 
-	census := workspace()
-	census.languages["/w/schema"] = []vocab.Language{vocab.TS, vocab.Proto}
-	got, err := plan.Make(&plan.Input{Scope: declared("go", "schema"), Omitted: []vocab.Language{vocab.TS}, Providers: []config.Provider{goEntry, tsEntry}}, census)
-	refused, ok := errors.AsType[*plan.UnclaimedError](err)
-	if !ok || refused.Path != "/w/schema" || !slices.Equal(refused.Languages, []vocab.Language{vocab.TS, vocab.Proto}) {
-		t.Errorf("Make() = %+v, %v, want /w/schema refused as holding ts and proto, no analyzer of the run claiming either", got, err)
+	for _, c := range []struct {
+		name      string
+		app       []vocab.Language
+		consumers []string
+		omitted   []vocab.Language
+		in        []vocab.Language
+		dropped   []string
+	}{
+		{name: "beside-both", in: both, dropped: []string{"/w/schema"}},
+		{name: "beside-a-language-left-out", omitted: []vocab.Language{vocab.TS}, in: []vocab.Language{vocab.Go}, dropped: []string{"/w/schema", "/w/web"}},
+		{name: "in-a-consumer-alone", app: []vocab.Language{vocab.Go}, consumers: []string{"schema", "go"}, in: []vocab.Language{vocab.Go}, dropped: []string{"/w/schema"}},
+		{
+			name: "in-a-consumer-beside-a-language-left-out", app: both, consumers: []string{"go", "web"}, omitted: []vocab.Language{vocab.TS},
+			in: []vocab.Language{vocab.Go}, dropped: []string{"/w/web"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			census := workspace()
+			census.languages["/w/app"] = []vocab.Language{vocab.Go, vocab.TS, vocab.Proto}
+			if c.app != nil {
+				census.languages["/w/app"] = c.app
+			}
+			census.languages["/w/schema"] = []vocab.Language{vocab.Proto}
+			census.languages["/w/web"] = []vocab.Language{vocab.TS, vocab.Proto}
+			consumers := c.consumers
+			if consumers == nil {
+				consumers = []string{"schema", "web", "go"}
+			}
+			got, err := plan.Make(&plan.Input{Scope: declared(consumers...), Omitted: c.omitted, Providers: []config.Provider{goEntry, tsEntry}}, census)
+			if err != nil {
+				t.Fatalf("Make() = %v", err)
+			}
+			unread := []vocab.Language{vocab.Proto}
+			if !slices.Equal(got.Languages, c.in) || !slices.Equal(got.Unread, unread) || got.Scope.Target.ID != "example.com/app" {
+				t.Errorf("Make() = %+v, want %v in scope, proto unread and the target named by its Go module", got, c.in)
+			}
+			var dropped []string
+			for _, d := range got.Dropped {
+				dropped = append(dropped, d.Path)
+			}
+			if !slices.Equal(dropped, c.dropped) || !slices.Equal(got.DroppedWith(unread), c.dropped) {
+				t.Errorf("Make() drops %q, %q with proto, want %q", dropped, got.DroppedWith(unread), c.dropped)
+			}
+		})
 	}
 }
 
@@ -273,7 +314,9 @@ func TestMakeRefuses(t *testing.T) {
 		scope     *scope.Document
 		name      string
 		providers []config.Provider
+		languages []string
 		names     []string
+		absent    []string
 	}{
 		{
 			name: "no-program", scope: declared(),
@@ -285,6 +328,33 @@ func TestMakeRefuses(t *testing.T) {
 			name: "unclaimed-language", scope: declared(), providers: []config.Provider{tsEntry},
 			check: func(err error) bool { _, ok := errors.AsType[*config.Error](err); return ok },
 			names: []string{"providers.analyzers", `"go"`},
+		},
+		{
+			name: "configured-language-this-build-holds-no-reader-of", scope: declared(), languages: []string{"go", "proto"},
+			check: setupClass(vocab.SetupUnsupportedLanguage),
+			names: []string{`analysis.languages names "proto", and this build holds no reader of it; leave each out of analysis.languages, or run a release of deadset that holds its reader`},
+		},
+		{
+			name: "census-of-only-languages-this-build-holds-no-reader-of", scope: declared(),
+			edit:   func(t *tree) { t.languages["/w/app"] = []vocab.Language{vocab.Proto} },
+			check:  setupClass(vocab.SetupUnsupportedLanguage),
+			names:  []string{`the census of /w/app puts only "proto" in scope, and this build holds no reader of it; run a release of deadset that holds its reader`},
+			absent: []string{"analysis.languages"},
+		},
+		{
+			name: "configured-run-consumer-of-a-language-this-build-holds-no-reader-of", scope: declared("schema"), languages: []string{"go"},
+			edit:  func(t *tree) { t.languages["/w/schema"] = []vocab.Language{vocab.Proto} },
+			check: func(err error) bool { _, ok := errors.AsType[*plan.UnclaimedError](err); return ok },
+			names: []string{"/w/schema holds proto", "no analyzer of the run claims"},
+		},
+		{
+			name: "consumer-of-a-language-this-build-holds-no-reader-of-and-one-out-of-scope", scope: declared("schema"),
+			edit: func(t *tree) {
+				t.languages["/w/app"] = []vocab.Language{vocab.Go}
+				t.languages["/w/schema"] = []vocab.Language{vocab.TS, vocab.Proto}
+			},
+			check: func(err error) bool { _, ok := errors.AsType[*plan.UnclaimedError](err); return ok },
+			names: []string{"the consumer /w/schema holds ts, proto", "no analyzer of the run claims"},
 		},
 		{name: "consumer-absent", scope: declared("gone"), check: setupClass(vocab.SetupMissingConsumer), names: []string{"/w/gone", "cannot be read"}},
 		{name: "consumer-of-no-language", scope: declared("docs"), check: setupClass(vocab.SetupMissingConsumer), names: []string{"/w/docs", "no language"}},
@@ -312,13 +382,18 @@ func TestMakeRefuses(t *testing.T) {
 			if providers == nil {
 				providers = []config.Provider{goEntry, tsEntry}
 			}
-			got, err := plan.Make(&plan.Input{Scope: c.scope, Providers: providers}, tr)
+			got, err := plan.Make(&plan.Input{Scope: c.scope, Languages: c.languages, Providers: providers}, tr)
 			if got != nil || !c.check(err) {
 				t.Fatalf("Make() = %+v, %v (%T), want a refusal of its class", got, err, err)
 			}
 			for _, named := range c.names {
 				if !strings.Contains(err.Error(), named) {
 					t.Errorf("Make() = %v, want it to name %q", err, named)
+				}
+			}
+			for _, unnamed := range c.absent {
+				if strings.Contains(err.Error(), unnamed) {
+					t.Errorf("Make() = %v, want it not to name %q", err, unnamed)
 				}
 			}
 		})

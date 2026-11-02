@@ -6,6 +6,8 @@
 package policy
 
 import (
+	"slices"
+
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 )
@@ -17,23 +19,48 @@ type Options struct {
 	// wrote it.
 	Severity func(code string) (vocab.Severity, bool)
 
-	// BySize keeps the largest deletions where the maximum drops findings.
-	BySize bool
+	// FailOn is the least severity that fails the run; empty fails on none.
+	FailOn vocab.Severity
 
 	// MaxFindings is the most findings the report keeps; zero keeps every one.
 	MaxFindings int
+
+	// BySize keeps the largest deletions where the maximum drops findings.
+	BySize bool
 }
 
-// Apply shapes r in place. A finding no input report carried, which the merge
-// emitted itself, takes the severity the configuration sets for its code, and
-// a severity of allow withholds it, as an analyzer withholds its own; the
-// counts the findings decide are then recounted. The findings past the
-// maximum, in the configured order, are then dropped and counted as omitted.
-func Apply(r *report.Report, opts *Options) {
+// Apply shapes r in place and returns the subject of every finding at or
+// above opts.FailOn, in kinds.json's order. A finding no input report
+// carried, which the merge emitted itself, takes the severity the
+// configuration sets for its code, and a severity of allow withholds it, as an
+// analyzer withholds its own; the counts the findings decide are then
+// recounted. The findings past the maximum, in the configured order, are then
+// dropped and counted as omitted, after the subjects are read, since the exit
+// code counts every finding.
+func Apply(r *report.Report, opts *Options) []vocab.Subject {
 	if opts.Severity != nil && restate(r, opts.Severity) {
 		report.Recount(r)
 	}
+	failing := subjects(r, opts.FailOn)
 	report.Cap(r, opts.MaxFindings, opts.BySize)
+	return failing
+}
+
+// subjects is the subject of every finding of r at or above failOn, in
+// kinds.json's order.
+func subjects(r *report.Report, failOn vocab.Severity) []vocab.Subject {
+	order := vocab.Severities()
+	at := slices.Index(order, failOn)
+	if at < 0 {
+		return nil
+	}
+	held := map[vocab.Subject]bool{}
+	for i := range r.Findings {
+		if slices.Contains(order[at:], r.Findings[i].Severity) {
+			held[r.Findings[i].Code.Subject()] = true
+		}
+	}
+	return slices.DeleteFunc(vocab.Subjects(), func(s vocab.Subject) bool { return !held[s] })
 }
 
 // restate gives every finding the merge emitted the severity configured for

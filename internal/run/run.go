@@ -69,6 +69,9 @@ type Request struct {
 	// Started is called with the run directory's path once it exists.
 	Started func(dir string)
 
+	// Planned is called with the run's first plan, before any source opens.
+	Planned func(planned *plan.Plan)
+
 	// Print shows what every source printed, once every source has exited
 	// and before the merge, so a run whose Print fails merges no report; its
 	// error is joined to the sources' refusals.
@@ -101,6 +104,10 @@ type rendering struct {
 type Result struct {
 	Merged  *report.Report
 	Written []rendering
+
+	// Failing is the subject of every finding that fails the run, those the
+	// maximum finding count left out of Merged included, in kinds.json's order.
+	Failing []vocab.Subject
 }
 
 // Analyze runs one analysis. An error is a run that produced no merged report,
@@ -112,7 +119,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	}
 	in := plan.Input{Scope: req.Scope, Languages: req.Resolved.Config.Languages, Providers: req.Resolved.Config.Providers}
 	census := plan.NewCensus(plan.Disk{})
-	planned, err := plan.Make(&in, census)
+	planned, err := first(req, &in, census)
 	if err != nil {
 		return nil, err
 	}
@@ -155,9 +162,10 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if result.Merged, err = merged(outcomes, accepted, req.Version); err != nil {
 		return result, err
 	}
-	policy.Apply(result.Merged, &policy.Options{
+	result.Failing = policy.Apply(result.Merged, &policy.Options{
 		Severity:    req.Resolved.Severity,
 		BySize:      req.Resolved.Config.Reporters.BySize,
+		FailOn:      req.Resolved.Config.Reporters.FailOn,
 		MaxFindings: req.Resolved.Config.Reporters.MaxFindings,
 	})
 	if refused := dir.WriteMerged(result.Merged); refused != nil {
@@ -165,6 +173,15 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	}
 	result.Written, err = writeFiles(dir, req, result.Merged)
 	return result, err
+}
+
+// req.Planned sees only a plan Make accepted.
+func first(req *Request, in *plan.Input, census *plan.Census) (*plan.Plan, error) {
+	planned, err := plan.Make(in, census)
+	if err == nil && req.Planned != nil {
+		req.Planned(planned)
+	}
+	return planned, err
 }
 
 // runDirectory creates the run directory path names, or one of its own when
@@ -285,7 +302,7 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error 
 	if err != nil {
 		return err
 	}
-	dropWith(outcomes, narrowed.Dropped)
+	dropWith(outcomes, narrowed)
 	again := *narrowed
 	again.Sources = nil
 	var sources []source.Source
@@ -326,15 +343,11 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error 
 	return err
 }
 
-// dropWith names each dropped consumer on every outcome that left out a
-// language it holds.
-func dropWith(outcomes []source.Outcome, dropped []plan.Dropped) {
-	for _, d := range dropped {
-		for i := range outcomes {
-			if slices.ContainsFunc(outcomes[i].LeftOut, func(l vocab.Language) bool { return slices.Contains(d.Languages, l) }) {
-				outcomes[i].Dropped = append(outcomes[i].Dropped, d.Path)
-			}
-		}
+// dropWith names on every outcome the consumers p dropped with a language it
+// left out.
+func dropWith(outcomes []source.Outcome, p *plan.Plan) {
+	for i := range outcomes {
+		outcomes[i].Dropped = p.DroppedWith(outcomes[i].LeftOut)
 	}
 }
 

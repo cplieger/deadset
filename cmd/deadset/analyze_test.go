@@ -33,6 +33,8 @@ const (
 	goPending  = "vectors/merge/pending-pair-unevaluated/inputs/00-go.json"
 	tsFindings = "vectors/merge/two-reports-no-edges/inputs/01-ts.json"
 	goWarnOnly = "vectors/merge/fail-on-warn/inputs/00-go.json"
+
+	subjectsFindings = "vectors/cli/failing-findings-remediation-follows-their-subjects/tree/bin/ts/report.json"
 )
 
 // writeFile writes one file a test's setup needs.
@@ -745,6 +747,83 @@ func TestAnalyzeLeavesOutADetectedLanguageItsAnalyzerFindsNoProgramOf(t *testing
 	}
 }
 
+// A schema language the census alone puts in scope beside Go, which this
+// build holds no reader of, is left out with a line naming it and any
+// consumer of it alone, before the Go analyzer runs; a configured one, or one
+// that is the census's only language, ends the run with its setup failure.
+func TestAnalyzeLeavesOutADetectedLanguageThisBuildHoldsNoReaderOf(t *testing.T) {
+	t.Parallel()
+
+	const leftOut = `deadset: this build of deadset holds no reader of "proto", so the run leaves it out of scope`
+	const unsupported = "setup failure: unsupported-language: "
+	for _, c := range []struct {
+		name     string
+		extra    []string
+		want     string
+		noModule bool
+		consumer bool
+		code     int
+	}{
+		{name: "detected", code: vocab.ExitFindings, want: leftOut + "\n"},
+		{name: "consumer-of-the-schema-alone", code: vocab.ExitFindings, consumer: true},
+		{name: "configured", extra: []string{"--languages=go,proto"}, code: vocab.ExitFailure, want: unsupported + `analysis.languages names "proto"`},
+		{name: "only-language", noModule: true, code: vocab.ExitFailure, want: unsupported + "the census of "},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			target, runDir := goTarget(t, []provider{both[0]}, "")
+			writeFile(t, filepath.Join(target, "fixtures", "m.proto"), []byte("syntax = \"proto3\";\n"))
+			if c.noModule {
+				if err := os.Remove(filepath.Join(target, "go.mod")); err != nil {
+					t.Fatalf("Setup: %v", err)
+				}
+			}
+			extra := c.extra
+			if c.consumer {
+				consumer := filepath.Join(filepath.Dir(target), "schema")
+				writeFile(t, filepath.Join(consumer, "m.proto"), []byte("syntax = \"proto3\";\n"))
+				document := filepath.Join(filepath.Dir(target), "scope.json")
+				writeFile(t, document, fmt.Appendf(nil, `{"target": {"path": %q}, "consumers": [{"path": %q}]}`, target, consumer))
+				extra = append(extra, "--scope="+document)
+				c.want = leftOut + ", and with it the consumer " + consumer + "\n"
+			}
+			got := analyzeWith(t, stubs(t, map[string]stub{"deadset-go": {report: goFindings, exit: 1}}), target, runDir, extra...)
+			if got.code != c.code || !strings.Contains(got.stderr, c.want) {
+				t.Fatalf("analyze = %d, want %d and stderr holding %q\nstdout: %s\nstderr: %s", got.code, c.code, c.want, got.stdout, got.stderr)
+			}
+			if lines := classLines(got.stderr); c.code == vocab.ExitFailure && (len(lines) != 1 || !strings.HasPrefix(lines[0], unsupported)) {
+				t.Errorf("analyze stderr holds the class lines %q, want the one %s line", lines, unsupported)
+			}
+			if c.code == vocab.ExitFailure {
+				return
+			}
+			merged := mergedReport(t, runDir)
+			if len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != "deadset-go" || len(merged.Consumers.Loaded) != 0 {
+				t.Errorf("the merged report = %+v, %+v, want the Go analyzer's alone, loading no consumer", merged.MergedFrom, merged.Consumers)
+			}
+		})
+	}
+}
+
+// The remediation names the subject of every failing finding, those the
+// maximum finding count leaves out of the report included, since the exit
+// code counts every finding.
+func TestAnalyzeRemediatesTheFailingFindingsTheMaximumLeavesOut(t *testing.T) {
+	t.Parallel()
+
+	target, runDir := goTarget(t, []provider{both[1]}, `, "reporters": {"max_findings": 1}`)
+	got := analyzeWith(t, stubs(t, map[string]stub{"deadset-ts": {report: subjectsFindings, exit: 1}}), target, runDir, "--languages=ts")
+	if got.code != vocab.ExitFindings || !strings.Contains(got.stdout, "2 omitted") {
+		t.Fatalf("analyze = %d, want %d over a report the maximum cut to one finding\nstdout: %s\nstderr: %s", got.code, vocab.ExitFindings, got.stdout, got.stderr)
+	}
+	for _, about := range []string{"a declaration", "a file", "a record of deadset's own configuration"} {
+		if !strings.Contains(got.stdout, "remediation: for each failing finding about "+about+": ") {
+			t.Errorf("analyze stdout = %q, want a remediation line about %s", got.stdout, about)
+		}
+	}
+}
+
 type refusingWriter struct{}
 
 func (refusingWriter) Write([]byte) (int, error) {
@@ -908,4 +987,17 @@ func listing(t *testing.T, dir string) []string {
 		names = append(names, entry.Name())
 	}
 	return names
+}
+
+// The remediation names one line per failing subject, in the order given, and
+// offers a suppression only where the subject's remedies row names one.
+func TestRemediationFollowsTheSubjectsOfFailingFindings(t *testing.T) {
+	t.Parallel()
+
+	const file = "remediation: for each failing finding about a file: delete the file, name it as a root, or build it in a configuration of the build matrix; no suppression can name a file\n"
+	const declaration = "remediation: for each failing finding about a declaration: delete the symbol, or wire it up so the program uses it; " +
+		"or record an adjudication with its reason in an inline directive, a deadset-ignore.json entry or a deadset-baseline.json row\n"
+	if got := remediation([]vocab.Subject{vocab.SubjectDeclaration, vocab.SubjectFile}); got != declaration+file {
+		t.Errorf("remediation(declaration, file) = %q, want %q", got, declaration+file)
+	}
 }
