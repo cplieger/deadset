@@ -149,6 +149,9 @@ func TestNoProgramNamesWhatALanguageReadsAProgramFrom(t *testing.T) {
 			t.Errorf("the no-program failure %q, want it to name %q", detail, name)
 		}
 	}
+	if strings.Contains(detail, "proto") {
+		t.Errorf("the no-program failure %q names proto, a language this build does not read", detail)
+	}
 }
 
 // A row with no marker reads a program from its source files alone, and a row

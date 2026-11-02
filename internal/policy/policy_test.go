@@ -100,6 +100,33 @@ func TestApply_keepsTheCanonicalOrderUnderEitherSort(t *testing.T) {
 	}
 }
 
+// The failing subjects are those of every finding at or above the failing
+// severity, in kinds.json's order, read before the maximum drops any; no
+// failing severity fails none.
+func TestApply_namesTheSubjectsOfEveryFailingFinding(t *testing.T) {
+	t.Parallel()
+
+	findings := func() *report.Report {
+		return &report.Report{Findings: []report.Finding{
+			{Code: "DS1602", Severity: vocab.Deny},
+			{Code: "DS1003", Severity: vocab.Warn},
+		}}
+	}
+	for _, c := range []struct {
+		failOn vocab.Severity
+		want   []vocab.Subject
+	}{
+		{failOn: vocab.Deny, want: []vocab.Subject{vocab.SubjectFile}},
+		{failOn: vocab.Warn, want: []vocab.Subject{vocab.SubjectDeclaration, vocab.SubjectFile}},
+		{failOn: ""},
+	} {
+		r := findings()
+		if got := policy.Apply(r, &policy.Options{FailOn: c.failOn, MaxFindings: 1}); !slices.Equal(got, c.want) || len(r.Findings) != 1 {
+			t.Errorf("Apply(fail on %q, max 1) = %v and %d findings kept, want %v and 1", c.failOn, got, len(r.Findings), c.want)
+		}
+	}
+}
+
 // A maximum keeps the first findings of the order and counts the rest as
 // omitted, and every other count keeps describing the whole set; zero keeps
 // every finding.
