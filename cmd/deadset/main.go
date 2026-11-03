@@ -30,9 +30,10 @@ type runner func(ctx context.Context, stdout, stderr io.Writer) (int, error)
 // binders defines, per verb, the verb's own options on a flag set and returns
 // what runs the command line it parsed. Its setting options are config's.
 var binders = map[string]func(c *command, set *flag.FlagSet) runner{
-	"analyze":      (*command).bindAnalyze,
-	"print-config": (*command).bindPrintConfig,
-	"version":      (*command).bindVersion,
+	"analyze":         (*command).bindAnalyze,
+	"print-config":    (*command).bindPrintConfig,
+	"print-languages": (*command).bindPrintLanguages,
+	"version":         (*command).bindVersion,
 }
 
 // verbs is every verb of the orchestrator's row of cli.json, in its order.
@@ -107,12 +108,17 @@ func (c *command) flags(verb *vocab.Verb) (*flag.FlagSet, runner) {
 	return set, runVerb
 }
 
-// usage is the usage text: every verb with its summary.
+// usage is the usage text: every verb with its summary, the summaries
+// aligned two spaces after the longest verb.
 func usage() string {
 	var text strings.Builder
 	fmt.Fprintf(&text, "usage: %s <command> [options]\n\ncommands:\n", run.Product)
+	width := 0
 	for _, v := range verbs {
-		fmt.Fprintf(&text, "  %-13s %s\n", v.Name, v.Summary)
+		width = max(width, len(v.Name))
+	}
+	for _, v := range verbs {
+		fmt.Fprintf(&text, "  %-*s  %s\n", width, v.Name, v.Summary)
 	}
 	return text.String()
 }

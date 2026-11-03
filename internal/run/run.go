@@ -117,9 +117,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if err := documents.Check(ctx, req.Root); err != nil {
 		return nil, err
 	}
-	in := plan.Input{Scope: req.Scope, Languages: req.Resolved.Config.Languages, Providers: req.Resolved.Config.Providers}
-	census := plan.NewCensus(plan.Disk{})
-	planned, err := first(req, &in, census)
+	in, census, planned, err := first(req)
 	if err != nil {
 		return nil, err
 	}
@@ -175,13 +173,29 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	return result, err
 }
 
+// Plan is the plan [Analyze] makes over resolved and declared before it opens
+// any source; an error is the refusal or failure that ends that run there.
+func Plan(resolved *config.Resolved, declared *scope.Document) (*plan.Plan, error) {
+	_, _, planned, err := start(resolved, declared)
+	return planned, err
+}
+
 // req.Planned sees only a plan Make accepted.
-func first(req *Request, in *plan.Input, census *plan.Census) (*plan.Plan, error) {
-	planned, err := plan.Make(in, census)
+func first(req *Request) (plan.Input, *plan.Census, *plan.Plan, error) {
+	in, census, planned, err := start(req.Resolved, req.Scope)
 	if err == nil && req.Planned != nil {
 		req.Planned(planned)
 	}
-	return planned, err
+	return in, census, planned, err
+}
+
+// start is the first plan with its input and the census it read, which a
+// plan without the languages left out reads again.
+func start(resolved *config.Resolved, declared *scope.Document) (plan.Input, *plan.Census, *plan.Plan, error) {
+	in := plan.Input{Scope: declared, Languages: resolved.Config.Languages, Providers: resolved.Config.Providers}
+	census := plan.NewCensus(plan.Disk{})
+	planned, err := plan.Make(&in, census)
+	return in, census, planned, err
 }
 
 // runDirectory creates the run directory path names, or one of its own when

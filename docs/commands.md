@@ -8,6 +8,7 @@ This page lists what deadset reads, what it runs and what it writes. It is for a
 | --- | --- |
 | `deadset analyze` | Runs every analyzer a language in scope needs, merges their reports, prints the result and exits with the verdict |
 | `deadset print-config` | Prints the resolved configuration as JSON and the source of every setting |
+| `deadset print-languages` | Prints, as JSON, the languages a run puts in scope, the analyzers it runs and the languages it leaves out |
 | `deadset version` | Prints the deadset version and the contract version it implements, one to a line |
 
 Each command takes only the options listed for it, and `version` takes none. Any other option, a `--fix` flag among them, and any argument end the run with exit code 2 and print the command's usage text. deadset only reports and never edits a source file.
@@ -27,7 +28,7 @@ Each command takes only the options listed for it, and `version` takes none. Any
 | `--formats` | The formats, separated by commas: `text`, `json`, `github`, `sarif`, `template` | `text` |
 | `--fail-on` | The lowest severity that fails the run: `allow`, `warn` or `deny` | `deny` |
 
-`print-config` takes `--target`, `--central` and the last four flags. A flag value outside its set ends the run with exit code 2. So do a `--central`, `--scope` or `--template` file that cannot be read, and a `--scope` document the scope schema refuses. A `--run-dir` that exists, or whose parent does not, ends the run with exit code 3 and `run failure: unwritten-output`.
+`print-config` takes `--target`, `--central` and the last four flags, and `print-languages` takes `--target`, `--scope`, `--central` and `--languages`. A flag value outside its set ends the run with exit code 2. So do a `--central`, `--scope` or `--template` file that cannot be read, and a `--scope` document the scope schema refuses. A `--run-dir` that exists, or whose parent does not, ends the run with exit code 3 and `run failure: unwritten-output`.
 
 ## Configuration
 
@@ -57,6 +58,42 @@ Before any analyzer runs, deadset checks the documents every analyzer reads at t
 ## How languages are detected
 
 With `analysis.languages` empty, deadset reads the names of the files under the target, never their contents. Go is in scope when the tree holds a `go.mod`, or a `.go` file whose name starts with neither a full stop nor an underscore, the files the go command reads. TypeScript is in scope when it holds a `tsconfig*.json` or a `jsconfig*.json`, or a JavaScript file (`.js`, `.jsx`, `.mjs` or `.cjs`) whose name does not end with `.min.js`, `.min.cjs` or `.min.mjs`, the files its analyzer reads a program from. A `.ts` file alone does not put TypeScript in scope. Each language skips the directories its analyzer skips. Go skips `node_modules`, `testdata`, `vendor` and every directory whose name starts with a full stop or an underscore. TypeScript skips only `node_modules` and `.git`, so a `tsconfig.json` under `.config` or `testdata` puts it in scope. Protocol Buffers is in scope when the tree holds a `buf.yaml`, a `buf.work.yaml` or a `.proto` file outside `node_modules`, `vendor` and directories whose names start with a full stop. This release does not read Protocol Buffers. Where another language is in scope, the run leaves Protocol Buffers out before any analyzer runs, whether the target or a consumer that `--scope` declares holds the schema files, and one line names it with each such consumer that holds only schema files. Where it is the only language in scope, or `analysis.languages` names it, the run ends with exit code 3 and the line `setup failure: unsupported-language`. A tree with no language in scope ends the run with exit code 3 and the line `setup failure: no-program`. The TypeScript analyzer also leaves out JavaScript files that git ignores, that are build output or that are minified by their line lengths, so where a tree's only JavaScript files are such files it finds no program. The run then leaves TypeScript out, shows the analyzer's `no-program` line under its name and a line naming the language left out, and reports the other languages. A consumer that `--scope` declares and that holds only languages the run leaves out is left out too, and the same line names it. A module is then named as it is in a tree with no JavaScript: an analyzer that was handed a module under another name, such as `.` for a target two languages load, runs again, and its files are under `rerun/` in the run directory. Only that second run's output is shown and merged: what the analyzer printed on its first run is not shown, and its first report stays in the run directory beside `rerun/`. A failure of the second run ends the run with that analyzer's own failure line, as on a first run. Where another analyzer in the provider list claims the same language and reports, the language stays in scope, and the line says the run goes on without the analyzer that found no program. Where no analyzer finds a program, the run ends with `setup failure: no-program`. A language `analysis.languages` names that this release reads is always analyzed, so there its analyzer's `no-program` ends the run.
+
+## The language census
+
+`deadset print-languages` prints the census of the run `deadset analyze` would make with the same `--target`, `--scope`, `--central` and `--languages`. It plans that run, then stops before any analyzer runs, so it needs no analyzer installed. It does not read the ignore file, the baseline or the edges document, so `analyze` over the same target can still end at the check of those documents described above. A CI job can call it first to learn which analyzers to install:
+
+```json
+{
+  "languages": [
+    {
+      "language": "go",
+      "provenance": "detected"
+    }
+  ],
+  "analyzers": [
+    {
+      "name": "deadset-go",
+      "languages": [
+        "go"
+      ]
+    }
+  ],
+  "left_out": [
+    {
+      "language": "proto",
+      "reason": "this build of deadset holds no reader of \"proto\", so the run leaves it out of scope",
+      "consumers": []
+    }
+  ]
+}
+```
+
+- `languages` lists every language in scope. Its `provenance` is `detected` when the tree put the language in scope. When `analysis.languages` named it, the provenance is the source that named it, as `print-config` spells it, such as `flag: --languages`.
+- `analyzers` lists every provider entry the run invokes, in the provider list's order, with the languages in scope it is handed.
+- `left_out` lists every language the run leaves out before any analyzer runs, with the consumers left out with it and the line `analyze` prints for it, without the product name, colon and space that open the line.
+
+The census follows the contract's [census schema](https://github.com/cplieger/deadset-spec/blob/v8.0.0/contract/census.schema.json). Where the plan ends the run, `print-languages` ends the same way and prints no census. A tree with no language in scope exits with 3 and `setup failure: no-program`, and a language no provider entry claims exits with 2. A detected language whose analyzer then finds no program is still left out by `analyze`, as the section above describes, since only that analyzer can tell.
 
 ## The provider list
 

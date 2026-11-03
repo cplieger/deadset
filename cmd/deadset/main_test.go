@@ -27,7 +27,7 @@ func TestDispatch(t *testing.T) {
 		wantStdout string
 		wantStderr []string
 	}{
-		{name: "no-arguments", wantExit: vocab.ExitUsage, wantStderr: []string{"usage: deadset <command>", "analyze", "print-config", "version"}},
+		{name: "no-arguments", wantExit: vocab.ExitUsage, wantStderr: []string{"usage: deadset <command>", "analyze", "print-config", "print-languages", "version"}},
 		{name: "unknown-command", args: []string{"frobnicate"}, wantExit: vocab.ExitUsage, wantStderr: []string{`unknown command "frobnicate"`, "usage: deadset <command>"}},
 		{name: "a-verb-cli-json-does-not-list", args: []string{"explain"}, wantExit: vocab.ExitUsage, wantStderr: []string{`unknown command "explain"`}},
 		{name: "undefined-flag-before-the-verb", args: []string{"--verbose", "version"}, wantExit: vocab.ExitUsage, wantStderr: []string{"-verbose", "usage: deadset <command>"}},

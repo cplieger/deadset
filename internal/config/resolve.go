@@ -30,6 +30,12 @@ type Resolved struct {
 	Config     config
 }
 
+// Provenance is the source of the setting at key, as the printed provenance
+// object spells it.
+func (r *Resolved) Provenance(key vocab.Key) string {
+	return r.provenance[string(key)]
+}
+
 // The kinds of source, as a provenance value spells them, from the highest rank to
 // the lowest.
 const (
