@@ -88,6 +88,7 @@ deadset is a command, and its interface is its verbs, the merged JSON report and
 
 - `analyze` runs every analyzer a language in scope needs, merges their reports and exits with the verdict.
 - `print-config` prints the resolved configuration with the source of each setting, and `version` prints the deadset and contract versions.
+- `print-languages` prints the languages a run puts in scope, the analyzers it runs and the languages it leaves out, as JSON, without running any analyzer.
 - The run exits 0 when nothing fails it and 1 for a failing finding or a stale suppression. It exits 2 on a usage error or a `--fix` flag, and 3 when it cannot produce an answer.
 
 The report follows version 8.0.0 of the [deadset contract](https://github.com/cplieger/deadset-spec/tree/v8.0.0). [Commands and configuration](docs/commands.md) lists the flags, the configuration sources, the provider list, the output files and the exit codes.

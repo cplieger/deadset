@@ -199,7 +199,7 @@ func inScope(in *Input, tree Tree) (languages, unread []vocab.Language, err erro
 		}
 		if named := slices.DeleteFunc(slices.Clone(configured), reads.Language); len(named) > 0 {
 			return nil, nil, failure.Wrap(vocab.SetupUnsupportedLanguage, fmt.Errorf("%s names %s, and this build holds no reader of %s",
-				vocab.KeyAnalysisLanguages, Quoted(named), Pronoun(named)))
+				vocab.KeyAnalysisLanguages, Quoted(named), pronoun(named)))
 		}
 		return configured, nil, nil
 	}
@@ -214,7 +214,7 @@ func inScope(in *Input, tree Tree) (languages, unread []vocab.Language, err erro
 	unread = slices.DeleteFunc(slices.Clone(found), reads.Language)
 	if len(unread) == len(found) {
 		return nil, nil, failure.Unreadable(fmt.Errorf("the census of %s puts only %s in scope, and this build holds no reader of %s",
-			in.Scope.Target.Path, Quoted(unread), Pronoun(unread)))
+			in.Scope.Target.Path, Quoted(unread), pronoun(unread)))
 	}
 	return slices.DeleteFunc(found, func(l vocab.Language) bool { return !reads.Language(l) }), unread, nil
 }
@@ -240,8 +240,8 @@ func Quoted(languages []vocab.Language) string {
 	return strings.Join(quoted, ", ")
 }
 
-// Pronoun is the pronoun a line names languages again by.
-func Pronoun(languages []vocab.Language) string {
+// pronoun is the pronoun a line names languages again by.
+func pronoun(languages []vocab.Language) string {
 	if len(languages) == 1 {
 		return "it"
 	}

@@ -83,7 +83,7 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 	if err != nil {
 		return 0, err
 	}
-	declared, err := a.readScope(ctx, root)
+	declared, err := readScope(ctx, a.scopePath, root)
 	if err != nil {
 		return 0, err
 	}
@@ -101,11 +101,8 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 		Print:       func(outcomes []source.Outcome) error { return printOutcomes(stderr, outcomes) },
 		Open:        a.open,
 	})
-	switch {
-	case isUnclaimed(err):
-		return 0, &usageError{err: err, option: scopeOption}
-	case err != nil:
-		return 0, err
+	if err != nil {
+		return 0, routed(err)
 	}
 	if err := printResult(stdout, result, opts, reporters); err != nil {
 		return 0, failure.Wrap(vocab.RunUnwrittenOutput, err)
@@ -113,10 +110,13 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 	return a.verdict(stderr, result.Merged, reporters.FailOn), nil
 }
 
-// isUnclaimed reports whether err holds a consumer no analyzer claims.
-func isUnclaimed(err error) bool {
-	_, unclaimed := errors.AsType[*plan.UnclaimedError](err)
-	return unclaimed
+// routed is err, a refusal of the scope document's option where it holds a
+// consumer no analyzer claims.
+func routed(err error) error {
+	if _, unclaimed := errors.AsType[*plan.UnclaimedError](err); unclaimed {
+		return &usageError{err: err, option: scopeOption}
+	}
+	return err
 }
 
 // readTemplate reads and parses the template --template names, before any
@@ -140,15 +140,15 @@ func (a *analyzeFlags) readTemplate(formats []vocab.Format) (*render.Template, e
 	return parsed, nil
 }
 
-// readScope reads the scope document --scope names, whose target must be the
-// target root; with no document the scope is the target alone. A document
-// that cannot be read or that the scope schema refuses is a command line the
-// run refuses.
-func (a *analyzeFlags) readScope(ctx context.Context, root string) (*scope.Document, error) {
-	if a.scopePath == "" {
+// readScope reads the scope document at scopePath, the value of --scope, whose
+// target must be the target root; with no document the scope is the target
+// alone. A document that cannot be read or that the scope schema refuses is a
+// command line the run refuses.
+func readScope(ctx context.Context, scopePath, root string) (*scope.Document, error) {
+	if scopePath == "" {
 		return &scope.Document{Target: scope.Module{Path: root}}, nil
 	}
-	declared, err := scope.Read(ctx, a.scopePath)
+	declared, err := scope.Read(ctx, scopePath)
 	switch {
 	case err != nil:
 		return nil, &usageError{err: err, option: scopeOption}
@@ -240,15 +240,22 @@ func omission(o *source.Outcome) string {
 	return fmt.Sprintf("%s: %s found no program, so the run leaves %s out of scope%s\n", run.Product, o.Analyzer, plan.Quoted(o.LeftOut), with(o.Dropped))
 }
 
-// unread is the line naming the languages the plan leaves out because this
-// build holds no reader of them, and the consumers it leaves out with them,
-// or empty where it leaves none out.
+// unread is a line per language the plan leaves out because this build holds
+// no reader of it, giving its [unreadReason].
 func unread(planned *plan.Plan) string {
-	if len(planned.Unread) == 0 {
-		return ""
+	var lines strings.Builder
+	for _, language := range planned.Unread {
+		fmt.Fprintf(&lines, "%s: %s\n", run.Product, unreadReason(planned, language))
 	}
-	return fmt.Sprintf("%s: this build of %s holds no reader of %s, so the run leaves %s out of scope%s\n",
-		run.Product, run.Product, plan.Quoted(planned.Unread), plan.Pronoun(planned.Unread), with(planned.DroppedWith(planned.Unread)))
+	return lines.String()
+}
+
+// unreadReason is why the plan leaves out language, one of [plan.Plan.Unread],
+// naming the consumers it leaves out with it.
+func unreadReason(planned *plan.Plan, language vocab.Language) string {
+	one := []vocab.Language{language}
+	return fmt.Sprintf("this build of %s holds no reader of %s, so the run leaves it out of scope%s",
+		run.Product, plan.Quoted(one), with(planned.DroppedWith(one)))
 }
 
 func with(dropped []string) string {
