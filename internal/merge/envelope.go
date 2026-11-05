@@ -9,15 +9,18 @@ import (
 	"github.com/cplieger/deadset-spec/v8/vocab"
 )
 
-// envelope is the merged report: the working set inside the envelope members
-// derived from the inputs, in merged_from's order, with the caller's facts and
-// each input's digest, in canonical order, its counts recomputed over the
-// merged arrays but those of records no merged array holds, which sum over
-// the inputs. No input omitted a finding and resolution left none pending. Admission has passed, so every input names
-// one target, one analyzer name, and one entry under each id across each pair
-// of id-keyed arrays.
-func envelope(ordered []Input, accepted []string, caller *Caller, carried *records) *report.Report {
-	var held gathered
+// envelope is the merged report over target: the working set inside the
+// envelope members derived from the inputs, in merged_from's order, with the
+// caller's facts and each input's digest, in canonical order, its counts
+// recomputed over the merged arrays but those of records no merged array
+// holds, which sum over the inputs. No input omitted a finding and resolution
+// left none pending. Admission has passed, so every input names one target,
+// one analyzer name, and one entry under each id across each pair of id-keyed
+// arrays.
+func envelope(ordered []Input, accepted []string, caller *Caller, carried *records, target report.Target) *report.Report {
+	// Non-nil, because omitzero drops a nil merged_from and a report without
+	// one reads as an analyzer's own.
+	held := gathered{mergedFrom: []report.InputReport{}}
 	for i := range ordered {
 		held.add(&ordered[i])
 	}
@@ -37,7 +40,7 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 			Conformance:            caller.Conformance,
 		},
 		MergedFrom:             held.mergedFrom,
-		Target:                 mergedTarget(ordered),
+		Target:                 target,
 		Configurations:         firstPerID(held.configurations, func(c *report.Configuration) string { return c.ID }),
 		ConfigurationsNotBuilt: firstPerID(held.notBuilt, func(c *report.ConfigurationNotBuilt) string { return c.ID }),
 		Consumers:              consumers,

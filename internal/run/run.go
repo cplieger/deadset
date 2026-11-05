@@ -148,8 +148,9 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 		return result, errors.Join(refused...)
 	}
 	outcomes, err := source.Run(ctx, sources, files(handed), planned.Detected)
+	last := planned
 	if err == nil {
-		err = narrow(ctx, &narrowing{in: in, tree: census, planned: planned, dir: dir, resolved: req.Resolved, sources: sources}, outcomes)
+		last, err = narrow(ctx, &narrowing{in: in, tree: census, planned: planned, dir: dir, resolved: req.Resolved, sources: sources}, outcomes)
 	}
 	if req.Print != nil {
 		err = errors.Join(err, req.Print(outcomes))
@@ -157,7 +158,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if err != nil {
 		return result, err
 	}
-	if result.Merged, err = merged(outcomes, accepted, req.Version); err != nil {
+	if result.Merged, err = merged(outcomes, last, accepted, req.Version); err != nil {
 		return result, err
 	}
 	result.Failing = policy.Apply(result.Merged, &policy.Options{
@@ -304,17 +305,18 @@ type narrowing struct {
 // language out the consumers [plan.Plan.Dropped] leaves out with it, and
 // produces again, in the run directory's [rundir.Dir.Rerun], every kept source
 // whose scope document that plan changes, replacing its outcome, so no
-// language left out names a module a kept analyzer reads.
-func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error {
+// language left out names a module a kept analyzer reads. It returns the last
+// plan the run made.
+func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) (*plan.Plan, error) {
 	for i := range outcomes {
 		n.in.Omitted = append(n.in.Omitted, outcomes[i].LeftOut...)
 	}
 	if len(n.in.Omitted) == 0 {
-		return nil
+		return n.planned, nil
 	}
 	narrowed, err := plan.Make(&n.in, n.tree)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dropWith(outcomes, narrowed)
 	again := *narrowed
@@ -330,7 +332,7 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error 
 		k := slices.IndexFunc(narrowed.Sources, func(s plan.Source) bool { return s.Index == n.planned.Sources[i].Index })
 		changed, refused := rescoped(n.planned, &n.planned.Sources[i], narrowed, &narrowed.Sources[k])
 		if refused != nil {
-			return refused
+			return nil, refused
 		}
 		if changed {
 			again.Sources = append(again.Sources, narrowed.Sources[k])
@@ -338,15 +340,15 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error 
 		}
 	}
 	if len(sources) == 0 {
-		return nil
+		return narrowed, nil
 	}
 	dir, err := n.dir.Rerun()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	handed, err := prepare(dir, n.resolved, &again, sources)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Not detected: each of these found a program before, so a no-program
 	// now is a failure and leaves out nothing more.
@@ -354,7 +356,7 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) error 
 	for j, i := range at {
 		outcomes[i] = reran[j]
 	}
-	return err
+	return narrowed, err
 }
 
 // dropWith names on every outcome the consumers p dropped with a language it
@@ -387,8 +389,9 @@ func handedScope(p *plan.Plan, s *plan.Source) *scope.Document {
 	return &p.Scope
 }
 
-// merged is the merge of the report of every outcome not omitted.
-func merged(outcomes []source.Outcome, accepted []string, version string) (*report.Report, error) {
+// merged is the merge of the report of every outcome not omitted, or, where
+// every outcome is, the report merged from none over last's target.
+func merged(outcomes []source.Outcome, last *plan.Plan, accepted []string, version string) (*report.Report, error) {
 	inputs := make([]merge.Input, 0, len(outcomes))
 	for i := range outcomes {
 		if !outcomes[i].Omitted {
@@ -399,13 +402,23 @@ func merged(outcomes []source.Outcome, accepted []string, version string) (*repo
 	if err != nil {
 		return nil, err
 	}
-	return merge.Merge(inputs, accepted, &merge.Caller{
+	caller := &merge.Caller{
 		SchemaVersion:   vocab.SchemaVersion,
 		ContractVersion: vocab.ContractVersion,
 		Name:            Product,
 		Version:         version,
 		Conformance:     conformance,
-	})
+	}
+	if len(inputs) > 0 {
+		return merge.Merge(inputs, accepted, caller)
+	}
+	// The root is relative to the directory every analyzer runs in, as an
+	// analyzer's report names it.
+	root, err := filepath.Rel(last.Dir, last.Scope.Target.Path)
+	if err != nil {
+		return nil, err
+	}
+	return merge.None(accepted, caller, report.Target{Root: filepath.ToSlash(root), Identity: last.Scope.Target.ID}), nil
 }
 
 // writeFiles writes every rendering the formats name that is a file beside

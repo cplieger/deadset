@@ -252,6 +252,50 @@ func TestMakeLeavesOutALanguageThisBuildHoldsNoReaderOf(t *testing.T) {
 	}
 }
 
+// A census every language of which the run left out plans a run of no
+// language: no source runs, every declared consumer is dropped and the target
+// is named "."; where the census then holds only a language this build holds
+// no reader of, the plan is refused as a census of only that language is.
+func TestMakePlansNoLanguageWhereTheRunLeftOutEveryLanguageOfTheCensus(t *testing.T) {
+	t.Parallel()
+
+	got, err := plan.Make(&plan.Input{Scope: declared("go", "ts", "both"), Omitted: both, Providers: []config.Provider{goEntry, tsEntry}}, workspace())
+	if err != nil || len(got.Languages) != 0 || len(got.Sources) != 0 || got.Scope.Target.ID != "." || len(got.Scope.Consumers) != 0 || len(got.Dropped) != 3 {
+		t.Errorf("Make(every language left out) = %+v, %v, want no language, no source, the target named \".\" and every consumer dropped", got, err)
+	}
+	census := workspace()
+	census.languages["/w/app"] = []vocab.Language{vocab.TS, vocab.Proto}
+	if _, err := plan.Make(&plan.Input{Scope: declared(), Omitted: []vocab.Language{vocab.TS}, Providers: []config.Provider{tsEntry}}, census); !setupClass(vocab.SetupUnsupportedLanguage)(err) {
+		t.Errorf("Make(ts left out beside proto) = %v, want the setup failure unsupported-language", err)
+	}
+}
+
+// A consumer that held a language of the first plan and holds none of the plan
+// without the languages left out is dropped with them, also where it holds a
+// language the target's census never put in scope.
+func TestMakeDropsAConsumerHoldingNoLanguageThePlanWithoutTheLeftOutKeeps(t *testing.T) {
+	t.Parallel()
+
+	census := workspace()
+	census.languages["/w/app"] = []vocab.Language{vocab.TS}
+	in := &plan.Input{Scope: declared("both"), Providers: []config.Provider{goEntry, tsEntry}}
+	if first, err := plan.Make(in, census); err != nil || len(first.Scope.Consumers) != 1 {
+		t.Fatalf("Setup: Make(no language left out) = %+v, %v, want the consumer kept", first, err)
+	}
+	in.Omitted = []vocab.Language{vocab.TS}
+	got, err := plan.Make(in, census)
+	if err != nil || len(got.Languages) != 0 || len(got.Sources) != 0 || len(got.Scope.Consumers) != 0 ||
+		!slices.Equal(got.DroppedWith(in.Omitted), []string{"/w/both"}) {
+		t.Errorf("Make(ts left out) = %+v, %v, want no language and the consumer /w/both dropped with ts", got, err)
+	}
+	census.languages["/w/app"] = both
+	in.Scope = declared("go", "both")
+	got, err = plan.Make(in, census)
+	if err != nil || len(got.Scope.Consumers) != 2 || len(got.Dropped) != 0 {
+		t.Errorf("Make(ts left out of a census holding go) = %+v, %v, want both consumers kept", got, err)
+	}
+}
+
 // countingTree counts the questions asked of the tree it reads.
 type countingTree struct {
 	tree             plan.Tree

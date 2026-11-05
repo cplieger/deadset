@@ -19,8 +19,8 @@ import (
 	"github.com/cplieger/deadset/v2/internal/scope"
 )
 
-// unnamed is the name of a target several languages load that no identity
-// source names, as languages.json states.
+// unnamed is the name of a target several languages or none load that no
+// identity source names, as languages.json states.
 const unnamed = "."
 
 // Tree is what planning reads of the filesystem.
@@ -99,8 +99,8 @@ type Source struct {
 	Index int
 }
 
-// Dropped is a declared consumer every language of which the run left out,
-// and those languages.
+// Dropped is a declared consumer the run leaves out, and every language it
+// holds.
 type Dropped struct {
 	Path      string
 	Languages []vocab.Language
@@ -126,9 +126,9 @@ func (e *UnclaimedError) Error() string {
 // languages this build holds no reader of, and a declared consumer that is
 // absent, is no directory or holds no language, is a setup [*failure.Error];
 // a language in scope no provider entry claims is a [*config.Error], before
-// any consumer is read; a consumer every language of which in.Omitted or
-// [Plan.Unread] names is [Plan.Dropped]; other consumers no analyzer claims
-// are [*UnclaimedError]s, joined.
+// any consumer is read. A consumer is [Plan.Dropped] when every language it
+// holds is left out, or when in.Omitted is not empty and it holds no language
+// of the plan; each kept consumer no analyzer claims is an [*UnclaimedError].
 func Make(in *Input, tree Tree) (*Plan, error) {
 	languages, unread, err := inScope(in, tree)
 	if err != nil {
@@ -156,9 +156,11 @@ func Make(in *Input, tree Tree) (*Plan, error) {
 }
 
 // consumers names in p's scope document every declared consumer the run does
-// not drop, and returns the languages each of them holds, in that order. In a
-// detected run, a language a consumer holds that this build holds no reader of
-// joins [Plan.Unread].
+// not drop, and returns the languages each of them holds, in that order. It
+// drops a consumer when every language it holds is left out, or when the run
+// left a language out and the consumer holds none of p's languages. In a
+// detected run, a language a consumer holds that this build holds no reader
+// of joins [Plan.Unread].
 func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
 	var held [][]vocab.Language
 	for _, consumer := range in.Scope.Consumers {
@@ -170,7 +172,10 @@ func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
 			p.Unread = union(p.Unread, slices.DeleteFunc(slices.Clone(holds), reads.Language))
 		}
 		leftOut := slices.Concat(in.Omitted, p.Unread)
-		if !slices.ContainsFunc(holds, func(l vocab.Language) bool { return !slices.Contains(leftOut, l) }) {
+		kept := func(l vocab.Language) bool {
+			return !slices.Contains(leftOut, l) && (len(in.Omitted) == 0 || slices.Contains(p.Languages, l))
+		}
+		if !slices.ContainsFunc(holds, kept) {
 			p.Dropped = append(p.Dropped, Dropped{Path: consumer.Path, Languages: holds})
 			continue
 		}
@@ -186,8 +191,8 @@ func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
 }
 
 // inScope is the configured language set, or the census of the target
-// without the languages the run left out, and the languages of the census
-// this build holds no reader of.
+// without the languages the run left out, none where it left out every one,
+// and the languages of the census this build holds no reader of.
 func inScope(in *Input, tree Tree) (languages, unread []vocab.Language, err error) {
 	if len(in.Languages) > 0 {
 		var configured []vocab.Language
@@ -208,7 +213,10 @@ func inScope(in *Input, tree Tree) (languages, unread []vocab.Language, err erro
 		return nil, nil, err
 	}
 	found = slices.DeleteFunc(slices.Clone(found), func(l vocab.Language) bool { return slices.Contains(in.Omitted, l) })
-	if len(found) == 0 {
+	switch {
+	case len(found) == 0 && len(in.Omitted) > 0:
+		return nil, nil, nil
+	case len(found) == 0:
 		return nil, nil, noProgram(in.Scope.Target.Path)
 	}
 	unread = slices.DeleteFunc(slices.Clone(found), reads.Language)
@@ -300,7 +308,7 @@ func consumerLanguages(path string, tree Tree) ([]vocab.Language, error) {
 
 // named is module with the name it is handed under: the declared one, else
 // the one the identity source of the first row of a language it is loaded in
-// names, else, for a target several languages load, [unnamed].
+// names, else, for a target several languages or none load, [unnamed].
 func named(module scope.Module, languages []vocab.Language, target bool, tree Tree) (scope.Module, error) {
 	if module.ID != "" {
 		return module, nil
@@ -319,7 +327,7 @@ func named(module scope.Module, languages []vocab.Language, target bool, tree Tr
 			return module, nil
 		}
 	}
-	if target && len(languages) > 1 {
+	if target && len(languages) != 1 {
 		module.ID = unnamed
 	}
 	return module, nil

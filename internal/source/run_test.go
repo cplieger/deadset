@@ -79,9 +79,9 @@ func TestRunKeepsNoReportBesideARefusal(t *testing.T) {
 
 // Under detected languages, a source whose one failure is no-program is
 // omitted, leaving out its languages no kept source was handed, and the
-// others' reports stand; it fails the run as any refusal does under
-// configured languages, beside another failure, when it prints a further
-// failure, and when every source ends so.
+// others' reports stand, every source's where every source ends so; it fails
+// the run as any refusal does under configured languages, beside another
+// failure, and when it prints a further failure.
 func TestRunOmitsADetectedLanguageItsAnalyzerFindsNoProgramOf(t *testing.T) {
 	t.Parallel()
 
@@ -116,7 +116,10 @@ func TestRunOmitsADetectedLanguageItsAnalyzerFindsNoProgramOf(t *testing.T) {
 		},
 		{name: "beside-another-failure", detected: true, outcomes: []source.Outcome{ts, failed("deadset-go", missing, vocab.Go)}, omitted: []bool{true, false}, leftOut: []vocab.Language{vocab.TS}, fails: true},
 		{name: "with-a-further-failure", detected: true, outcomes: []source.Outcome{failed("deadset-ts", noProgram+"missing-module: b\n", vocab.TS), goes}, omitted: []bool{false, false}, fails: true},
-		{name: "every-source", detected: true, outcomes: []source.Outcome{ts, failed("deadset-go", noProgram, vocab.Go)}, omitted: []bool{false, false}, fails: true},
+		{
+			name: "every-source", detected: true, omitted: []bool{true, true}, leftOut: []vocab.Language{vocab.Go, vocab.TS},
+			outcomes: []source.Outcome{failed("empty", noProgram, vocab.Go, vocab.TS), failed("other", noProgram, vocab.Go, vocab.TS)},
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
