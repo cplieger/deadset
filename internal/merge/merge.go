@@ -53,5 +53,13 @@ func Merge(inputs []Input, accepted []string, caller *Caller) (*report.Report, e
 	if err := carried.resolve(ordered, caller.Name); err != nil {
 		return nil, err
 	}
-	return envelope(ordered, accepted, caller, carried), nil
+	return envelope(ordered, accepted, caller, carried, mergedTarget(ordered)), nil
+}
+
+// None is the merged report of a run that merged no report, as
+// contract/languages.json states for a run whose every analyzer found no
+// program: the caller's product over target, naming no language, no input
+// report and no finding.
+func None(accepted []string, caller *Caller, target report.Target) *report.Report {
+	return envelope(nil, accepted, caller, union(nil), target)
 }

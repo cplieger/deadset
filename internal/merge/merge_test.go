@@ -274,6 +274,23 @@ func TestMergeRefusesNoInput(t *testing.T) {
 	}
 }
 
+// The report merged from none is the caller's product over the target it is
+// handed, naming no language, no input report and no finding, and the report
+// schema admits it.
+func TestNoneIsAReportMergedFromNone(t *testing.T) {
+	t.Parallel()
+
+	target := report.Target{Root: "app", Identity: "."}
+	r := None(accepted, &caller, target)
+	if err := report.Validate(r); err != nil {
+		t.Fatalf("Validate(None()) = %v", err)
+	}
+	if r.MergedFrom == nil || len(r.MergedFrom) != 0 || len(r.Analyzer.Languages) != 0 || r.Analyzer.Name != caller.Name ||
+		!reflect.DeepEqual(r.Target, target) || len(r.Findings) != 0 || r.Totals.Findings != 0 {
+		t.Errorf("None() = %+v, want the caller over %+v, merged from an empty list, naming no language and no finding", r, target)
+	}
+}
+
 func TestMergeNamesEveryRefusedInputInMergedFromOrder(t *testing.T) {
 	t.Parallel()
 

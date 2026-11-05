@@ -320,6 +320,9 @@ func (p *Process) Produce(ctx context.Context, files Files) Outcome {
 	if read.Analyzer.Name != p.name {
 		return refuse(fmt.Errorf("the report names the analyzer %q, not its provider entry %q", read.Analyzer.Name, p.name))
 	}
+	if read.MergedFrom != nil {
+		return refuse(errors.New("the report names merged_from, and a report an analyzer writes omits merged_from"))
+	}
 	out.Report = read
 	return out
 }

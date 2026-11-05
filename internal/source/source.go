@@ -102,7 +102,7 @@ func (o *Outcome) foundNoProgram() bool {
 // failures it printed, relayed; all else every source printed is kept
 // [failure.Quoted]. Where detected, a census put the languages in scope, and a
 // source whose one failure is no-program is [Outcome.Omitted], as
-// languages.json states, unless every source is. Any other refusal drops every
+// languages.json states, every source included. Any other refusal drops every
 // report, and the error joins the refusals in order, so no source's findings
 // stand beside another's failure.
 func Run(ctx context.Context, sources []Source, files []Files, detected bool) ([]Outcome, error) {
@@ -124,7 +124,7 @@ func Run(ctx context.Context, sources []Source, files []Files, detected bool) ([
 		}
 		noProgram[i] = o.foundNoProgram()
 	}
-	if detected && slices.Contains(noProgram, false) {
+	if detected {
 		omit(outcomes, noProgram, printed)
 	}
 	var failures []error

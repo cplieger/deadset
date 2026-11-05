@@ -3,6 +3,7 @@ package source_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -109,6 +110,7 @@ func TestProduceRefusesAReportItCannotUse(t *testing.T) {
 	t.Parallel()
 
 	written := published(t, goReport)
+	mergedFromNone := mergedFromNone(t, written)
 	for _, c := range []struct {
 		name    string
 		written []byte
@@ -119,6 +121,7 @@ func TestProduceRefusesAReportItCannotUse(t *testing.T) {
 		{name: "absent", want: source.ErrNoReport},
 		{name: "truncated", written: written[:len(written)/2], want: report.ErrInvalid},
 		{name: "another-analyzer", written: published(t, tsReport), names: `the report names the analyzer "deadset-ts"`},
+		{name: "merged", written: mergedFromNone, names: "a report an analyzer writes omits merged_from"},
 		{name: "already-at-the-path", written: written, before: true, want: source.ErrReportExists},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -145,6 +148,26 @@ func TestProduceRefusesAReportItCannotUse(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mergedFromNone is written as the report merged from none the report schema
+// admits: no language, no kind, no configuration and an empty merged_from.
+func mergedFromNone(t *testing.T, written []byte) []byte {
+	t.Helper()
+
+	var document map[string]any
+	if err := json.Unmarshal(written, &document); err != nil {
+		t.Fatalf("Setup: decode the report: %v", err)
+	}
+	document["analyzer"].(map[string]any)["languages"] = []any{}
+	delete(document["target"].(map[string]any), "kind")
+	document["configurations"] = []any{}
+	document["merged_from"] = []any{}
+	body, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("Setup: encode the report: %v", err)
+	}
+	return body
 }
 
 // Cancelling the run interrupts the analyzer rather than killing it, and the

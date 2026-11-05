@@ -357,6 +357,49 @@ func TestAnalyzeRunsAgainTheKeptSourceBesideOneThatClaimedALanguageKept(t *testi
 	}
 }
 
+// A run whose census put TypeScript alone in scope and whose TypeScript
+// analyzer finds no program analyzes nothing: it writes the report merged from
+// none over the target, which passes. A run whose analysis.languages names
+// TypeScript ends with its no-program.
+func TestAnalyzeAnalyzesNothingWhereEverySourceFindsNoProgram(t *testing.T) {
+	t.Parallel()
+
+	const providers = `"providers": {"analyzers": [{"name": "deadset-ts", "command": "deadset-ts", "languages": ["ts"]}]}`
+	for _, c := range []struct {
+		name, document string
+		configured     bool
+	}{
+		{name: "detected", document: `{"target": {"kind": "application"}, ` + providers + `}`},
+		{name: "configured", document: `{"target": {"kind": "application"}, "analysis": {"languages": ["ts"]}, ` + providers + `}`, configured: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			target := t.TempDir()
+			writeFile(t, filepath.Join(target, "tsconfig.json"), "{}")
+			recorders := map[string]*recorder{"deadset-ts": {name: "deadset-ts", languages: []vocab.Language{vocab.TS}, exit: vocab.ExitFailure, printed: noProgram}}
+			req := request(t, target, c.document, &scope.Document{Target: scope.Module{Path: target}}, recorders)
+			result, err := run.Analyze(t.Context(), req)
+			if c.configured {
+				if held, ok := errors.AsType[*failure.Error](err); !ok || held.Failures[0].Class != vocab.SetupNoProgram || result.Merged != nil {
+					t.Errorf("Analyze(TypeScript configured) = %+v, %v, want the setup failure no-program and no merged report", result, err)
+				}
+				return
+			}
+			if err != nil || result.Merged == nil {
+				t.Fatalf("Analyze() = %+v, %v, want the report merged from none", result, err)
+			}
+			m := result.Merged
+			if m.MergedFrom == nil || len(m.MergedFrom) != 0 || len(m.Analyzer.Languages) != 0 || m.Target.Root != "." || m.Target.Identity != "." || len(result.Failing) != 0 {
+				t.Errorf("Analyze() merged %+v, failing %v, want no input report, no language, the target . named . and nothing failing", m, result.Failing)
+			}
+			if _, err := os.Stat(filepath.Join(req.RunDir, "report.json")); err != nil {
+				t.Errorf("the merged report = %v, want it written", err)
+			}
+		})
+	}
+}
+
 // noProgram is what an analyzer that found no program prints.
 const noProgram = vocab.SetupFailurePrefix + "no-program: the target holds no JavaScript file a program is formed from\n"
 
