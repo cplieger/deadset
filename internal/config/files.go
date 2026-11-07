@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cplieger/atomicfile/v4"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/documents"
+	"github.com/cplieger/go/filesafe"
 )
 
 // RepositoryFile is the name of the repository configuration at the target root.
@@ -50,19 +50,19 @@ func ReadDocuments(ctx context.Context, target, central string) (repository, cen
 }
 
 // readNamed reads the document at a path the invocation names, relative paths
-// included, which [atomicfile.ReadBounded] refuses.
+// included, which [filesafe.ReadBounded] refuses.
 func readNamed(ctx context.Context, path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
-	return atomicfile.ReadBoundedFile(ctx, file, vocab.DocumentMaxBytes)
+	return filesafe.ReadBoundedFile(ctx, file, vocab.DocumentMaxBytes)
 }
 
 // readError is the error reading the configuration at path failed with.
 func readError(path string, err error) error {
-	if errors.Is(err, atomicfile.ErrFileTooLarge) {
+	if errors.Is(err, filesafe.ErrFileTooLarge) {
 		return &Error{Message: fmt.Sprintf("%s: the configuration is larger than the %d bytes one may hold", path, vocab.DocumentMaxBytes)}
 	}
 	return fmt.Errorf("read the configuration: %w", err)

@@ -19,12 +19,12 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cplieger/atomicfile/v4"
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/document"
 	"github.com/cplieger/deadset-spec/v8/suppress"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/failure"
+	"github.com/cplieger/go/filesafe"
 )
 
 // Error is a shared document the run refuses; its message names the file and
@@ -44,7 +44,7 @@ var edgesSchema = sync.OnceValues(func() (*document.Schema, error) {
 // Read reads the document name at the target root target, confined to the
 // target's tree and bounded by [vocab.DocumentMaxBytes]. An absent document
 // satisfies errors.Is(err, fs.ErrNotExist) and one over the bound
-// errors.Is(err, atomicfile.ErrFileTooLarge); a name resolving outside the
+// errors.Is(err, filesafe.ErrFileTooLarge); a name resolving outside the
 // tree or to anything but a regular file is refused with nothing read.
 func Read(ctx context.Context, target, name string) ([]byte, error) {
 	root, err := os.OpenRoot(target)
@@ -52,7 +52,7 @@ func Read(ctx context.Context, target, name string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() { _ = root.Close() }()
-	return atomicfile.ReadBoundedInRoot(ctx, root, name, vocab.DocumentMaxBytes)
+	return filesafe.ReadBoundedInRoot(ctx, root, name, vocab.DocumentMaxBytes)
 }
 
 // Check refuses the first malformed shared document at the target root target
@@ -76,7 +76,7 @@ func Check(ctx context.Context, target string) error {
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			continue
-		case errors.Is(err, atomicfile.ErrFileTooLarge):
+		case errors.Is(err, filesafe.ErrFileTooLarge):
 			return &Error{err: fmt.Errorf("%s: the document is larger than the %d bytes one may hold", held.name, vocab.DocumentMaxBytes)}
 		case err != nil:
 			return failure.Wrap(vocab.SetupUnreadableDocument, fmt.Errorf("%s cannot be read: %w", held.name, err))
