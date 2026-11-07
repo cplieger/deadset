@@ -3,8 +3,8 @@ module github.com/cplieger/deadset/v2
 go 1.27.3
 
 require (
-	github.com/cplieger/deadset-spec/v8 v8.0.0-dev.41
-	github.com/cplieger/go/filesafe v1.0.0-dev.2
+	github.com/cplieger/deadset-spec/v8 v8.0.0-dev.42
+	github.com/cplieger/go/filesafe v1.0.0-dev.4
 	pgregory.net/rapid v1.3.0
 )
 
