@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/cplieger/atomicfile/v4"
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/document"
 	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/go/filesafe"
 )
 
 var schema = sync.OnceValues(func() (*document.Schema, error) {
@@ -73,8 +73,8 @@ func Read(ctx context.Context, path string) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scope: %w", err)
 	}
-	data, err := atomicfile.ReadBounded(ctx, absolute, vocab.DocumentMaxBytes)
-	if errors.Is(err, atomicfile.ErrFileTooLarge) {
+	data, err := filesafe.ReadBounded(ctx, absolute, vocab.DocumentMaxBytes)
+	if errors.Is(err, filesafe.ErrFileTooLarge) {
 		return nil, fmt.Errorf("scope: %s: the document is larger than the %d bytes one may hold", path, vocab.DocumentMaxBytes)
 	}
 	if err != nil {
