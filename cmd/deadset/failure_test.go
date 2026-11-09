@@ -341,8 +341,8 @@ type interrupting struct{ name string }
 
 func (s *interrupting) Name() string { return s.name }
 
-func (*interrupting) Admit(_ context.Context, kept rundir.Entry, _ []string) error {
-	return kept.WriteDescribe([]byte("{}"))
+func (*interrupting) Admit(ctx context.Context, kept rundir.Entry, _ []string) error {
+	return kept.WriteDescribe(ctx, []byte("{}"))
 }
 
 func (s *interrupting) Produce(ctx context.Context, _ source.Files) source.Outcome {

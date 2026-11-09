@@ -66,6 +66,13 @@ func (r *Resolved) Split(languages ...vocab.Language) ([]byte, error) {
 	})
 }
 
+// Read returns the configuration document a reader of language linked into
+// this program receives, in the form Print writes: every key the setting
+// table lists language as reading, which no analyzer process is delivered.
+func (r *Resolved) Read(language vocab.Language) ([]byte, error) {
+	return r.render(func(key *vocab.ConfigKey) bool { return key.ReadIn(language) })
+}
+
 // member is one member of an object written in a fixed order. A value is an
 // object, a JSON document, or a string.
 type member struct {

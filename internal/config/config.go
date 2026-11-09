@@ -24,6 +24,10 @@ type config struct {
 	// list's order. A run invokes those of them that claim a language in scope.
 	Providers []Provider
 
+	// MinConfidence is analysis.min_confidence, which the merge withholds a
+	// schema finding the bindings lower below.
+	MinConfidence vocab.Class
+
 	Reporters Reporters
 }
 

@@ -15,8 +15,10 @@ package rundir
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/failure"
+	"github.com/cplieger/go/filesafe"
 )
 
 // The files of a run directory that no provider entry keys. rerunDir holds no
@@ -81,19 +84,21 @@ func (d *Dir) Rerun() (*Dir, error) { return Create(filepath.Join(d.path, rerunD
 func (d *Dir) Scope() string { return filepath.Join(d.path, scopeFile) }
 
 // WriteScope writes document as the run's scope document.
-func (d *Dir) WriteScope(document []byte) error { return writeOnce(d.Scope(), document) }
+func (d *Dir) WriteScope(ctx context.Context, document []byte) error {
+	return WriteFile(ctx, d.Scope(), document)
+}
 
 // Merged is the path the merged report is written to.
 func (d *Dir) Merged() string { return filepath.Join(d.path, mergedFile) }
 
 // WriteMerged writes r, in the encoding [report.Encode] writes, as the merged
 // report. A report Encode refuses leaves no file behind.
-func (d *Dir) WriteMerged(r *report.Report) error {
+func (d *Dir) WriteMerged(ctx context.Context, r *report.Report) error {
 	var encoded bytes.Buffer
 	if err := report.Encode(&encoded, r); err != nil {
 		return err
 	}
-	return writeOnce(d.Merged(), encoded.Bytes())
+	return WriteFile(ctx, d.Merged(), encoded.Bytes())
 }
 
 // Rendering is the path of the merged report's rendering whose file carries
@@ -102,8 +107,8 @@ func (d *Dir) Rendering(suffix string) string { return d.Merged() + suffix }
 
 // WriteRendering writes data as the merged report's rendering whose file
 // carries suffix.
-func (d *Dir) WriteRendering(suffix string, data []byte) error {
-	return writeOnce(d.Rendering(suffix), data)
+func (d *Dir) WriteRendering(ctx context.Context, suffix string, data []byte) error {
+	return WriteFile(ctx, d.Rendering(suffix), data)
 }
 
 // Entry is the files of one provider entry.
@@ -136,38 +141,45 @@ func (e Entry) Config() string { return e.file("config") }
 // Report is the path the entry's analyzer writes its report to.
 func (e Entry) Report() string { return e.file("report") }
 
+// Facts is the path the entry's analyzer writes its facts document to.
+func (e Entry) Facts() string { return e.file("facts") }
+
 // WriteDescribe keeps document, the bytes the entry's analyzer printed when it
 // described itself, as they were printed.
-func (e Entry) WriteDescribe(document []byte) error {
-	return writeOnce(e.Describe(), document)
+func (e Entry) WriteDescribe(ctx context.Context, document []byte) error {
+	return WriteFile(ctx, e.Describe(), document)
 }
 
 // WriteConfig writes document as the configuration the entry's analyzer
 // reads.
-func (e Entry) WriteConfig(document []byte) error { return writeOnce(e.Config(), document) }
+func (e Entry) WriteConfig(ctx context.Context, document []byte) error {
+	return WriteFile(ctx, e.Config(), document)
+}
 
 // WriteScope writes document as the scope document of the entry's analyzer
 // alone.
-func (e Entry) WriteScope(document []byte) error { return writeOnce(e.Scope(), document) }
+func (e Entry) WriteScope(ctx context.Context, document []byte) error {
+	return WriteFile(ctx, e.Scope(), document)
+}
 
 // file is the path of the entry's file of one kind.
 func (e Entry) file(kind string) string {
 	return filepath.Join(e.dir, kind+"."+e.name+".json")
 }
 
-// writeOnce creates the file at path holding data, refusing a file that
-// already exists.
-func writeOnce(path string, data []byte) (err error) {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
+// WriteFile publishes data at path, in a run directory, whole or not at all:
+// the write every file of the directory takes. It refuses a path that already
+// exists, with an error satisfying errors.Is(err, fs.ErrExist), and a
+// cancelled ctx; every failure is the run failure unwritten-output.
+func WriteFile(ctx context.Context, path string, data []byte) error {
+	// The check stands before the rename-replace write because each path of
+	// a run directory has one writer.
+	if _, err := os.Lstat(path); err == nil {
+		return unwritten(fmt.Errorf("rundir: %s: %w", path, fs.ErrExist))
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return unwritten(fmt.Errorf("rundir: %w", err))
 	}
-	defer func() {
-		if closeErr := file.Close(); err == nil && closeErr != nil {
-			err = unwritten(fmt.Errorf("rundir: %w", closeErr))
-		}
-	}()
-	if _, err := file.Write(data); err != nil {
+	if _, err := filesafe.WriteFile(ctx, path, data, filesafe.WithMode(0o600)); err != nil {
 		return unwritten(fmt.Errorf("rundir: %w", err))
 	}
 	return nil

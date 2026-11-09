@@ -1,7 +1,7 @@
 // Package source obtains the report of each language a run analyzes. A
 // [Source] is one producer of a report; [Process] is an analyzer the provider
-// list names, run as a separate process through the analyzer CLI contract. No
-// analyzer is linked into this program as a library.
+// list names, run as a separate process through the analyzer CLI contract, and
+// [InProcess] the schema reader, the one analysis linked into this program.
 //
 // The read is fail-closed. The exit code is read before the report is opened,
 // and only a code that is a verdict about a complete report lets the report be
@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cplieger/deadset-spec/v8/facts"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/failure"
@@ -28,8 +29,9 @@ import (
 
 // Source is one producer of a report for some of a run's languages.
 type Source interface {
-	// Name is the provider entry's name, which keys the source's files in
-	// the run directory and which its report names as its analyzer.
+	// Name is the source's analyzer name: a provider entry's, or the
+	// in-process reader's. It keys the source's files in the run directory,
+	// and its report names it as its analyzer.
 	Name() string
 
 	// Admit runs the handshake before any analysis: it keeps what the
@@ -43,9 +45,10 @@ type Source interface {
 }
 
 // Files are the paths one source is handed: the scope document it reads, its
-// configuration, and where its report is written.
+// configuration, where its report is written, and where its facts document
+// is written, empty where the run asks for none.
 type Files struct {
-	Scope, Config, Report string
+	Scope, Config, Report, Facts string
 }
 
 // Outcome is what one source left: its report or the refusal of its read,
@@ -54,6 +57,7 @@ type Files struct {
 // printed beside the failure lines Run relays, [failure.Quoted].
 type Outcome struct {
 	Report *report.Report
+	Facts  *facts.Document
 	Err    error
 
 	// Analyzer is the source's name, and Languages the languages it was

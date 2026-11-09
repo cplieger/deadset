@@ -22,7 +22,7 @@ The document is the scope document [deadset-spec](https://github.com/cplieger/de
 ## How consumers reach the analyzers
 
 - Each consumer is handed to every analyzer claiming a language detected in it, and to no other. A Go consumer reaches the Go analyzer and a TypeScript one the TypeScript analyzer.
-- A consumer holding a language no analyzer of the run claims is refused with exit code 2.
+- A consumer holding a language no analyzer of the run claims is refused with exit code 2. deadset reads the Protocol Buffers schemas of the target alone, so a consumer holding only `.proto` files is refused the same way, and the generated code of a consumer holding Go or TypeScript beside them reaches its analyzer.
 - A consumer that does not exist, is not a directory or holds no language does not load, and the run ends with exit code 3 and the line `setup failure: missing-consumer`. A scope document that does not meet the schema, or cannot be read, ends the run with exit code 2.
 - The analyzers run in the deepest directory holding the target and every consumer. The merged report's `target.root`, and each consumer's path under `consumers.loaded`, are relative to that directory.
 - The run directory keeps the declared scope as `scope.json`. An analyzer handed only some of the consumers reads its own, `scope.<name>.json`.

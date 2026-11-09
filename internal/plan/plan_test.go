@@ -196,66 +196,10 @@ func TestMakeDropsAConsumerOfOnlyALanguageLeftOut(t *testing.T) {
 	}
 }
 
-// A language the census of the target or of a declared consumer alone puts
-// in scope that this build holds no reader of is left out, with every
-// declared consumer holding only languages left out, beside a language an
-// analyzer reads.
-func TestMakeLeavesOutALanguageThisBuildHoldsNoReaderOf(t *testing.T) {
-	t.Parallel()
-
-	for _, c := range []struct {
-		name      string
-		app       []vocab.Language
-		consumers []string
-		omitted   []vocab.Language
-		in        []vocab.Language
-		dropped   []string
-	}{
-		{name: "beside-both", in: both, dropped: []string{"/w/schema"}},
-		{name: "beside-a-language-left-out", omitted: []vocab.Language{vocab.TS}, in: []vocab.Language{vocab.Go}, dropped: []string{"/w/schema", "/w/web"}},
-		{name: "in-a-consumer-alone", app: []vocab.Language{vocab.Go}, consumers: []string{"schema", "go"}, in: []vocab.Language{vocab.Go}, dropped: []string{"/w/schema"}},
-		{
-			name: "in-a-consumer-beside-a-language-left-out", app: both, consumers: []string{"go", "web"}, omitted: []vocab.Language{vocab.TS},
-			in: []vocab.Language{vocab.Go}, dropped: []string{"/w/web"},
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-
-			census := workspace()
-			census.languages["/w/app"] = []vocab.Language{vocab.Go, vocab.TS, vocab.Proto}
-			if c.app != nil {
-				census.languages["/w/app"] = c.app
-			}
-			census.languages["/w/schema"] = []vocab.Language{vocab.Proto}
-			census.languages["/w/web"] = []vocab.Language{vocab.TS, vocab.Proto}
-			consumers := c.consumers
-			if consumers == nil {
-				consumers = []string{"schema", "web", "go"}
-			}
-			got, err := plan.Make(&plan.Input{Scope: declared(consumers...), Omitted: c.omitted, Providers: []config.Provider{goEntry, tsEntry}}, census)
-			if err != nil {
-				t.Fatalf("Make() = %v", err)
-			}
-			unread := []vocab.Language{vocab.Proto}
-			if !slices.Equal(got.Languages, c.in) || !slices.Equal(got.Unread, unread) || got.Scope.Target.ID != "example.com/app" {
-				t.Errorf("Make() = %+v, want %v in scope, proto unread and the target named by its Go module", got, c.in)
-			}
-			var dropped []string
-			for _, d := range got.Dropped {
-				dropped = append(dropped, d.Path)
-			}
-			if !slices.Equal(dropped, c.dropped) || !slices.Equal(got.DroppedWith(unread), c.dropped) {
-				t.Errorf("Make() drops %q, %q with proto, want %q", dropped, got.DroppedWith(unread), c.dropped)
-			}
-		})
-	}
-}
-
 // A census every language of which the run left out plans a run of no
 // language: no source runs, every declared consumer is dropped and the target
-// is named "."; where the census then holds only a language this build holds
-// no reader of, the plan is refused as a census of only that language is.
+// is named "."; where the census then holds only a schema language, the plan
+// is its reader alone.
 func TestMakePlansNoLanguageWhereTheRunLeftOutEveryLanguageOfTheCensus(t *testing.T) {
 	t.Parallel()
 
@@ -265,8 +209,9 @@ func TestMakePlansNoLanguageWhereTheRunLeftOutEveryLanguageOfTheCensus(t *testin
 	}
 	census := workspace()
 	census.languages["/w/app"] = []vocab.Language{vocab.TS, vocab.Proto}
-	if _, err := plan.Make(&plan.Input{Scope: declared(), Omitted: []vocab.Language{vocab.TS}, Providers: []config.Provider{tsEntry}}, census); !setupClass(vocab.SetupUnsupportedLanguage)(err) {
-		t.Errorf("Make(ts left out beside proto) = %v, want the setup failure unsupported-language", err)
+	got, err = plan.Make(&plan.Input{Scope: declared(), Omitted: []vocab.Language{vocab.TS}, Providers: []config.Provider{tsEntry}}, census)
+	if err != nil || !slices.Equal(got.Languages, []vocab.Language{vocab.Proto}) || len(got.Sources) != 1 || !got.Sources[0].InProcess {
+		t.Errorf("Make(ts left out beside proto) = %+v, %v, want proto alone, read by the in-process reader", got, err)
 	}
 }
 
@@ -360,7 +305,6 @@ func TestMakeRefuses(t *testing.T) {
 		providers []config.Provider
 		languages []string
 		names     []string
-		absent    []string
 	}{
 		{
 			name: "no-program", scope: declared(),
@@ -374,25 +318,31 @@ func TestMakeRefuses(t *testing.T) {
 			names: []string{"providers.analyzers", `"go"`},
 		},
 		{
-			name: "configured-language-this-build-holds-no-reader-of", scope: declared(), languages: []string{"go", "proto"},
-			check: setupClass(vocab.SetupUnsupportedLanguage),
-			names: []string{`analysis.languages names "proto", and this build holds no reader of it; leave each out of analysis.languages, or run a release of deadset that holds its reader`},
-		},
-		{
-			name: "census-of-only-languages-this-build-holds-no-reader-of", scope: declared(),
-			edit:   func(t *tree) { t.languages["/w/app"] = []vocab.Language{vocab.Proto} },
-			check:  setupClass(vocab.SetupUnsupportedLanguage),
-			names:  []string{`the census of /w/app puts only "proto" in scope, and this build holds no reader of it; run a release of deadset that holds its reader`},
-			absent: []string{"analysis.languages"},
-		},
-		{
-			name: "configured-run-consumer-of-a-language-this-build-holds-no-reader-of", scope: declared("schema"), languages: []string{"go"},
+			name: "configured-run-consumer-of-a-schema-language-out-of-scope", scope: declared("schema"), languages: []string{"go"},
 			edit:  func(t *tree) { t.languages["/w/schema"] = []vocab.Language{vocab.Proto} },
 			check: func(err error) bool { _, ok := errors.AsType[*plan.UnclaimedError](err); return ok },
 			names: []string{"/w/schema holds proto", "no analyzer of the run claims"},
 		},
 		{
-			name: "consumer-of-a-language-this-build-holds-no-reader-of-and-one-out-of-scope", scope: declared("schema"),
+			name: "detected-run-consumer-of-a-schema-language-out-of-scope", scope: declared("schema"),
+			edit: func(t *tree) {
+				t.languages["/w/app"] = []vocab.Language{vocab.Go}
+				t.languages["/w/schema"] = []vocab.Language{vocab.Proto}
+			},
+			check: func(err error) bool { _, ok := errors.AsType[*plan.UnclaimedError](err); return ok },
+			names: []string{"the consumer /w/schema holds proto", "no analyzer of the run claims"},
+		},
+		{
+			name: "consumer-of-only-a-schema-language-in-scope", scope: declared("schema"), providers: []config.Provider{goEntry},
+			edit: func(t *tree) {
+				t.languages["/w/app"] = []vocab.Language{vocab.Go, vocab.Proto}
+				t.languages["/w/schema"] = []vocab.Language{vocab.Proto}
+			},
+			check: func(err error) bool { _, ok := errors.AsType[*plan.UnclaimedError](err); return ok },
+			names: []string{"the consumer /w/schema holds proto", "no analyzer of the run claims"},
+		},
+		{
+			name: "consumer-of-languages-out-of-scope", scope: declared("schema"),
 			edit: func(t *tree) {
 				t.languages["/w/app"] = []vocab.Language{vocab.Go}
 				t.languages["/w/schema"] = []vocab.Language{vocab.TS, vocab.Proto}
@@ -435,11 +385,6 @@ func TestMakeRefuses(t *testing.T) {
 					t.Errorf("Make() = %v, want it to name %q", err, named)
 				}
 			}
-			for _, unnamed := range c.absent {
-				if strings.Contains(err.Error(), unnamed) {
-					t.Errorf("Make() = %v, want it not to name %q", err, unnamed)
-				}
-			}
 		})
 	}
 }
@@ -461,6 +406,81 @@ func TestDiskReadsEveryRowsIdentitySource(t *testing.T) {
 		}
 		if _, _, err := (plan.Disk{}).Name(t.TempDir(), row.IdentitySource); err != nil {
 			t.Errorf("Disk.Name(%s's %+v) = %v, want a reader", row.Language, row.IdentitySource, err)
+		}
+	}
+}
+
+// A schema language in scope needs no provider entry: it is planned as the
+// in-process reader its row names, and every process analyzer is asked for
+// facts; with none in scope no analyzer is.
+func TestMakePlansTheInProcessReader(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name       string
+		languages  []vocab.Language
+		configured []string
+		want       []string
+		facts      bool
+	}{
+		{name: "schema-only", languages: []vocab.Language{vocab.Proto}, want: []string{"deadset-proto"}},
+		{name: "go-and-proto", languages: []vocab.Language{vocab.Go, vocab.Proto}, want: []string{"deadset-go", "deadset-proto"}, facts: true},
+		{name: "go-only", languages: []vocab.Language{vocab.Go}, want: []string{"deadset-go"}},
+		{name: "configured-proto", languages: []vocab.Language{vocab.Go}, configured: []string{"go", "proto"}, want: []string{"deadset-go", "deadset-proto"}, facts: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			tr := workspace()
+			tr.languages["/w/app"] = c.languages
+			got, err := plan.Make(&plan.Input{Scope: declared(), Languages: c.configured, Providers: []config.Provider{goEntry}}, tr)
+			if err != nil {
+				t.Fatalf("Make() = %v", err)
+			}
+			var names []string
+			for _, s := range got.Sources {
+				names = append(names, s.Entry.Name)
+				if s.InProcess != (s.Entry.Name == "deadset-proto") || (!s.InProcess && s.Facts != c.facts) {
+					t.Errorf("source %s = in-process %t, facts %t; want facts %t", s.Entry.Name, s.InProcess, s.Facts, c.facts)
+				}
+			}
+			if !slices.Equal(names, c.want) {
+				t.Errorf("Make() plans %q, want %q", names, c.want)
+			}
+		})
+	}
+}
+
+// The reader reads the target alone: a consumer holding schema files beside
+// Go is handed to the Go analyzer, and the reader is handed no consumer.
+func TestMakeHandsTheReaderNoConsumer(t *testing.T) {
+	t.Parallel()
+
+	tr := workspace()
+	tr.languages["/w/app"] = []vocab.Language{vocab.Go, vocab.Proto}
+	tr.languages["/w/gp"] = []vocab.Language{vocab.Go, vocab.Proto}
+	got, err := plan.Make(&plan.Input{Scope: declared("gp", "go"), Providers: []config.Provider{goEntry}}, tr)
+	if err != nil {
+		t.Fatalf("Make() = %v", err)
+	}
+	if len(got.Dropped) != 0 || len(got.Scope.Consumers) != 2 || len(got.Sources) != 2 {
+		t.Fatalf("Make() = %+v, want both consumers kept and two sources", got)
+	}
+	for _, s := range got.Sources {
+		own := &got.Scope
+		if s.Scope != nil {
+			own = s.Scope
+		}
+		var handed []string
+		for _, m := range own.Consumers {
+			handed = append(handed, m.Path)
+		}
+		want := []string{"/w/gp", "/w/go"}
+		if s.InProcess {
+			want = nil
+		}
+		if !slices.Equal(handed, want) {
+			t.Errorf("source %s is handed %q, want %q", s.Entry.Name, handed, want)
 		}
 	}
 }

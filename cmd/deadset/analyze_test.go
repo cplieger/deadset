@@ -152,11 +152,11 @@ type stubSource struct {
 
 func (s *stubSource) Name() string { return s.name }
 
-func (s *stubSource) Admit(_ context.Context, kept rundir.Entry, _ []string) error {
+func (s *stubSource) Admit(ctx context.Context, kept rundir.Entry, _ []string) error {
 	if s.admit != nil {
 		return s.admit
 	}
-	return kept.WriteDescribe([]byte("{}"))
+	return kept.WriteDescribe(ctx, []byte("{}"))
 }
 
 func (s *stubSource) Produce(_ context.Context, files source.Files) source.Outcome {
@@ -742,65 +742,6 @@ func TestAnalyzeLeavesOutADetectedLanguageItsAnalyzerFindsNoProgramOf(t *testing
 			merged := mergedReport(t, runDir)
 			if len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != "deadset-go" {
 				t.Errorf("the merged report was merged from %+v, want the Go analyzer alone", merged.MergedFrom)
-			}
-		})
-	}
-}
-
-// A schema language the census alone puts in scope beside Go, which this
-// build holds no reader of, is left out with a line naming it and any
-// consumer of it alone, before the Go analyzer runs; a configured one, or one
-// that is the census's only language, ends the run with its setup failure.
-func TestAnalyzeLeavesOutADetectedLanguageThisBuildHoldsNoReaderOf(t *testing.T) {
-	t.Parallel()
-
-	const leftOut = `deadset: this build of deadset holds no reader of "proto", so the run leaves it out of scope`
-	const unsupported = "setup failure: unsupported-language: "
-	for _, c := range []struct {
-		name     string
-		extra    []string
-		want     string
-		noModule bool
-		consumer bool
-		code     int
-	}{
-		{name: "detected", code: vocab.ExitFindings, want: leftOut + "\n"},
-		{name: "consumer-of-the-schema-alone", code: vocab.ExitFindings, consumer: true},
-		{name: "configured", extra: []string{"--languages=go,proto"}, code: vocab.ExitFailure, want: unsupported + `analysis.languages names "proto"`},
-		{name: "only-language", noModule: true, code: vocab.ExitFailure, want: unsupported + "the census of "},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-
-			target, runDir := goTarget(t, []provider{both[0]}, "")
-			writeFile(t, filepath.Join(target, "fixtures", "m.proto"), []byte("syntax = \"proto3\";\n"))
-			if c.noModule {
-				if err := os.Remove(filepath.Join(target, "go.mod")); err != nil {
-					t.Fatalf("Setup: %v", err)
-				}
-			}
-			extra := c.extra
-			if c.consumer {
-				consumer := filepath.Join(filepath.Dir(target), "schema")
-				writeFile(t, filepath.Join(consumer, "m.proto"), []byte("syntax = \"proto3\";\n"))
-				document := filepath.Join(filepath.Dir(target), "scope.json")
-				writeFile(t, document, fmt.Appendf(nil, `{"target": {"path": %q}, "consumers": [{"path": %q}]}`, target, consumer))
-				extra = append(extra, "--scope="+document)
-				c.want = leftOut + ", and with it the consumer " + consumer + "\n"
-			}
-			got := analyzeWith(t, stubs(t, map[string]stub{"deadset-go": {report: goFindings, exit: 1}}), target, runDir, extra...)
-			if got.code != c.code || !strings.Contains(got.stderr, c.want) {
-				t.Fatalf("analyze = %d, want %d and stderr holding %q\nstdout: %s\nstderr: %s", got.code, c.code, c.want, got.stdout, got.stderr)
-			}
-			if lines := classLines(got.stderr); c.code == vocab.ExitFailure && (len(lines) != 1 || !strings.HasPrefix(lines[0], unsupported)) {
-				t.Errorf("analyze stderr holds the class lines %q, want the one %s line", lines, unsupported)
-			}
-			if c.code == vocab.ExitFailure {
-				return
-			}
-			merged := mergedReport(t, runDir)
-			if len(merged.MergedFrom) != 1 || merged.MergedFrom[0].Name != "deadset-go" || len(merged.Consumers.Loaded) != 0 {
-				t.Errorf("the merged report = %+v, %+v, want the Go analyzer's alone, loading no consumer", merged.MergedFrom, merged.Consumers)
 			}
 		})
 	}

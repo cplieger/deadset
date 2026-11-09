@@ -28,7 +28,15 @@ type records struct {
 	// it names in that input, and of every stale-edge component the merge
 	// mints; lists records whether any input lists components.
 	listings []listing
+
+	// bindings is every binding record of every input's facts document, and
+	// notes the notes the binding pass writes.
+	bindings []binding
+	notes    []report.Note
 	lists    bool
+
+	// withheld is binding rule 3's count, [records.withheldBelow].
+	withheld report.Withheld
 }
 
 // union carries every finding, stale suppression, declared gap and edge
@@ -52,6 +60,12 @@ func union(inputs []Input) *records {
 		carried.gaps = carry(carried.gaps, r.DeclaredGaps, func(g *report.DeclaredGap) { g.Analyzer = name })
 		carried.evaluations = carry(carried.evaluations, r.EdgeEvaluations, func(e *report.EdgeEvaluation) { e.Analyzer = name })
 		carried.lists = carried.lists || r.Components != nil
+		if facts := inputs[i].Facts; facts != nil {
+			library := r.Target.KindOf(facts.Language) == report.TargetKindLibrary
+			for j := range facts.Bindings {
+				carried.bindings = append(carried.bindings, binding{Binding: &facts.Bindings[j], analyzer: name, library: library})
+			}
+		}
 		for j := range r.Components {
 			carried.listings = append(carried.listings, listing{
 				component: componentKey{analyzer: name, id: r.Components[j].ID},

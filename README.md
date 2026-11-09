@@ -4,7 +4,7 @@
 
 deadset finds dead code in repositories that mix Go and TypeScript, and counts a Go type as used while the TypeScript generated from it is in use.
 
-It runs the [deadset-go](https://github.com/cplieger/deadset-go) and [deadset-ts](https://github.com/cplieger/deadset-ts) analyzers and merges their reports into one result and one exit code. The deadset-go analyzer supports Linux only, and deadset-ts needs Node.js 24 or later. The deadset command uses only the standard library, builds as a static binary with no C toolchain, needs Go 1.27.1 or later and is licensed under GPL-3.0-or-later.
+It runs the [deadset-go](https://github.com/cplieger/deadset-go) and [deadset-ts](https://github.com/cplieger/deadset-ts) analyzers and merges their reports into one result and one exit code. The deadset-go analyzer supports Linux only, and deadset-ts needs Node.js 24 or later. The deadset command uses only the standard library, builds as a static binary with no C toolchain, needs Go 1.27.3 or later and is licensed under GPL-3.0-or-later.
 
 ## Why use it
 
@@ -13,6 +13,7 @@ deadset is built for a CI gate on dead code where Go and TypeScript meet, such a
 - It detects the languages from file names and runs only the analyzers they need, so a Go-only tree never needs Node.js.
 - You pair a Go declaration with its generated TypeScript in `deadset-edges.json`, and deadset reports the pair only when neither side is used.
 - It also checks the repositories that use a library, so an export they call is not reported as dead.
+- It reads the repository's Protocol Buffers schemas itself and reports a message, field or RPC whose generated Go code nothing uses.
 - It writes one merged report as text, JSON, GitHub annotations, SARIF 2.1.0 or your own template.
 - It only reports, makes no network request and runs only analyzers already installed.
 
@@ -134,3 +135,5 @@ This project was built with AI-assisted tooling using [Claude](https://claude.co
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+Third-party attributions are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

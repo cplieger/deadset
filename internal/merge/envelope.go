@@ -51,7 +51,7 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 		ExcludedByCgo:          held.excludedByCgo,
 		TestFileRules:          held.testFileRules,
 		TypeErrorSkips:         held.typeErrorSkips,
-		Notes:                  held.notes,
+		Notes:                  append(held.notes, carried.notes...),
 		UnansweredQuestions:    held.unanswered,
 		ConventionsApplied:     held.conventions,
 	}
@@ -60,31 +60,47 @@ func envelope(ordered []Input, accepted []string, caller *Caller, carried *recor
 	report.Recount(merged)
 	merged.Totals.SuppressionsInEffect = held.inEffect
 	merged.Totals.ReasonsRecorded = held.reasons
-	merged.Totals.Withheld = held.withheld
+	merged.Totals.Withheld = report.Withheld{
+		Probable: held.withheld.Probable + carried.withheld.Probable,
+		Possible: held.withheld.Possible + carried.withheld.Possible,
+	}
 	return merged
 }
 
 // mergedTarget is the root and the identity every input names, and the kind
-// the inputs give every language they cover: that kind where it is one kind
-// for all of them, and mixed with each language's kind otherwise. Admission
+// the inputs give every language they cover whose row takes a target kind:
+// that kind where it is one kind for all of them, none where no such language
+// is covered, and mixed with each language's kind otherwise. Admission
 // refused two inputs giving one language two kinds.
 func mergedTarget(ordered []Input) report.Target {
 	claimed := map[vocab.Language]report.TargetKind{}
 	for i := range ordered {
 		r := ordered[i].Report
-		for _, language := range r.Analyzer.Languages {
+		for _, language := range kindTaking(r.Analyzer.Languages) {
 			claimed[language] = r.Target.KindOf(language)
 		}
 	}
 	first := ordered[0].Report.Target
 	target := report.Target{Root: first.Root, Identity: first.Identity}
-	if kinds := slices.Compact(slices.Sorted(maps.Values(claimed))); len(kinds) == 1 {
+	switch kinds := slices.Compact(slices.Sorted(maps.Values(claimed))); len(kinds) {
+	case 0:
+		return target
+	case 1:
 		target.Kind = kinds[0]
 		return target
 	}
 	target.Kind = report.TargetKindMixed
 	target.LanguageKinds = claimed
 	return target
+}
+
+// kindTaking is the languages whose row of languages.json takes a target
+// kind, in the order given.
+func kindTaking(languages []vocab.Language) []vocab.Language {
+	return slices.DeleteFunc(slices.Clone(languages), func(l vocab.Language) bool {
+		row, _ := vocab.LanguageRowOf(l)
+		return !row.TakesTargetKind
+	})
 }
 
 // gathered is every envelope member of every input that the merged envelope

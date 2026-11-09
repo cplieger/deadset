@@ -1,5 +1,8 @@
 {
   "target": {
     "kind": "application"
+  },
+  "proto": {
+    "import_paths": ["internal/schema/proto/include"]
   }
 }

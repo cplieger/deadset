@@ -2,6 +2,7 @@ package rundir_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/vocab"
+	"github.com/cplieger/deadset/v2/internal/failure"
 	"github.com/cplieger/deadset/v2/internal/rundir"
 )
 
@@ -62,19 +65,19 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 	t.Parallel()
 
 	dir, path := created(t)
-	if err := dir.WriteScope([]byte("{}")); err != nil {
+	if err := dir.WriteScope(t.Context(), []byte("{}")); err != nil {
 		t.Fatalf("WriteScope() = %v", err)
 	}
 	for _, name := range []string{"deadset-go", "deadset-go-next"} {
 		e := entry(t, dir, name)
-		if err := e.WriteDescribe([]byte(`{"name":"deadset-go"}`)); err != nil {
+		if err := e.WriteDescribe(t.Context(), []byte(`{"name":"deadset-go"}`)); err != nil {
 			t.Fatalf("Entry(%q).WriteDescribe() = %v", name, err)
 		}
-		if err := e.WriteConfig([]byte("{}")); err != nil {
+		if err := e.WriteConfig(t.Context(), []byte("{}")); err != nil {
 			t.Fatalf("Entry(%q).WriteConfig(go) = %v", name, err)
 		}
 		if name == "deadset-go-next" {
-			if err := e.WriteScope([]byte("{}")); err != nil {
+			if err := e.WriteScope(t.Context(), []byte("{}")); err != nil {
 				t.Fatalf("Entry(%q).WriteScope() = %v", name, err)
 			}
 		}
@@ -87,7 +90,7 @@ func TestARunKeepsEveryFileKeyedByEntryName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup: decode the example report: %v", err)
 	}
-	if err := dir.WriteMerged(merged); err != nil {
+	if err := dir.WriteMerged(t.Context(), merged); err != nil {
 		t.Fatalf("WriteMerged() = %v", err)
 	}
 
@@ -193,7 +196,7 @@ func TestWriteDescribeKeepsTheBytesAsPrinted(t *testing.T) {
 	dir, _ := created(t)
 	e := entry(t, dir, "deadset-go")
 	printed := []byte("{\"name\": \"deadset-go\",\n  \"truncated")
-	if err := e.WriteDescribe(printed); err != nil {
+	if err := e.WriteDescribe(t.Context(), printed); err != nil {
 		t.Fatalf("WriteDescribe() = %v", err)
 	}
 	got, err := os.ReadFile(e.Describe())
@@ -221,27 +224,27 @@ func TestEveryFileIsWrittenOnce(t *testing.T) {
 	}{
 		{
 			name:  "describe",
-			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteDescribe([]byte("{}")) },
+			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteDescribe(t.Context(), []byte("{}")) },
 			path:  func(_ *rundir.Dir, e rundir.Entry) string { return e.Describe() },
 		},
 		{
 			name:  "config",
-			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteConfig([]byte("{}")) },
+			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteConfig(t.Context(), []byte("{}")) },
 			path:  func(_ *rundir.Dir, e rundir.Entry) string { return e.Config() },
 		},
 		{
 			name:  "merged",
-			write: func(d *rundir.Dir, _ rundir.Entry) error { return d.WriteMerged(merged) },
+			write: func(d *rundir.Dir, _ rundir.Entry) error { return d.WriteMerged(t.Context(), merged) },
 			path:  func(d *rundir.Dir, _ rundir.Entry) string { return d.Merged() },
 		},
 		{
 			name:  "scope",
-			write: func(d *rundir.Dir, _ rundir.Entry) error { return d.WriteScope([]byte("{}")) },
+			write: func(d *rundir.Dir, _ rundir.Entry) error { return d.WriteScope(t.Context(), []byte("{}")) },
 			path:  func(d *rundir.Dir, _ rundir.Entry) string { return d.Scope() },
 		},
 		{
 			name:  "entry-scope",
-			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteScope([]byte("{}")) },
+			write: func(_ *rundir.Dir, e rundir.Entry) error { return e.WriteScope(t.Context(), []byte("{}")) },
 			path:  func(_ *rundir.Dir, e rundir.Entry) string { return e.Scope() },
 		},
 	}
@@ -281,13 +284,34 @@ func TestWriteMergedRefusesAReportEncodeRefuses(t *testing.T) {
 	}
 	refused := *merged
 	refused.Findings = nil
-	if err := dir.WriteMerged(&refused); !errors.Is(err, report.ErrInvalid) {
+	if err := dir.WriteMerged(t.Context(), &refused); !errors.Is(err, report.ErrInvalid) {
 		t.Fatalf("WriteMerged(a report with no findings array) = %v, want report.ErrInvalid", err)
 	}
 	if _, err := os.Stat(dir.Merged()); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("after a refused WriteMerged, Stat(%s) = %v, want no file", dir.Merged(), err)
 	}
-	if err := dir.WriteMerged(merged); err != nil {
+	if err := dir.WriteMerged(t.Context(), merged); err != nil {
 		t.Errorf("WriteMerged(the report) after a refused one = %v, want it written", err)
+	}
+}
+
+// TestACancelledWriteLeavesNoFile pins that a write under a cancelled context
+// publishes nothing at its path and is the run failure unwritten-output
+// carrying the cancellation.
+func TestACancelledWriteLeavesNoFile(t *testing.T) {
+	t.Parallel()
+
+	_, path := created(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	at := filepath.Join(path, "report.deadset-proto.json")
+
+	err := rundir.WriteFile(ctx, at, []byte(`{"findings": []}`))
+
+	if failures := failure.Of(err); !errors.Is(err, context.Canceled) || len(failures) != 1 || failures[0].Class != vocab.RunUnwrittenOutput {
+		t.Errorf("WriteFile = %v, want the cancellation as %s", err, vocab.RunUnwrittenOutput)
+	}
+	if _, statErr := os.Stat(at); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("after a cancelled write, stat = %v; want no file", statErr)
 	}
 }

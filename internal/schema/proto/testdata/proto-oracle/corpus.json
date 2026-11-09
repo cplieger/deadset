@@ -1,0 +1,1192 @@
+[
+ {
+  "file": "conformance/conformance.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "conformance/test_protos/test_messages_edition2023.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "conformance/test_protos/test_messages_edition_unstable.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_ctype.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_java_dual_multiple_files.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_java_multiple_files.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_java_mutable_multiple_files.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_java_no_multiple_files.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_java_outer_classname.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_java_outer_classname_future.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_enum.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_enum_value.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_extension.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_field.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_file.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_message.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_method.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_oneof.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_naming_style_service.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_symbol_visibility.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_symbol_visibility_use.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_enum.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_group.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_import.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_inline_comments.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_multiline_comments.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_optional.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_packed.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_proto3_enum.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_required.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_unpacked.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_utf8_disabled.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_utf8_lite.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto2_utf8_verify.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_enum.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_implicit.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_import.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_optional.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_packed.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_unpacked.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/proto3_utf8_strict.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2023_transform/noop.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2023_transform/proto2_lite.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2023_transform/proto2_utf8_disabled.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2023_transform/proto3_utf8_disabled.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2023_transform/test_messages_proto2.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2024_transform/noop.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/simple_proto2.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/simple_proto2_import.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/simple_proto3.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/test_messages_proto2_editions.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/edition2023_transform/noop.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/edition2023_transform/proto2_lite.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/edition2023_transform/proto2_utf8_disabled.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/edition2023_transform/proto3_utf8_disabled.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/edition2024_transform/noop.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/test_editions_2024_default_features.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/test_editions_2026_default_features.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/input/test_editions_default_features.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/message/convert_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/message/utf8_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/message/utf8_test_proto2.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/mini_table/debug_string_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/mini_table/generated_registry_empty_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/mini_table/message_benchmark.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/test/empty.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/test/test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/test/test_cpp.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/test/test_import_empty_srcs.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/test/test_multiple_files.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/test/test_multiple_files2.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/def_to_proto_editions_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/def_to_proto_public_import_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/def_to_proto_regular_import_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/def_to_proto_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/def_to_proto_weak_import_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/def_to_proto_wweak_import_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/required_fields_editions_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/util/required_fields_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/wire/decode_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "upb/wire/encode_test.proto",
+  "roots": [
+   ""
+  ]
+ },
+ {
+  "file": "editions/golden/edition2024_transform/edition2023.proto",
+  "roots": [
+   "",
+   "java/core/src/main/resources",
+   "src"
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_string_type.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "editions/codegen_tests/edition2023_string_type_view_default.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "editions/golden/edition2023_transform/test_messages_proto3.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "editions/golden/test_messages_proto3_editions.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "editions/input/edition2024_transform/edition2023.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "upb/json/test.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "upb/message/test.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "upb/test/custom_options.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "upb/test/custom_options_unlinked.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "upb/test/editions_test.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "upb/test/proto3_test.proto",
+  "roots": [
+   "",
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/any.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/any_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/api.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/bridge/message_set.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/cpp/cpp_file_options_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/cpp/test_bad_identifiers_editions.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/cpp/test_bad_identifiers_proto2.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/cpp/test_large_enum_value.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/cpp/tools/analyze_profile_proto_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/java/message_serialization_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/compiler/plugin.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/cpp_features.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/cpp_file_options.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/cpp_options.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/descriptor.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/duration.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/edition_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/empty.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/field_mask.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/internal_metadata_locator_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/internal_options.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/json/json_enumval_custom_string.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/json_enumvalue_options.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/json_options.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/late_loaded_option.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/late_loaded_option_user.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/map_lite_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/map_proto2_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/map_proto3_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/map_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/only_one_enum_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/sample_messages_edition.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/source_context.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/struct.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_messages_proto2.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_messages_proto3.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_protos/abseil_flag_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_protos/forced_micro_string.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_protos/repeated_field_proxy_import_message.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_protos/repeated_field_proxy_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/test_protos/repeated_ptr_field_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/timestamp.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/type.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_arena.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_custom_features.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_custom_options.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_custom_options_unlinked.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_delimited.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_delimited_import.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_drop_unknown_fields.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_embed_optimize_for.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_empty.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_enormous_descriptor.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_extension_set.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_features.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_fuzz_extensions.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_import.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_import_lite.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_import_option.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_import_public.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_import_public_lite.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_invalid_features.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_lazy_dependencies.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_lazy_dependencies_custom_option.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_lazy_dependencies_enum.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_lite.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_lite_edition_2024.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_lite_imports_nonlite.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_mset.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_mset_wire_format.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_no_field_presence.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_no_generic_services.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_optimize_for.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_preserve_unknown_enum.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_preserve_unknown_enum2.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3_arena.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3_arena_lite.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3_bad_macros.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3_extensions.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3_lite.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_proto3_optional.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_redaction.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_retention.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_string_type.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_string_view.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_utf8_string_extensions.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_well_known_types.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/util/field_mask_util_test.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/util/json_format.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/util/json_format_proto3.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/util/message_differencer_unittest.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/util/message_differencer_unittest_proto3.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/util/python/testdata/test_messages.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/wrappers.proto",
+  "roots": [
+   "src"
+  ]
+ },
+ {
+  "file": "google/protobuf/unittest_legacy_features.proto",
+  "roots": [
+   "src",
+   "java/core/src/main/resources"
+  ]
+ },
+ {
+  "file": "ruby_generated_code.proto",
+  "roots": [
+   "src/google/protobuf/compiler/ruby"
+  ]
+ },
+ {
+  "file": "ruby_generated_code_proto2.proto",
+  "roots": [
+   "src/google/protobuf/compiler/ruby"
+  ]
+ },
+ {
+  "file": "ruby_generated_code_proto2_import.proto",
+  "roots": [
+   "src/google/protobuf/compiler/ruby"
+  ]
+ },
+ {
+  "file": "ruby_generated_pkg_explicit.proto",
+  "roots": [
+   "src/google/protobuf/compiler/ruby"
+  ]
+ },
+ {
+  "file": "ruby_generated_pkg_explicit_legacy.proto",
+  "roots": [
+   "src/google/protobuf/compiler/ruby"
+  ]
+ },
+ {
+  "file": "ruby_generated_pkg_implicit.proto",
+  "roots": [
+   "src/google/protobuf/compiler/ruby"
+  ]
+ }
+]

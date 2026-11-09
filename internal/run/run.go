@@ -69,9 +69,6 @@ type Request struct {
 	// Started is called with the run directory's path once it exists.
 	Started func(dir string)
 
-	// Planned is called with the run's first plan, before any source opens.
-	Planned func(planned *plan.Plan)
-
 	// Print shows what every source printed, once every source has exited
 	// and before the merge, so a run whose Print fails merges no report; its
 	// error is joined to the sources' refusals.
@@ -117,7 +114,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if err := documents.Check(ctx, req.Root); err != nil {
 		return nil, err
 	}
-	in, census, planned, err := first(req)
+	in, census, planned, err := start(req.Resolved, req.Scope)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +130,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 		req.Started(dir.Path())
 	}
 	result := &Result{}
-	handed, err := prepare(dir, req.Resolved, planned, sources)
+	handed, err := prepare(ctx, dir, req.Resolved, planned, sources)
 	if err != nil {
 		return result, err
 	}
@@ -158,7 +155,7 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 	if err != nil {
 		return result, err
 	}
-	if result.Merged, err = merged(outcomes, last, accepted, req.Version); err != nil {
+	if result.Merged, err = merged(outcomes, last, accepted, req.Version, req.Resolved.Config.MinConfidence); err != nil {
 		return result, err
 	}
 	result.Failing = policy.Apply(result.Merged, &policy.Options{
@@ -167,10 +164,10 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 		FailOn:      req.Resolved.Config.Reporters.FailOn,
 		MaxFindings: req.Resolved.Config.Reporters.MaxFindings,
 	})
-	if refused := dir.WriteMerged(result.Merged); refused != nil {
+	if refused := dir.WriteMerged(ctx, result.Merged); refused != nil {
 		return result, refused
 	}
-	result.Written, err = writeFiles(dir, req, result.Merged)
+	result.Written, err = writeFiles(ctx, dir, req, result.Merged)
 	return result, err
 }
 
@@ -179,15 +176,6 @@ func Analyze(ctx context.Context, req *Request) (*Result, error) {
 func Plan(resolved *config.Resolved, declared *scope.Document) (*plan.Plan, error) {
 	_, _, planned, err := start(resolved, declared)
 	return planned, err
-}
-
-// req.Planned sees only a plan Make accepted.
-func first(req *Request) (plan.Input, *plan.Census, *plan.Plan, error) {
-	in, census, planned, err := start(req.Resolved, req.Scope)
-	if err == nil && req.Planned != nil {
-		req.Planned(planned)
-	}
-	return in, census, planned, err
 }
 
 // start is the first plan with its input and the census it read, which a
@@ -209,7 +197,8 @@ func runDirectory(path string) (*rundir.Dir, error) {
 }
 
 // open makes every planned source, before anything is written, so a command
-// that resolves to nothing leaves no run directory behind.
+// that resolves to nothing leaves no run directory behind. An in-process
+// reader is this program's own.
 func open(req *Request, planned *plan.Plan) ([]source.Source, error) {
 	opener := req.Open
 	if opener == nil {
@@ -220,12 +209,40 @@ func open(req *Request, planned *plan.Plan) ([]source.Source, error) {
 	sources := make([]source.Source, len(planned.Sources))
 	var failures []error
 	for i := range planned.Sources {
+		if planned.Sources[i].InProcess {
+			sources[i] = reader(req, planned)
+			continue
+		}
 		var err error
 		if sources[i], err = opener(&planned.Sources[i], planned.Dir, req.Diagnostics); err != nil {
 			failures = append(failures, err)
 		}
 	}
 	return sources, errors.Join(failures...)
+}
+
+// reader is the schema reader of the planned target, in the plan's view
+// [readerView] states.
+func reader(req *Request, planned *plan.Plan) source.Source {
+	root, identity, analyzed := readerView(planned)
+	return source.NewInProcess(planned.Scope.Target.Path, root, identity, req.Version, analyzed)
+}
+
+// readerView is what the schema reader reads of a plan: its target, named as
+// an analyzer run in the plan's directory names it, and the languages the
+// plan's analyzers read.
+func readerView(planned *plan.Plan) (root, identity string, analyzed []vocab.Language) {
+	target := planned.Scope.Target
+	root, err := filepath.Rel(planned.Dir, target.Path)
+	if err != nil {
+		root = target.Path
+	}
+	for i := range planned.Sources {
+		if !planned.Sources[i].InProcess {
+			analyzed = append(analyzed, planned.Sources[i].Languages...)
+		}
+	}
+	return filepath.ToSlash(root), target.ID, analyzed
 }
 
 // handedFiles is one source's files in the run directory.
@@ -245,12 +262,12 @@ func files(handed []handedFiles) []source.Files {
 
 // prepare writes the run's scope document and, per source, its configuration
 // and any scope document of its own.
-func prepare(dir *rundir.Dir, resolved *config.Resolved, planned *plan.Plan, sources []source.Source) ([]handedFiles, error) {
+func prepare(ctx context.Context, dir *rundir.Dir, resolved *config.Resolved, planned *plan.Plan, sources []source.Source) ([]handedFiles, error) {
 	whole, err := planned.Scope.Encode()
 	if err != nil {
 		return nil, err
 	}
-	if err := dir.WriteScope(whole); err != nil {
+	if err := dir.WriteScope(ctx, whole); err != nil {
 		return nil, err
 	}
 	handed := make([]handedFiles, len(sources))
@@ -259,7 +276,7 @@ func prepare(dir *rundir.Dir, resolved *config.Resolved, planned *plan.Plan, sou
 		if err != nil {
 			return nil, err
 		}
-		if handed[i], err = hand(dir, entry, resolved, &planned.Sources[i]); err != nil {
+		if handed[i], err = hand(ctx, dir, entry, resolved, &planned.Sources[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -267,13 +284,20 @@ func prepare(dir *rundir.Dir, resolved *config.Resolved, planned *plan.Plan, sou
 }
 
 // hand writes one source's configuration, the split of resolved for its
-// languages, and its own scope document where it has one.
-func hand(dir *rundir.Dir, entry rundir.Entry, resolved *config.Resolved, planned *plan.Source) (handedFiles, error) {
-	split, err := resolved.Split(planned.Languages...)
+// languages, or for an in-process reader every key its language reads, and
+// its own scope document where it has one.
+func hand(ctx context.Context, dir *rundir.Dir, entry rundir.Entry, resolved *config.Resolved, planned *plan.Source) (handedFiles, error) {
+	var split []byte
+	var err error
+	if planned.InProcess {
+		split, err = resolved.Read(planned.Languages[0])
+	} else {
+		split, err = resolved.Split(planned.Languages...)
+	}
 	if err != nil {
 		return handedFiles{}, err
 	}
-	if err := entry.WriteConfig(split); err != nil {
+	if err := entry.WriteConfig(ctx, split); err != nil {
 		return handedFiles{}, err
 	}
 	scopePath := dir.Scope()
@@ -282,12 +306,16 @@ func hand(dir *rundir.Dir, entry rundir.Entry, resolved *config.Resolved, planne
 		if err != nil {
 			return handedFiles{}, err
 		}
-		if err := entry.WriteScope(encoded); err != nil {
+		if err := entry.WriteScope(ctx, encoded); err != nil {
 			return handedFiles{}, err
 		}
 		scopePath = entry.Scope()
 	}
-	return handedFiles{entry: entry, files: source.Files{Scope: scopePath, Config: entry.Config(), Report: entry.Report()}}, nil
+	files := source.Files{Scope: scopePath, Config: entry.Config(), Report: entry.Report()}
+	if planned.Facts || planned.InProcess {
+		files.Facts = entry.Facts()
+	}
+	return handedFiles{entry: entry, files: files}, nil
 }
 
 // narrowing is what [narrow] reads of a run whose sources have produced.
@@ -304,9 +332,10 @@ type narrowing struct {
 // over the census the first plan read, names on each outcome that leaves a
 // language out the consumers [plan.Plan.Dropped] leaves out with it, and
 // produces again, in the run directory's [rundir.Dir.Rerun], every kept source
-// whose scope document that plan changes, replacing its outcome, so no
-// language left out names a module a kept analyzer reads. It returns the last
-// plan the run made.
+// whose scope document that plan changes, and the schema reader where the
+// languages analyzed change, replacing its outcome, so no language left out
+// names a module a kept analyzer reads or counts as analyzed. It returns the
+// last plan the run made.
 func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) (*plan.Plan, error) {
 	for i := range outcomes {
 		n.in.Omitted = append(n.in.Omitted, outcomes[i].LeftOut...)
@@ -327,16 +356,13 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) (*plan
 		if outcomes[i].Omitted {
 			continue
 		}
-		// Both plans read one census and a kept source's languages are all
-		// kept, so the narrowed plan routes its entry.
-		k := slices.IndexFunc(narrowed.Sources, func(s plan.Source) bool { return s.Index == n.planned.Sources[i].Index })
-		changed, refused := rescoped(n.planned, &n.planned.Sources[i], narrowed, &narrowed.Sources[k])
+		kept, entry, changed, refused := n.replanned(i, narrowed)
 		if refused != nil {
 			return nil, refused
 		}
 		if changed {
-			again.Sources = append(again.Sources, narrowed.Sources[k])
-			sources, at = append(sources, n.sources[i]), append(at, i)
+			again.Sources = append(again.Sources, *entry)
+			sources, at = append(sources, kept), append(at, i)
 		}
 	}
 	if len(sources) == 0 {
@@ -346,7 +372,7 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) (*plan
 	if err != nil {
 		return nil, err
 	}
-	handed, err := prepare(dir, n.resolved, &again, sources)
+	handed, err := prepare(ctx, dir, n.resolved, &again, sources)
 	if err != nil {
 		return nil, err
 	}
@@ -357,6 +383,27 @@ func narrow(ctx context.Context, n *narrowing, outcomes []source.Outcome) (*plan
 		outcomes[i] = reran[j]
 	}
 	return narrowed, err
+}
+
+// replanned is the kept source i over the narrowed plan, its entry there,
+// and whether it runs again: its scope document changed or, for the schema
+// reader, the languages analyzed did.
+func (n *narrowing) replanned(i int, narrowed *plan.Plan) (kept source.Source, entry *plan.Source, changed bool, err error) {
+	// Both plans read one census and a kept source's languages are all kept,
+	// so the narrowed plan routes its entry.
+	k := slices.IndexFunc(narrowed.Sources, func(s plan.Source) bool { return s.Index == n.planned.Sources[i].Index })
+	entry = &narrowed.Sources[k]
+	if changed, err = rescoped(n.planned, &n.planned.Sources[i], narrowed, entry); err != nil {
+		return nil, nil, false, err
+	}
+	kept = n.sources[i]
+	if read, ok := kept.(*source.InProcess); ok {
+		_, _, before := readerView(n.planned)
+		root, identity, after := readerView(narrowed)
+		changed = changed || !slices.Equal(before, after)
+		kept = read.Replan(root, identity, after)
+	}
+	return kept, entry, changed, nil
 }
 
 // dropWith names on every outcome the consumers p dropped with a language it
@@ -389,13 +436,20 @@ func handedScope(p *plan.Plan, s *plan.Source) *scope.Document {
 	return &p.Scope
 }
 
-// merged is the merge of the report of every outcome not omitted, or, where
-// every outcome is, the report merged from none over last's target.
-func merged(outcomes []source.Outcome, last *plan.Plan, accepted []string, version string) (*report.Report, error) {
+// merged is the merge of every outcome not omitted, or, where every outcome
+// is, the report merged from none over last's target, under the run's minimum
+// confidence. Facts are merged only where last keeps the schema reader, so a
+// run that left the schema language out merges as one that never had it.
+func merged(outcomes []source.Outcome, last *plan.Plan, accepted []string, version string, minimum vocab.Class) (*report.Report, error) {
+	read := slices.ContainsFunc(last.Sources, func(s plan.Source) bool { return s.InProcess })
 	inputs := make([]merge.Input, 0, len(outcomes))
 	for i := range outcomes {
 		if !outcomes[i].Omitted {
-			inputs = append(inputs, merge.Input{Report: outcomes[i].Report, Digest: outcomes[i].Digest})
+			in := merge.Input{Report: outcomes[i].Report, Digest: outcomes[i].Digest}
+			if read {
+				in.Facts = outcomes[i].Facts
+			}
+			inputs = append(inputs, in)
 		}
 	}
 	conformance, err := merge.Conformance()
@@ -407,6 +461,7 @@ func merged(outcomes []source.Outcome, last *plan.Plan, accepted []string, versi
 		ContractVersion: vocab.ContractVersion,
 		Name:            Product,
 		Version:         version,
+		MinConfidence:   minimum,
 		Conformance:     conformance,
 	}
 	if len(inputs) > 0 {
@@ -424,7 +479,7 @@ func merged(outcomes []source.Outcome, last *plan.Plan, accepted []string, versi
 // writeFiles writes every rendering the formats name that is a file beside
 // the merged report, in their order. The SARIF rendering hashes the source
 // lines its results name, which it reads below the target root.
-func writeFiles(dir *rundir.Dir, req *Request, r *report.Report) ([]rendering, error) {
+func writeFiles(ctx context.Context, dir *rundir.Dir, req *Request, r *report.Report) ([]rendering, error) {
 	root, err := os.OpenRoot(req.Root)
 	if err != nil {
 		return nil, failure.Wrap(vocab.RunUnwrittenOutput, fmt.Errorf("render beside the merged report: %w", err))
@@ -442,7 +497,7 @@ func writeFiles(dir *rundir.Dir, req *Request, r *report.Report) ([]rendering, e
 		if err := render.Render(&document, format, r, &opts); err != nil {
 			return written, failure.Wrap(vocab.RunUnwrittenOutput, fmt.Errorf("render %s beside the merged report: %w", format, err))
 		}
-		if err := dir.WriteRendering(suffix, document.Bytes()); err != nil {
+		if err := dir.WriteRendering(ctx, suffix, document.Bytes()); err != nil {
 			return written, err
 		}
 		written = append(written, rendering{Format: format, Path: dir.Rendering(suffix)})

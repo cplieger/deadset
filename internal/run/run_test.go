@@ -62,11 +62,11 @@ type recorder struct {
 
 func (r *recorder) Name() string { return r.name }
 
-func (r *recorder) Admit(_ context.Context, kept rundir.Entry, _ []string) error {
+func (r *recorder) Admit(ctx context.Context, kept rundir.Entry, _ []string) error {
 	if r.admit != nil {
 		return r.admit
 	}
-	return kept.WriteDescribe([]byte("{}"))
+	return kept.WriteDescribe(ctx, []byte("{}"))
 }
 
 func (r *recorder) Produce(_ context.Context, files source.Files) source.Outcome {
