@@ -1,0 +1,324 @@
+{
+  "corpus_version": "6.2.0",
+  "product": {
+    "name": "deadset-proto",
+    "version": "0.0.0-devel",
+    "language": "proto"
+  },
+  "result": "pass",
+  "totals": {
+    "fixtures": 51,
+    "pass": 51,
+    "gap": 0,
+    "fail": 0,
+    "pending": 0
+  },
+  "fixtures": [
+    {
+      "fixture": "proto-buf-module-excludes-unread",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-buf-v1-build-excludes-unread",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-buf-work-listing-its-own-directory",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-buf-workspace-module-roots",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-declared-edge-beside-a-file-not-read-cleanly",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-declared-edge-proto-side",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-roots-import-unresolved",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-roots-import-unresolved-beside-a-resolved-one",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-roots-import-written-from-a-subdirectory",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-roots-option-names-no-extension",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-roots-own-files-of-one-path-in-two-trees",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-roots-type-name-unresolved",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-default-value",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-field-unbound-record-dead",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-file-outside-the-buf-modules",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-generation-config-flow-list",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-import-cycle-closed-twice",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-import-cycle-publishes-nothing",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-import-of-the-compiler-plugin-schema",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-import-outside-the-import-roots",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-include-root-directory-holds-a-schema-file",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-include-root-holds-only-its-copies",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-link-error-skipped",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-link-error-under-the-import-paths",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-missing-import-path",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-only-in-skipped-directories-holds-no-program",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-own-file-shadowed-under-the-import-paths",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-protoc-include-copies-vendored",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-reader-withholds-rpc",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-schema-option",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-sibling-import-by-base-name",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-suppression-in-proto",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-test-directories-unread",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-two-files-not-read-cleanly-for-causes-of-their-own",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-type-name-unresolved-under-a-buf-module",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-type-name-unresolved-under-the-import-paths",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-unresolved-import",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-unresolved-import-of-a-file-failing-to-link",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copies-differing-in-an-option-value",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copies-differing-in-two-trees",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copies-in-two-trees",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copy-below-a-directory-outside-the-buf-modules",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copy-in-an-include-directory",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copy-outside-the-import-paths-of-a-held-path",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-upstream-copy-sorted-before-its-importer",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-uses-and-members",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-vendored-by-file",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-vendored-copy-below-a-directory",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-well-known-copy-below-a-directory-outside-the-buf-modules",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-well-known-copy-below-a-directory-outside-the-import-paths",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    },
+    {
+      "fixture": "proto-well-known-copy-outside-the-buf-modules",
+      "result": "pass",
+      "expectations": [],
+      "unexpected": []
+    }
+  ]
+}

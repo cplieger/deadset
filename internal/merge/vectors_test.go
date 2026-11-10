@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
+	"github.com/cplieger/deadset-spec/v8/facts"
 	"github.com/cplieger/deadset-spec/v8/render"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
@@ -26,6 +27,9 @@ const vectorsDir = "vectors/merge"
 // reason its refusal names: every admission refusal, and the pending finding
 // no report resolves.
 var refusedCases = map[string]error{
+	"binding-facts-analyzer-mismatch":        errFactsAnalyzer,
+	"binding-facts-finding-in-report":        errFactsFinding,
+	"binding-facts-language-not-handed":      errFactsLanguage,
 	"configuration-built-and-not-built":      errEntryState,
 	"configuration-entries-differ":           errEntryIdentity,
 	"conformance-not-passed":                 errConformance,
@@ -181,6 +185,21 @@ func TestMergeRefusesThePublishedCasesNamingWhatFailed(t *testing.T) {
 			},
 		},
 		{
+			name: "binding-facts-analyzer-mismatch", named: []string{"deadset-go", "2.0.1"},
+			check: factsRefusal(errFactsAnalyzer, "deadset-go 2.0.1"),
+		},
+		{
+			name: "binding-facts-language-not-handed", named: []string{"deadset-go", "ts"},
+			check: factsRefusal(errFactsLanguage, "ts"),
+		},
+		{
+			name: "binding-facts-finding-in-report", named: []string{"deadset-go", "deadset-go/c-1"},
+			check: func(err error) bool {
+				refused, ok := errors.AsType[*factsError](err)
+				return ok && errors.Is(err, errFactsFinding) && refused.Analyzer == "deadset-go" && strings.HasPrefix(refused.Named, "deadset-go/c-1 ")
+			},
+		},
+		{
 			name: "one-analyzer-name-twice", named: []string{"deadset-go"},
 			check: func(err error) bool {
 				refused, ok := errors.AsType[*nameError](err)
@@ -250,6 +269,8 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 		"target identity":    func(r *report.Report) bool { r.Target.Identity += "x"; return true },
 		"target kind": func(r *report.Report) bool {
 			switch kinds := r.Target.LanguageKinds; {
+			case r.Target.Kind == "":
+				return false
 			case kinds != nil:
 				kinds[vocab.Go], kinds[vocab.TS] = kinds[vocab.TS], kinds[vocab.Go]
 			case r.Target.Kind == report.TargetKindApplication:
@@ -259,11 +280,23 @@ func TestMergeVectorComparisonFailsOnAOneFieldChange(t *testing.T) {
 			}
 			return true
 		},
-		"a configuration's id": func(r *report.Report) bool { r.Configurations[0].ID += "x"; return true },
-		"a test file rule":     func(r *report.Report) bool { r.TestFileRules[0].Matched++; return true },
-		"totals.reasons":       func(r *report.Report) bool { r.Totals.ReasonsRecorded++; return true },
-		"totals.withheld":      func(r *report.Report) bool { r.Totals.Withheld.Possible++; return true },
-		"totals.deletable":     func(r *report.Report) bool { r.Totals.DeletableLines++; return true },
+		"a configuration's id": func(r *report.Report) bool {
+			if len(r.Configurations) == 0 {
+				return false
+			}
+			r.Configurations[0].ID += "x"
+			return true
+		},
+		"a test file rule": func(r *report.Report) bool {
+			if len(r.TestFileRules) == 0 {
+				return false
+			}
+			r.TestFileRules[0].Matched++
+			return true
+		},
+		"totals.reasons":   func(r *report.Report) bool { r.Totals.ReasonsRecorded++; return true },
+		"totals.withheld":  func(r *report.Report) bool { r.Totals.Withheld.Possible++; return true },
+		"totals.deletable": func(r *report.Report) bool { r.Totals.DeletableLines++; return true },
 		"the carried analyzer": func(r *report.Report) bool {
 			switch {
 			case len(r.Findings) > 0:
@@ -363,11 +396,13 @@ func readCase(t *testing.T, name string) vectorCase {
 		ContractVersion: caller.ContractVersion,
 		Name:            caller.Analyzer.Name,
 		Version:         caller.Analyzer.Version,
+		MinConfidence:   caller.MinConfidence,
 		Conformance:     caller.Analyzer.Conformance,
 	}
 	c.failOn = caller.FailOn
 
 	files, err := fs.Glob(spec.Vectors, path.Join(dir, "inputs", "*.json"))
+	files = slices.DeleteFunc(files, func(f string) bool { return strings.HasSuffix(f, factsSuffix) })
 	if err != nil || len(files) == 0 {
 		t.Fatalf("Setup: %s/inputs holds no report (%v)", dir, err)
 	}
@@ -383,10 +418,19 @@ func readCase(t *testing.T, name string) vectorCase {
 		if digest == "" {
 			t.Fatalf("Setup: %s/caller.json names no digest for %s", dir, path.Base(file))
 		}
-		c.inputs = append(c.inputs, Input{Report: decoded, Digest: digest})
+		in := Input{Report: decoded, Digest: digest}
+		if body, err := fs.ReadFile(spec.Vectors, strings.TrimSuffix(file, ".json")+factsSuffix); err == nil {
+			if in.Facts, err = facts.Decode(body); err != nil {
+				t.Fatalf("Setup: facts.Decode(%s) = %v", file, err)
+			}
+		}
+		c.inputs = append(c.inputs, in)
 	}
 	return c
 }
+
+// factsSuffix ends the name of an input's facts document, beside its report.
+const factsSuffix = ".facts.json"
 
 // callerFile is a case's caller.json.
 type callerFile struct {
@@ -394,6 +438,7 @@ type callerFile struct {
 	SchemaVersion   string            `json:"schema_version"`
 	ContractVersion string            `json:"contract_version"`
 	FailOn          vocab.Severity    `json:"fail_on"`
+	MinConfidence   vocab.Class       `json:"min_confidence"`
 	Analyzer        struct {
 		Name        string             `json:"name"`
 		Version     string             `json:"version"`
@@ -436,4 +481,13 @@ func encode(t *testing.T, merged *report.Report) []byte {
 		t.Fatalf("report.Encode(the merged report) = %v", err)
 	}
 	return written.Bytes()
+}
+
+// factsRefusal checks a facts admission refusal of the Go report naming what
+// its facts document names.
+func factsRefusal(want error, named string) func(error) bool {
+	return func(err error) bool {
+		refused, ok := errors.AsType[*factsError](err)
+		return ok && errors.Is(err, want) && refused.Analyzer == "deadset-go" && refused.Named == named
+	}
 }

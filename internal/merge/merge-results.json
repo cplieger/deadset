@@ -1,8 +1,172 @@
 {
   "description": "The merge's result over the published merge vectors of the corpus version named, those marked pending aside: a case passes when the merge writes its expected report byte for byte with its expected exit code, or refuses it with the refusal and the exit code it states. result is fail when any case fails.",
-  "corpus_version": "6.0.0",
+  "corpus_version": "6.2.0",
   "result": "pass",
   "cases": [
+    {
+      "case": "binding-all-unreferenced",
+      "result": "pass"
+    },
+    {
+      "case": "binding-and-declared-edge-one-fixpoint",
+      "result": "pass"
+    },
+    {
+      "case": "binding-and-declared-edge-promoted-once",
+      "result": "pass"
+    },
+    {
+      "case": "binding-blocked-carried-findings-share-a-line",
+      "result": "pass"
+    },
+    {
+      "case": "binding-cap-lowers-class",
+      "result": "pass"
+    },
+    {
+      "case": "binding-carried-edge-side-dropped",
+      "result": "pass"
+    },
+    {
+      "case": "binding-closed-cap-keeps-certain",
+      "result": "pass"
+    },
+    {
+      "case": "binding-consumer-live",
+      "result": "pass"
+    },
+    {
+      "case": "binding-consumer-via-implementer",
+      "result": "pass"
+    },
+    {
+      "case": "binding-container-keeps-no-member",
+      "result": "pass"
+    },
+    {
+      "case": "binding-facts-analyzer-mismatch",
+      "result": "pass"
+    },
+    {
+      "case": "binding-facts-finding-in-report",
+      "result": "pass"
+    },
+    {
+      "case": "binding-facts-language-not-handed",
+      "result": "pass"
+    },
+    {
+      "case": "binding-fallback-suffix-match",
+      "result": "pass"
+    },
+    {
+      "case": "binding-fallback-types-scope",
+      "result": "pass"
+    },
+    {
+      "case": "binding-implementer-dead",
+      "result": "pass"
+    },
+    {
+      "case": "binding-implementer-finding-beside-report-findings",
+      "result": "pass"
+    },
+    {
+      "case": "binding-implementer-live-is-no-call",
+      "result": "pass"
+    },
+    {
+      "case": "binding-implementer-via-implementer",
+      "result": "pass"
+    },
+    {
+      "case": "binding-implementer-without-schema-record",
+      "result": "pass"
+    },
+    {
+      "case": "binding-library-go-with-proto",
+      "result": "pass"
+    },
+    {
+      "case": "binding-library-language-lowers-class",
+      "result": "pass"
+    },
+    {
+      "case": "binding-library-language-withheld",
+      "result": "pass"
+    },
+    {
+      "case": "binding-library-language-withheld-container",
+      "result": "pass"
+    },
+    {
+      "case": "binding-library-language-withheld-rpc",
+      "result": "pass"
+    },
+    {
+      "case": "binding-match-by-schema-file",
+      "result": "pass"
+    },
+    {
+      "case": "binding-member-folds-into-container",
+      "result": "pass"
+    },
+    {
+      "case": "binding-member-keeps-container-live",
+      "result": "pass"
+    },
+    {
+      "case": "binding-mixed-report-with-proto",
+      "result": "pass"
+    },
+    {
+      "case": "binding-neutral-unbound",
+      "result": "pass"
+    },
+    {
+      "case": "binding-proto-only-target",
+      "result": "pass"
+    },
+    {
+      "case": "binding-schema-finding-with-components",
+      "result": "pass"
+    },
+    {
+      "case": "binding-shared-carried-finding",
+      "result": "pass"
+    },
+    {
+      "case": "binding-shared-carried-finding-one-component",
+      "result": "pass"
+    },
+    {
+      "case": "binding-shared-carried-findings-share-a-line",
+      "result": "pass"
+    },
+    {
+      "case": "binding-stale-edge-beside-schema-finding",
+      "result": "pass"
+    },
+    {
+      "case": "binding-two-languages-one-live",
+      "result": "pass"
+    },
+    {
+      "case": "binding-unevaluated-reads-live",
+      "result": "pass"
+    },
+    {
+      "case": "binding-union-confidence",
+      "result": "pass"
+    },
+    {
+      "case": "binding-unsupported-note",
+      "result": "pass"
+    },
+    {
+      "case": "binding-uses-keeps-type-live",
+      "result": "pass"
+    },
     {
       "case": "components-listed-and-joined",
       "result": "pass"

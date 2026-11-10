@@ -55,7 +55,10 @@ func (*command) bindPrintLanguages(set *flag.FlagSet) runner {
 type census struct {
 	Languages []censusLanguage `json:"languages"`
 	Analyzers []censusAnalyzer `json:"analyzers"`
-	LeftOut   []censusLeftOut  `json:"left_out"`
+
+	// LeftOut is always empty: census.schema.json leaves out only a language
+	// whose reader the orchestrator lacks, and deadset links every reader.
+	LeftOut []struct{} `json:"left_out"`
 }
 
 type censusLanguage struct {
@@ -68,30 +71,19 @@ type censusAnalyzer struct {
 	Languages []vocab.Language `json:"languages"`
 }
 
-type censusLeftOut struct {
-	Language  vocab.Language `json:"language"`
-	Reason    string         `json:"reason"`
-	Consumers []string       `json:"consumers"`
-}
-
 func censusOf(resolved *config.Resolved, planned *plan.Plan) *census {
 	provenance := detected
 	if !planned.Detected {
 		provenance = resolved.Provenance(vocab.KeyAnalysisLanguages)
 	}
-	c := &census{Languages: []censusLanguage{}, Analyzers: []censusAnalyzer{}, LeftOut: []censusLeftOut{}}
+	c := &census{Languages: []censusLanguage{}, Analyzers: []censusAnalyzer{}, LeftOut: []struct{}{}}
 	for _, language := range planned.Languages {
 		c.Languages = append(c.Languages, censusLanguage{Language: language, Provenance: provenance})
 	}
 	for i := range planned.Sources {
-		c.Analyzers = append(c.Analyzers, censusAnalyzer{Name: planned.Sources[i].Entry.Name, Languages: planned.Sources[i].Languages})
-	}
-	for _, language := range planned.Unread {
-		consumers := planned.DroppedWith([]vocab.Language{language})
-		if consumers == nil {
-			consumers = []string{}
+		if !planned.Sources[i].InProcess {
+			c.Analyzers = append(c.Analyzers, censusAnalyzer{Name: planned.Sources[i].Entry.Name, Languages: planned.Sources[i].Languages})
 		}
-		c.LeftOut = append(c.LeftOut, censusLeftOut{Language: language, Reason: unreadReason(planned, language), Consumers: consumers})
 	}
 	return c
 }

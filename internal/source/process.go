@@ -20,6 +20,7 @@ import (
 
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/document"
+	"github.com/cplieger/deadset-spec/v8/facts"
 	"github.com/cplieger/deadset-spec/v8/report"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/failure"
@@ -53,6 +54,10 @@ var (
 	// ErrReportExists reports a file already at the report path, which no read
 	// could tell from a report the analyzer wrote; the analyzer is not run.
 	ErrReportExists = errors.New("a file is at the report path before the analyzer ran")
+
+	// ErrNoFacts reports an analyzer asked for a facts document that wrote
+	// its report and none.
+	ErrNoFacts = errors.New("the analyzer wrote no facts document")
 )
 
 // The refusals a handshake makes, each carried by a [*HandshakeError].
@@ -79,6 +84,10 @@ var (
 	// ErrDescribedLanguages reports an analyzer that does not describe itself
 	// as claiming every language the run hands it.
 	ErrDescribedLanguages = errors.New("the analyzer does not claim every language the run hands it")
+
+	// ErrFactsVersion reports an analyzer asked for facts whose describe
+	// document names no facts version the Contract lists.
+	ErrFactsVersion = errors.New("the analyzer writes no facts version the run reads")
 )
 
 // ErrRelativeCommand reports a command that is a path but not an absolute one,
@@ -150,6 +159,7 @@ type Process struct {
 	dir         string
 	digest      string
 	languages   []vocab.Language
+	facts       bool
 }
 
 // Open is the analyzer the planned source's entry names, run in dir. The
@@ -173,7 +183,7 @@ func Open(planned *plan.Source, dir string, diagnostics io.Writer) (*Process, er
 	if err != nil {
 		return refuse(err)
 	}
-	return &Process{diagnostics: diagnostics, name: planned.Entry.Name, command: executable, dir: dir, languages: planned.Languages}, nil
+	return &Process{diagnostics: diagnostics, name: planned.Entry.Name, command: executable, dir: dir, languages: planned.Languages, facts: planned.Facts}, nil
 }
 
 // Name is the provider entry's name.
@@ -183,6 +193,7 @@ func (p *Process) Name() string { return p.name }
 type description struct {
 	Conformance            *report.Conformance `json:"conformance"`
 	Name                   string              `json:"name"`
+	FactsVersionWritten    string              `json:"facts_version_written"`
 	SchemaVersionsAccepted []string            `json:"schema_versions_accepted"`
 	Languages              []vocab.Language    `json:"languages"`
 }
@@ -218,7 +229,8 @@ func (p *Process) Admit(ctx context.Context, kept rundir.Entry, accepted []strin
 			runErr = cmp.Or(runErr, writeErr)
 		}
 	}
-	if keepErr := kept.WriteDescribe(printed.Bytes()); keepErr != nil {
+	// An interrupted describe keeps what it printed, the evidence of its refusal.
+	if keepErr := kept.WriteDescribe(context.WithoutCancel(ctx), printed.Bytes()); keepErr != nil {
 		return keepErr
 	}
 	switch {
@@ -243,11 +255,16 @@ func (p *Process) Admit(ctx context.Context, kept rundir.Entry, accepted []strin
 }
 
 // admit refuses a description that does not name the entry, leaves a handed
-// language unclaimed, records no conformance pass or reads no schema version
-// among accepted.
+// language unclaimed, records no conformance pass, reads no schema version
+// among accepted, or, asked for facts, writes no facts version the Contract
+// lists.
 func (p *Process) admit(described *description, accepted []string) error {
 	if described.Name != p.name {
 		return fmt.Errorf("%w: it names itself %q", ErrDescribedName, described.Name)
+	}
+	if p.facts && !slices.Contains(vocab.FactsVersions(), described.FactsVersionWritten) {
+		return fmt.Errorf("%w: it describes facts version %q, and the run reads %s", ErrFactsVersion,
+			described.FactsVersionWritten, strings.Join(vocab.FactsVersions(), ", "))
 	}
 	for _, language := range p.languages {
 		if !slices.Contains(described.Languages, language) {
@@ -289,8 +306,12 @@ func (p *Process) Produce(ctx context.Context, files Files) Outcome {
 		return classed(vocab.RunUnwrittenOutput, cmp.Or(err, ErrReportExists))
 	}
 
+	args := []string{"analyze", "--scope=" + files.Scope, "--config=" + files.Config, "--report=" + files.Report}
+	if files.Facts != "" {
+		args = append(args, "--facts="+files.Facts)
+	}
 	var printed bytes.Buffer
-	cmd := command(ctx, p.command, p.dir, "analyze", "--scope="+files.Scope, "--config="+files.Config, "--report="+files.Report)
+	cmd := command(ctx, p.command, p.dir, args...)
 	cmd.Stdout = &printed
 	cmd.Stderr = &printed
 	exit, err := wait(ctx, cmd)
@@ -323,8 +344,26 @@ func (p *Process) Produce(ctx context.Context, files Files) Outcome {
 	if read.MergedFrom != nil {
 		return refuse(errors.New("the report names merged_from, and a report an analyzer writes omits merged_from"))
 	}
+	if files.Facts != "" {
+		if out.Facts, err = readFacts(files.Facts, exit); err != nil {
+			return refuse(err)
+		}
+	}
 	out.Report = read
 	return out
+}
+
+// readFacts reads the facts document an analyzer wrote, absent being
+// [ErrNoFacts].
+func readFacts(path string, exit int) (*facts.Document, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("exited %d: %w", exit, ErrNoFacts)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return facts.Decode(data)
 }
 
 // command is the executable at path run with args in dir. A cancelled ctx

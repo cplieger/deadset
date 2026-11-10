@@ -15,7 +15,6 @@ import (
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/config"
 	"github.com/cplieger/deadset/v2/internal/failure"
-	"github.com/cplieger/deadset/v2/internal/reads"
 	"github.com/cplieger/deadset/v2/internal/scope"
 )
 
@@ -70,13 +69,8 @@ type Plan struct {
 	Sources []Source
 
 	// Dropped is every declared consumer the run leaves out with the
-	// languages [Input.Omitted] or Unread names, in the scope document's order.
+	// languages [Input.Omitted] names, in the scope document's order.
 	Dropped []Dropped
-
-	// Unread is every language this build holds no reader of that the census
-	// of the target, or in a detected run of a declared consumer, put in
-	// scope, which the run leaves out, in languages.json's order.
-	Unread []vocab.Language
 
 	// Detected reports whether a census of the target put Languages in
 	// scope, analysis.languages naming none.
@@ -95,8 +89,18 @@ type Source struct {
 
 	Entry config.Provider
 
-	// Index is the entry's place in the provider list.
+	// Index is the entry's place in the provider list, -1 for an in-process
+	// reader.
 	Index int
+
+	// InProcess is a schema reader linked into this program, its entry the
+	// name and the language of its languages.json row, which no provider
+	// list holds.
+	InProcess bool
+
+	// Facts asks a process analyzer for a facts document beside its report:
+	// a schema language is in scope, whose reader the bindings decide.
+	Facts bool
 }
 
 // Dropped is a declared consumer the run leaves out, and every language it
@@ -122,15 +126,14 @@ func (e *UnclaimedError) Error() string {
 }
 
 // Make plans the run in asks for, from what tree holds. A target in which the
-// census finds no language, a configured language or the target census's only
-// languages this build holds no reader of, and a declared consumer that is
-// absent, is no directory or holds no language, is a setup [*failure.Error];
+// census finds no language, and a declared consumer that is absent, is no
+// directory or holds no language, is a setup [*failure.Error];
 // a language in scope no provider entry claims is a [*config.Error], before
 // any consumer is read. A consumer is [Plan.Dropped] when every language it
 // holds is left out, or when in.Omitted is not empty and it holds no language
 // of the plan; each kept consumer no analyzer claims is an [*UnclaimedError].
 func Make(in *Input, tree Tree) (*Plan, error) {
-	languages, unread, err := inScope(in, tree)
+	languages, err := inScope(in, tree)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +141,7 @@ func Make(in *Input, tree Tree) (*Plan, error) {
 		return nil, refused
 	}
 	p := &Plan{
-		Dir: in.Scope.Root(), Languages: languages, Unread: unread, Detected: len(in.Languages) == 0,
+		Dir: in.Scope.Root(), Languages: languages, Detected: len(in.Languages) == 0,
 		Scope: scope.Document{Workspace: in.Scope.Workspace},
 	}
 	p.Scope.Target, err = named(in.Scope.Target, languages, true, tree)
@@ -158,9 +161,7 @@ func Make(in *Input, tree Tree) (*Plan, error) {
 // consumers names in p's scope document every declared consumer the run does
 // not drop, and returns the languages each of them holds, in that order. It
 // drops a consumer when every language it holds is left out, or when the run
-// left a language out and the consumer holds none of p's languages. In a
-// detected run, a language a consumer holds that this build holds no reader
-// of joins [Plan.Unread].
+// left a language out and the consumer holds none of p's languages.
 func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
 	var held [][]vocab.Language
 	for _, consumer := range in.Scope.Consumers {
@@ -168,12 +169,8 @@ func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
 		if err != nil {
 			return nil, err
 		}
-		if p.Detected {
-			p.Unread = union(p.Unread, slices.DeleteFunc(slices.Clone(holds), reads.Language))
-		}
-		leftOut := slices.Concat(in.Omitted, p.Unread)
 		kept := func(l vocab.Language) bool {
-			return !slices.Contains(leftOut, l) && (len(in.Omitted) == 0 || slices.Contains(p.Languages, l))
+			return !slices.Contains(in.Omitted, l) && (len(in.Omitted) == 0 || slices.Contains(p.Languages, l))
 		}
 		if !slices.ContainsFunc(holds, kept) {
 			p.Dropped = append(p.Dropped, Dropped{Path: consumer.Path, Languages: holds})
@@ -191,9 +188,8 @@ func (p *Plan) consumers(in *Input, tree Tree) ([][]vocab.Language, error) {
 }
 
 // inScope is the configured language set, or the census of the target
-// without the languages the run left out, none where it left out every one,
-// and the languages of the census this build holds no reader of.
-func inScope(in *Input, tree Tree) (languages, unread []vocab.Language, err error) {
+// without the languages the run left out, none where it left out every one.
+func inScope(in *Input, tree Tree) ([]vocab.Language, error) {
 	if len(in.Languages) > 0 {
 		var configured []vocab.Language
 		rows := vocab.LanguageRows()
@@ -202,41 +198,17 @@ func inScope(in *Input, tree Tree) (languages, unread []vocab.Language, err erro
 				configured = append(configured, rows[i].Language)
 			}
 		}
-		if named := slices.DeleteFunc(slices.Clone(configured), reads.Language); len(named) > 0 {
-			return nil, nil, failure.Wrap(vocab.SetupUnsupportedLanguage, fmt.Errorf("%s names %s, and this build holds no reader of %s",
-				vocab.KeyAnalysisLanguages, Quoted(named), pronoun(named)))
-		}
-		return configured, nil, nil
+		return configured, nil
 	}
 	found, err := tree.Languages(in.Scope.Target.Path)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	found = slices.DeleteFunc(slices.Clone(found), func(l vocab.Language) bool { return slices.Contains(in.Omitted, l) })
-	switch {
-	case len(found) == 0 && len(in.Omitted) > 0:
-		return nil, nil, nil
-	case len(found) == 0:
-		return nil, nil, noProgram(in.Scope.Target.Path)
+	if len(found) == 0 && len(in.Omitted) == 0 {
+		return nil, noProgram(in.Scope.Target.Path)
 	}
-	unread = slices.DeleteFunc(slices.Clone(found), reads.Language)
-	if len(unread) == len(found) {
-		return nil, nil, failure.Unreadable(fmt.Errorf("the census of %s puts only %s in scope, and this build holds no reader of %s",
-			in.Scope.Target.Path, Quoted(unread), pronoun(unread)))
-	}
-	return slices.DeleteFunc(found, func(l vocab.Language) bool { return !reads.Language(l) }), unread, nil
-}
-
-// union is every language a or b holds, once, in languages.json's order.
-func union(a, b []vocab.Language) []vocab.Language {
-	var both []vocab.Language
-	rows := vocab.LanguageRows()
-	for i := range rows {
-		if l := rows[i].Language; slices.Contains(a, l) || slices.Contains(b, l) {
-			both = append(both, l)
-		}
-	}
-	return both
+	return found, nil
 }
 
 // Quoted is languages quoted and joined by commas, as a line names them.
@@ -246,14 +218,6 @@ func Quoted(languages []vocab.Language) string {
 		quoted[i] = strconv.Quote(string(language))
 	}
 	return strings.Join(quoted, ", ")
-}
-
-// pronoun is the pronoun a line names languages again by.
-func pronoun(languages []vocab.Language) string {
-	if len(languages) == 1 {
-		return "it"
-	}
-	return "them"
 }
 
 // DroppedWith is the path of every dropped consumer holding one of
@@ -274,10 +238,13 @@ func noProgram(root string) *failure.Error {
 }
 
 // claimed refuses a provider list that leaves languages in scope with no
-// analyzer.
+// analyzer; a language whose row is read in process needs none.
 func claimed(entries []config.Provider, languages []vocab.Language) error {
 	var unclaimed []vocab.Language
 	for _, language := range languages {
+		if row, _ := vocab.LanguageRowOf(language); row.InProcess() {
+			continue
+		}
 		if !slices.ContainsFunc(entries, func(e config.Provider) bool { return slices.Contains(e.Languages, string(language)) }) {
 			unclaimed = append(unclaimed, language)
 		}
@@ -287,6 +254,18 @@ func claimed(entries []config.Provider, languages []vocab.Language) error {
 	}
 	return &config.Error{Message: fmt.Sprintf("%s holds no entry claiming %s, in scope for this run: "+
 		"add an entry claiming each, or leave them out of scope", vocab.KeyProvidersAnalyzers, Quoted(unclaimed))}
+}
+
+// readers is an entry for each in-process language in scope: its row's
+// analyzer claiming it.
+func (p *Plan) readers() []config.Provider {
+	var held []config.Provider
+	for _, language := range p.Languages {
+		if row, _ := vocab.LanguageRowOf(language); row.InProcess() {
+			held = append(held, config.Provider{Name: row.Analyzer, Languages: []string{string(language)}})
+		}
+	}
+	return held
 }
 
 // consumerLanguages is every language a census finds in the consumer at
@@ -315,7 +294,7 @@ func named(module scope.Module, languages []vocab.Language, target bool, tree Tr
 	}
 	rows := vocab.LanguageRows()
 	for i := range rows {
-		if !slices.Contains(languages, rows[i].Language) {
+		if !slices.Contains(languages, rows[i].Language) || rows[i].IdentitySource.File == "" {
 			continue
 		}
 		name, found, err := tree.Name(module.Path, rows[i].IdentitySource)
@@ -334,16 +313,26 @@ func named(module scope.Module, languages []vocab.Language, target bool, tree Tr
 }
 
 // route hands each provider entry claiming a language in scope the consumers
-// holding one of its languages, held per consumer, and refuses a consumer no
-// entry is handed.
+// holding one of its languages, held per consumer, plans the reader of each
+// in-process language in scope over the target alone, and refuses a consumer
+// no analyzer is handed. A process analyzer is asked for facts when an
+// in-process language is in scope.
 func (p *Plan) route(entries []config.Provider, held [][]vocab.Language) error {
 	routed := make([]bool, len(held))
-	for i, entry := range entries {
+	readers := p.readers()
+	for i, entry := range slices.Concat(entries, readers) {
 		languages := slices.DeleteFunc(slices.Clone(p.Languages), func(l vocab.Language) bool { return !slices.Contains(entry.Languages, string(l)) })
 		if len(languages) == 0 {
 			continue
 		}
-		source := Source{Entry: entry, Index: i, Languages: languages}
+		source := Source{Entry: entry, Index: i, Languages: languages, Facts: len(readers) > 0}
+		if i >= len(entries) {
+			own := p.Scope
+			own.Consumers = nil
+			source.Index, source.InProcess, source.Facts, source.Scope = -1, true, false, &own
+			p.Sources = append(p.Sources, source)
+			continue
+		}
 		var consumers []scope.Module
 		for j := range held {
 			if slices.ContainsFunc(held[j], func(l vocab.Language) bool { return slices.Contains(languages, l) }) {
@@ -358,11 +347,19 @@ func (p *Plan) route(entries []config.Provider, held [][]vocab.Language) error {
 		}
 		p.Sources = append(p.Sources, source)
 	}
-	var unclaimed []error
+	return p.unclaimed(held, routed)
+}
+
+// unclaimed refuses each consumer route handed no source, once per path,
+// since two scope entries may resolve to one directory.
+func (p *Plan) unclaimed(held [][]vocab.Language, routed []bool) error {
+	var refusals []error
+	refused := map[string]bool{}
 	for j := range held {
-		if !routed[j] {
-			unclaimed = append(unclaimed, &UnclaimedError{Path: p.Scope.Consumers[j].Path, Languages: held[j]})
+		if path := p.Scope.Consumers[j].Path; !routed[j] && !refused[path] {
+			refused[path] = true
+			refusals = append(refusals, &UnclaimedError{Path: path, Languages: held[j]})
 		}
 	}
-	return errors.Join(unclaimed...)
+	return errors.Join(refusals...)
 }

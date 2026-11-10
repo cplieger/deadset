@@ -226,6 +226,7 @@ func readConfig(values map[vocab.Key]json.RawMessage) (config, error) {
 	err := errors.Join(
 		providersErr,
 		json.Unmarshal(values[vocab.KeyAnalysisLanguages], &c.Languages),
+		json.Unmarshal(values[vocab.KeyAnalysisMinConfidence], &c.MinConfidence),
 		json.Unmarshal(values[vocab.KeyReportersFormats], &c.Reporters.Formats),
 		json.Unmarshal(values[vocab.KeyReportersSort], &sort),
 		json.Unmarshal(values[vocab.KeyReportersMaxFindings], &maxFindings),

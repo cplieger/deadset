@@ -144,13 +144,13 @@ func TestNoProgramNamesWhatALanguageReadsAProgramFrom(t *testing.T) {
 	t.Parallel()
 
 	detail := failure.Wrap(vocab.SetupNoProgram, errors.New("the target cannot be read")).Failures[0].Detail
-	for _, name := range []string{"go reads one from go.mod or a .go file", "ts reads one from tsconfig*.json or jsconfig*.json or a .js or .jsx or .mjs or .cjs file", "run from the directory", "analysis.languages"} {
+	for _, name := range []string{
+		"go reads one from go.mod or a .go file", "ts reads one from tsconfig*.json or jsconfig*.json or a .js or .jsx or .mjs or .cjs file",
+		"proto reads one from buf.yaml or buf.work.yaml or a .proto file", "run from the directory", "analysis.languages",
+	} {
 		if !strings.Contains(detail, name) {
 			t.Errorf("the no-program failure %q, want it to name %q", detail, name)
 		}
-	}
-	if strings.Contains(detail, "proto") {
-		t.Errorf("the no-program failure %q names proto, a language this build does not read", detail)
 	}
 }
 

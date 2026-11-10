@@ -97,7 +97,6 @@ func (a *analyzeFlags) analyze(ctx context.Context, stdout, stderr io.Writer) (i
 		Version:     version(),
 		Diagnostics: stderr,
 		Started:     func(dir string) { fmt.Fprintf(stderr, "%s: the run directory is %s\n", run.Product, dir) },
-		Planned:     func(planned *plan.Plan) { _, _ = io.WriteString(stderr, unread(planned)) },
 		Print:       func(outcomes []source.Outcome) error { return printOutcomes(stderr, outcomes) },
 		Open:        a.open,
 	})
@@ -238,24 +237,6 @@ func omission(o *source.Outcome) string {
 		return fmt.Sprintf("%s: %s found no program, so the run goes on without it\n", run.Product, o.Analyzer)
 	}
 	return fmt.Sprintf("%s: %s found no program, so the run leaves %s out of scope%s\n", run.Product, o.Analyzer, plan.Quoted(o.LeftOut), with(o.Dropped))
-}
-
-// unread is a line per language the plan leaves out because this build holds
-// no reader of it, giving its [unreadReason].
-func unread(planned *plan.Plan) string {
-	var lines strings.Builder
-	for _, language := range planned.Unread {
-		fmt.Fprintf(&lines, "%s: %s\n", run.Product, unreadReason(planned, language))
-	}
-	return lines.String()
-}
-
-// unreadReason is why the plan leaves out language, one of [plan.Plan.Unread],
-// naming the consumers it leaves out with it.
-func unreadReason(planned *plan.Plan, language vocab.Language) string {
-	one := []vocab.Language{language}
-	return fmt.Sprintf("this build of %s holds no reader of %s, so the run leaves it out of scope%s",
-		run.Product, plan.Quoted(one), with(planned.DroppedWith(one)))
 }
 
 func with(dropped []string) string {

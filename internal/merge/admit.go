@@ -29,7 +29,28 @@ var (
 	errEntryIdentity = errors.New("two reports hold different entries under one id")
 	errEntryState    = errors.New("two reports place one id in two states")
 	errAnalyzerName  = errors.New("two reports carry one analyzer name")
+	errFactsAnalyzer = errors.New("the report's facts document names another analyzer or version")
+	errFactsLanguage = errors.New("the report's facts document is about a language the report does not cover")
+	errFactsFinding  = errors.New("the report's facts document carries a finding the report names")
 )
+
+// factsError is an input whose facts document the admission step refuses,
+// merge.md step 1 rules 8 to 10. Err is [errFactsAnalyzer],
+// [errFactsLanguage] or [errFactsFinding]; Named is what the rule read: the
+// facts document's analyzer, its language, or the component or reference.
+type factsError struct {
+	Err      error
+	Analyzer string
+	Named    string
+}
+
+// Error names the report and what its facts document names.
+func (e *factsError) Error() string {
+	return fmt.Sprintf("merge: %s: %v: %s", e.Analyzer, e.Err, e.Named)
+}
+
+// Unwrap is the reason for the refusal.
+func (e *factsError) Unwrap() error { return e.Err }
 
 // admissionError is one input report the admission step refuses. Err is
 // [errSchemaVersion], [errConformance] or [errOmitted].
@@ -209,6 +230,8 @@ func admit(ordered []Input, accepted []string) error {
 	for i := range ordered {
 		if err := admitOne(ordered[i].Report, accepted); err != nil {
 			refused = append(refused, err)
+		} else if err := admitFacts(&ordered[i]); err != nil {
+			refused = append(refused, err)
 		}
 	}
 	if len(refused) == 1 {
@@ -257,18 +280,54 @@ func admitOne(r *report.Report, accepted []string) error {
 	return nil
 }
 
+// admitFacts runs rules 8 to 10 over an input's facts document: its analyzer
+// and version are the report's, its language one the report covers, and no
+// finding it carries names a component or a reference a finding of the
+// report names.
+func admitFacts(in *Input) error {
+	d, r := in.Facts, in.Report
+	if d == nil {
+		return nil
+	}
+	if d.Analyzer.Name != r.Analyzer.Name || d.Analyzer.Version != r.Analyzer.Version {
+		return &factsError{Err: errFactsAnalyzer, Analyzer: r.Analyzer.Name, Named: d.Analyzer.Name + " " + d.Analyzer.Version}
+	}
+	if !slices.Contains(r.Analyzer.Languages, d.Language) {
+		return &factsError{Err: errFactsLanguage, Analyzer: r.Analyzer.Name, Named: string(d.Language)}
+	}
+	reported := map[string]bool{}
+	for i := range r.Findings {
+		reported[r.Findings[i].Component.ID], reported[r.Findings[i].Symbol.Ref] = true, true
+	}
+	for i := range d.Bindings {
+		b := &d.Bindings[i]
+		embedded := slices.Clone(b.Carried)
+		if b.Finding != nil {
+			embedded = append(embedded, *b.Finding)
+		}
+		for j := range embedded {
+			if f := &embedded[j]; reported[f.Component.ID] || reported[f.Symbol.Ref] {
+				return &factsError{Err: errFactsFinding, Analyzer: r.Analyzer.Name, Named: f.Component.ID + " " + f.Symbol.Ref}
+			}
+		}
+	}
+	return nil
+}
+
 // coversItsLanguages reports whether a mixed report's language kinds name
-// exactly the languages the report covers, and not one kind for all of them.
+// exactly the languages it covers whose rows take a target kind, and not one
+// kind for all of them.
 func coversItsLanguages(r *report.Report) bool {
 	kinds := r.Target.LanguageKinds
+	languages := kindTaking(r.Analyzer.Languages)
 	distinct := map[report.TargetKind]bool{}
 	for language, kind := range kinds {
-		if !slices.Contains(r.Analyzer.Languages, language) {
+		if !slices.Contains(languages, language) {
 			return false
 		}
 		distinct[kind] = true
 	}
-	for _, language := range r.Analyzer.Languages {
+	for _, language := range languages {
 		if _, held := kinds[language]; !held {
 			return false
 		}
@@ -283,7 +342,7 @@ func admitPair(a, b *Input, aEntries, bEntries *idEntries) error {
 	if first.Target.Root != second.Target.Root || first.Target.Identity != second.Target.Identity {
 		return &targetError{Analyzers: names, Targets: [2]report.Target{first.Target, second.Target}}
 	}
-	for _, language := range first.Analyzer.Languages {
+	for _, language := range kindTaking(first.Analyzer.Languages) {
 		if !slices.Contains(second.Analyzer.Languages, language) {
 			continue
 		}

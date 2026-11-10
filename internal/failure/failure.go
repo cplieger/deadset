@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
-	"github.com/cplieger/deadset/v2/internal/reads"
 )
 
 // Failure is one cause that ends a run: its class and what fails, the fix
@@ -48,19 +47,15 @@ func (e *Error) Setup() bool { return isSetup(e.Failures[0].Class) }
 
 // fixes is the fix each class deadset names itself states after what fails.
 var fixes = map[string]string{
-	vocab.SetupNoProgram:           noProgramFix(reads.Rows()),
-	vocab.SetupUnreadableDocument:  "make it a regular file inside the target root that the run can read, or remove it",
-	vocab.SetupUnsupportedLanguage: "leave each out of " + string(vocab.KeyAnalysisLanguages) + ", or " + readerFix,
-	vocab.RunUnwrittenOutput:       "name a path the run can write, or correct the template that renders it",
-	vocab.RunMissingAnalyzer:       "install the analyzer, or correct the command of its provider entry",
-	vocab.RunUnadmittedAnalyzer:    "install a release of the analyzer that the run admits",
-	vocab.RunUnresolvedEdge:        "run the analyzer of that side's language, or remove the edge from " + vocab.EdgesFileName,
-	vocab.RunInterruptedRun:        "run it again without interrupting it",
-	vocab.RunProductFault:          "reinstall deadset and its analyzers, and report the fault to their maintainers where a reinstalled product fails the same way",
+	vocab.SetupNoProgram:          noProgramFix(vocab.LanguageRows()),
+	vocab.SetupUnreadableDocument: "make it a regular file inside the target root that the run can read, or remove it",
+	vocab.RunUnwrittenOutput:      "name a path the run can write, or correct the template that renders it",
+	vocab.RunMissingAnalyzer:      "install the analyzer, or correct the command of its provider entry",
+	vocab.RunUnadmittedAnalyzer:   "install a release of the analyzer that the run admits",
+	vocab.RunUnresolvedEdge:       "run the analyzer of that side's language, or remove the edge from " + vocab.EdgesFileName,
+	vocab.RunInterruptedRun:       "run it again without interrupting it",
+	vocab.RunProductFault:         "reinstall deadset and its analyzers, and report the fault to their maintainers where a reinstalled product fails the same way",
 }
-
-// readerFix is the fix of a language in scope this build holds no reader of.
-const readerFix = "run a release of deadset that holds its reader"
 
 // noProgramFix is the fix of the setup failure no-program over rows: the
 // markers and the source extensions each row reads a program from.
@@ -85,15 +80,6 @@ func New(class, detail string) *Error {
 // Wrap is err as a failure of class, followed by the class's fix.
 func Wrap(class string, err error) *Error {
 	e := New(class, err.Error()+"; "+fixes[class])
-	e.err = err
-	return e
-}
-
-// Unreadable is err as an unsupported-language failure of a census holding no
-// language this build reads, with the one fix that applies: a release that
-// holds the reader.
-func Unreadable(err error) *Error {
-	e := New(vocab.SetupUnsupportedLanguage, err.Error()+"; "+readerFix)
 	e.err = err
 	return e
 }

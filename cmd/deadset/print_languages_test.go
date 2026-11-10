@@ -24,7 +24,7 @@ import (
 type printedCensus struct {
 	Languages []printedLanguage `json:"languages"`
 	Analyzers []printedAnalyzer `json:"analyzers"`
-	LeftOut   []printedLeftOut  `json:"left_out"`
+	LeftOut   []json.RawMessage `json:"left_out"`
 }
 
 type printedLanguage struct {
@@ -35,12 +35,6 @@ type printedLanguage struct {
 type printedAnalyzer struct {
 	Name      string   `json:"name"`
 	Languages []string `json:"languages"`
-}
-
-type printedLeftOut struct {
-	Language  string   `json:"language"`
-	Reason    string   `json:"reason"`
-	Consumers []string `json:"consumers"`
 }
 
 func printLanguages(t *testing.T, target string, extra ...string) analyzeRun {
@@ -99,21 +93,17 @@ func opened(planned *[]printedAnalyzer) *command {
 // print-languages prints the plan analyze makes over the same command line:
 // the languages contract/languages.json puts in scope with what put them
 // there, the provider entries analyze then opens, in the provider list's
-// order, and each language left out with the line analyze prints for it,
-// without its opening "deadset: ".
+// order, never the in-process reader, and no language left out.
 func TestPrintLanguagesNamesWhatAnalyzeRuns(t *testing.T) {
 	t.Parallel()
 
 	goEntry := printedAnalyzer{Name: "deadset-go", Languages: []string{"go"}}
 	tsEntry := printedAnalyzer{Name: "deadset-ts", Languages: []string{"ts"}}
 	for _, c := range []struct {
-		name      string
-		files     []string
-		extra     []string
-		consumer  bool
-		twice     bool
-		want      printedCensus
-		wantCodes int
+		name  string
+		files []string
+		extra []string
+		want  printedCensus
 	}{
 		{name: "go-module", want: printedCensus{Languages: []printedLanguage{{"go", "detected"}}, Analyzers: []printedAnalyzer{goEntry}}},
 		{
@@ -125,19 +115,8 @@ func TestPrintLanguagesNamesWhatAnalyzeRuns(t *testing.T) {
 			want: printedCensus{Languages: []printedLanguage{{"ts", "flag: --languages"}}, Analyzers: []printedAnalyzer{tsEntry}},
 		},
 		{
-			name: "schema-file-beside-the-module", files: []string{"fixtures/m.proto"},
-			want: printedCensus{
-				Languages: []printedLanguage{{"go", "detected"}}, Analyzers: []printedAnalyzer{goEntry},
-				LeftOut: []printedLeftOut{{Language: "proto", Reason: `this build of deadset holds no reader of "proto", so the run leaves it out of scope`, Consumers: []string{}}},
-			},
-		},
-		{
-			name: "schema-consumer", files: []string{"fixtures/m.proto"}, consumer: true,
-			want: printedCensus{Languages: []printedLanguage{{"go", "detected"}}, Analyzers: []printedAnalyzer{goEntry}},
-		},
-		{
-			name: "schema-consumer-declared-twice", files: []string{"fixtures/m.proto"}, consumer: true, twice: true,
-			want: printedCensus{Languages: []printedLanguage{{"go", "detected"}}, Analyzers: []printedAnalyzer{goEntry}},
+			name: "schema-file-beside-the-module", files: []string{"schemas/m.proto"},
+			want: printedCensus{Languages: []printedLanguage{{"go", "detected"}, {"proto", "detected"}}, Analyzers: []printedAnalyzer{goEntry}},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -149,55 +128,58 @@ func TestPrintLanguagesNamesWhatAnalyzeRuns(t *testing.T) {
 			}
 			extra := c.extra
 			want := c.want
-			if c.consumer {
-				consumer := filepath.Join(filepath.Dir(target), "schema")
-				writeFile(t, filepath.Join(consumer, "m.proto"), []byte("syntax = \"proto3\";\n"))
-				scopePath := filepath.Join(filepath.Dir(target), "scope.json")
-				declared, consumers, named := fmt.Sprintf(`{"path": %q}`, consumer), []string{consumer}, "the consumer "+consumer
-				if c.twice {
-					// Two entries the scope schema admits as distinct, which
-					// resolve to one path.
-					declared, consumers, named = `{"path": "schema"}, {"path": "./schema/"}`, []string{consumer, consumer}, "the consumers "+consumer+", "+consumer
-				}
-				writeFile(t, scopePath, fmt.Appendf(nil, `{"target": {"path": %q}, "consumers": [%s]}`, target, declared))
-				extra = append(slices.Clone(extra), "--scope="+scopePath)
-				want.LeftOut = []printedLeftOut{{
-					Language: "proto", Consumers: consumers,
-					Reason: `this build of deadset holds no reader of "proto", so the run leaves it out of scope, and with it ` + named,
-				}}
-			}
-
 			printed := printLanguages(t, target, extra...)
 			if printed.code != vocab.ExitClean || printed.stderr != "" {
 				t.Fatalf("print-languages = %d, stderr %q, want %d and nothing on stderr", printed.code, printed.stderr, vocab.ExitClean)
 			}
 			got := decodedCensus(t, printed.stdout)
-			if want.LeftOut == nil {
-				want.LeftOut = []printedLeftOut{}
-			}
-			if !censusEqual(got, want) {
+			if !censusEqual(got, want) || got.LeftOut == nil || len(got.LeftOut) != 0 {
 				t.Errorf("print-languages = %+v, want %+v", got, want)
 			}
 
 			var planned []printedAnalyzer
-			ran := analyzeWith(t, opened(&planned), target, runDir, extra...)
+			analyzeWith(t, opened(&planned), target, runDir, extra...)
 			if !slices.EqualFunc(planned, got.Analyzers, analyzerEqual) {
 				t.Errorf("analyze opened %+v, and print-languages named %+v", planned, got.Analyzers)
 			}
-			for _, left := range got.LeftOut {
-				if line := "deadset: " + left.Reason + "\n"; !strings.Contains(ran.stderr, line) {
-					t.Errorf("analyze stderr = %q, want the line %q print-languages gave as the reason", ran.stderr, line)
-				}
+		})
+	}
+}
+
+// The reader reads the target's schema files alone, so a declared consumer
+// holding only schema files is refused once, however many scope entries
+// resolve to it.
+func TestPrintLanguagesRefusesASchemaOnlyConsumer(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name     string
+		declared func(consumer string) string
+	}{
+		{name: "declared-once", declared: func(consumer string) string { return fmt.Sprintf(`{"path": %q}`, consumer) }},
+		{name: "declared-twice", declared: func(string) string { return `{"path": "schema"}, {"path": "./schema/"}` }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			target, _ := goTarget(t, both, "")
+			writeFile(t, filepath.Join(target, "schemas", "m.proto"), []byte("x\n"))
+			consumer := filepath.Join(filepath.Dir(target), "schema")
+			writeFile(t, filepath.Join(consumer, "m.proto"), []byte("syntax = \"proto3\";\n"))
+			scopePath := filepath.Join(filepath.Dir(target), "scope.json")
+			writeFile(t, scopePath, fmt.Appendf(nil, `{"target": {"path": %q}, "consumers": [%s]}`, target, c.declared(consumer)))
+
+			printed := printLanguages(t, target, "--scope="+scopePath)
+			refusal := "the consumer " + consumer + " holds proto, and no analyzer of the run claims a language of it"
+			if printed.code != vocab.ExitUsage || strings.Count(printed.stderr, refusal) != 1 || printed.stdout != "" {
+				t.Errorf("print-languages = %d, stdout %q, stderr %q; want %d and one refusal %q", printed.code, printed.stdout, printed.stderr, vocab.ExitUsage, refusal)
 			}
 		})
 	}
 }
 
 func censusEqual(a, b printedCensus) bool {
-	return slices.Equal(a.Languages, b.Languages) && slices.EqualFunc(a.Analyzers, b.Analyzers, analyzerEqual) &&
-		slices.EqualFunc(a.LeftOut, b.LeftOut, func(x, y printedLeftOut) bool {
-			return x.Language == y.Language && x.Reason == y.Reason && slices.Equal(x.Consumers, y.Consumers)
-		})
+	return slices.Equal(a.Languages, b.Languages) && slices.EqualFunc(a.Analyzers, b.Analyzers, analyzerEqual)
 }
 
 func analyzerEqual(a, b printedAnalyzer) bool {
@@ -236,7 +218,6 @@ func TestPrintLanguagesEndsAsTheRunEnds(t *testing.T) {
 		names     []string
 	}{
 		{name: "no-language", noModule: true, files: []string{"node_modules/x/index.js"}, code: vocab.ExitFailure, names: []string{"setup failure: no-program: "}},
-		{name: "schema-files-alone", noModule: true, files: []string{"proto/m.proto"}, code: vocab.ExitFailure, names: []string{"setup failure: unsupported-language: "}},
 		{name: "language-no-entry-claims", providers: both[:1], files: []string{"a.mjs"}, code: vocab.ExitUsage, names: []string{`claiming "ts", in scope`, "usage: deadset print-languages"}},
 		{name: "scope-absent", scope: "absent", code: vocab.ExitUsage, names: []string{"--scope", "no such file", "usage: deadset print-languages"}},
 		{

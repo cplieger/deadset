@@ -360,7 +360,7 @@ func TestResolve_readsTheOrchestratorSettings(t *testing.T) {
 
 	r, err := config.Resolve(fromRepository(`{
 		"target": {"kind": "library"},
-		"analysis": {"languages": ["ts", "go"]},
+		"analysis": {"languages": ["ts", "go"], "min_confidence": "possible"},
 		"reporters": {"formats": ["sarif", "text"], "sort": "size", "cascade": "full", "max_findings": 25, "fail_on": "warn"}
 	}`))
 	if err != nil {
@@ -368,6 +368,16 @@ func TestResolve_readsTheOrchestratorSettings(t *testing.T) {
 	}
 	if want := []string{"ts", "go"}; !slices.Equal(r.Config.Languages, want) {
 		t.Errorf("Resolve(orchestrator settings).Config.Languages = %v, want %v", r.Config.Languages, want)
+	}
+	if r.Config.MinConfidence != vocab.Possible {
+		t.Errorf("Resolve(orchestrator settings).Config.MinConfidence = %q, want possible", r.Config.MinConfidence)
+	}
+	held, err := config.Resolve(fromRepository(`{"target": {"kind": "library"}}`))
+	if err != nil {
+		t.Fatalf("Resolve(no minimum) = error %v", err)
+	}
+	if held.Config.MinConfidence != vocab.Probable {
+		t.Errorf("Resolve(no minimum).Config.MinConfidence = %q, want the default probable", held.Config.MinConfidence)
 	}
 	want := config.Reporters{
 		Formats: []vocab.Format{vocab.FormatSARIF, vocab.FormatText}, BySize: true, MaxFindings: 25, FailOn: vocab.Warn,

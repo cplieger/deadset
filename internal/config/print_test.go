@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
@@ -122,6 +123,18 @@ func TestSplit_withholdsTheReporterSettingsTheMergedReportTakes(t *testing.T) {
 	}
 }
 
+// deleteKey removes the value at a dotted key path from a decoded configuration.
+func deleteKey(values map[string]any, key string) {
+	section, rest, nested := strings.Cut(key, ".")
+	if !nested {
+		delete(values, key)
+		return
+	}
+	if inner, isObject := values[section].(map[string]any); isObject {
+		deleteKey(inner, rest)
+	}
+}
+
 // A split document is a configuration: read back as one, it resolves to the values
 // it holds, so an analyzer reading the same closed key list reads it.
 func TestSplit_readsBackAsTheValuesItHolds(t *testing.T) {
@@ -140,18 +153,12 @@ func TestSplit_readsBackAsTheValuesItHolds(t *testing.T) {
 		t.Fatalf("Resolve(the split for ts) = error %v, want it to read back\n%s", err, document)
 	}
 	split, reread := decodePrinted(t, document).Values, printed(t, back).Values
-	analysis, isObject := reread["analysis"].(map[string]any)
-	if !isObject {
-		t.Fatalf("Resolve(the split for ts) holds no analysis section")
+	// The split withholds the keys not delivered to ts, so they read back as their defaults.
+	for _, key := range vocab.ConfigKeys() {
+		if key.Role != vocab.RoleSection && !key.DeliveredTo(vocab.TS) {
+			deleteKey(reread, string(key.Key))
+		}
 	}
-	reporters, isObject := reread["reporters"].(map[string]any)
-	if !isObject {
-		t.Fatalf("Resolve(the split for ts) holds no reporters section")
-	}
-	// The split withholds these, so they read back as their defaults.
-	delete(analysis, "languages")
-	delete(reporters, "formats")
-	delete(reporters, "max_findings")
 	for key, value := range split {
 		if !reflect.DeepEqual(reread[key], value) {
 			t.Errorf("the split for ts read back holds %s = %v, want %v", key, reread[key], value)
