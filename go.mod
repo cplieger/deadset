@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	github.com/cplieger/deadset-spec/v8 v8.0.0-dev.53
-	github.com/cplieger/go/filesafe v1.1.0-dev.1
+	github.com/cplieger/go/filesafe v1.1.0
 	pgregory.net/rapid v1.3.0
 )
 
