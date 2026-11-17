@@ -22,6 +22,7 @@ import (
 // adds fails here rather than going unrun.
 var publishedCases = []string{
 	"array-spanning-lines",
+	"component-extension-of-json-files",
 	"component-extension-without-a-full-stop",
 	"component-extensions-configured",
 	"duplicated-key",

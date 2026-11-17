@@ -76,15 +76,17 @@ func TestSuppressionFindings(t *testing.T) {
 // TestSuppressionUnderAnotherCode holds a directive naming a code its
 // declaration does not report to suppression.md "Staleness": its mark keeps
 // the declaration live, and its stale finding names the code the declaration
-// reports. A directive of a code about no declaration marks nothing.
+// reports at that finding's confidence, possible for a file no generation
+// configuration covers. A directive of a code about no declaration marks
+// nothing.
 func TestSuppressionUnderAnotherCode(t *testing.T) {
 	r := readTree(t, map[string]string{"v1/a.proto": "syntax = \"proto3\";\npackage v1;\n\nmessage A {\n  // deadset:ignore DS1801 -- wanted\n  int32 n = 1;\n  // deadset:ignore DS1601 -- wanted\n  int32 m = 2;\n}\n"}, Settings{})
 	if len(r.Report.StaleSuppressions) != 2 {
 		t.Fatalf("stale suppressions = %+v, want the two directives", r.Report.StaleSuppressions)
 	}
 	for i, want := range []string{
-		"inline directive for DS1801 matches no current finding, and its declaration reports DS1802",
-		"inline directive for DS1601 matches no current finding, and its declaration reports DS1802",
+		"inline directive for DS1801 matches no current finding, and its declaration reports DS1802 at possible",
+		"inline directive for DS1601 matches no current finding, and its declaration reports DS1802 at possible",
 	} {
 		if got := r.Report.StaleSuppressions[i].Message; got != want {
 			t.Errorf("stale suppression %d = %q, want %q", i, got, want)
@@ -95,6 +97,63 @@ func TestSuppressionUnderAnotherCode(t *testing.T) {
 	}
 	if got := record(t, r, "proto://v1#A.m"); got.State != facts.StateDead {
 		t.Errorf("A.m = %s, want dead: a record of a file kind marks nothing", got.State)
+	}
+}
+
+// TestStaleSuppressionNamesWhatWithholdsTheOtherCode holds the message of a
+// stale directive bound to a declaration that reports another code to
+// suppression.md "Staleness": each such code at its finding's confidence and,
+// where something keeps that finding out of the report, the first of the
+// severity dial, analysis.min_confidence and the record that matched it. The
+// tree's generation configuration runs a plugin the run analyzes, so a field
+// is probable unless a row says otherwise.
+func TestStaleSuppressionNamesWhatWithholdsTheOtherCode(t *testing.T) {
+	const (
+		schema = "syntax = \"proto3\";\npackage v1;\n\nmessage A {\n  // deadset:ignore DS1801 -- wanted\n  int32 n = 1;\n}\n"
+		gen    = "version: v2\nplugins:\n  - local: protoc-gen-go\n    out: gen\n"
+		stale  = "inline directive for DS1801 matches no current finding, and its declaration reports "
+	)
+	allow := map[string]vocab.Severity{"DS1802": vocab.Allow}
+	cases := []struct {
+		name     string
+		files    map[string]string
+		settings Settings
+		ungen    bool // the tree holds no generation configuration
+		want     string
+	}{
+		{name: "nothing withholds it", settings: Settings{}, want: "DS1802 at probable"},
+		{name: "no generation configuration", ungen: true, want: "DS1802 at possible"},
+		{name: "a closed schema set", settings: Settings{Closed: true}, want: "DS1802 at certain"},
+		{name: "severity allow", settings: Settings{Severity: allow}, want: "DS1802 at probable, withheld by severity allow"},
+		{name: "below the minimum", settings: Settings{MinConfidence: vocab.Certain}, want: "DS1802 at probable, withheld by analysis.min_confidence"},
+		{name: "severity allow below the minimum", settings: Settings{Severity: allow, MinConfidence: vocab.Certain}, want: "DS1802 at probable, withheld by severity allow"},
+		{
+			name:  "an ignore entry",
+			files: map[string]string{"deadset-ignore.json": `{"ignore": [{"code": "DS1802", "symbol": "proto://v1#A.n", "path": "v1/a.proto", "reason": "kept"}]}`},
+			want:  "DS1802 at probable, withheld by an ignore entry",
+		},
+		{
+			name:  "a baseline row",
+			files: map[string]string{"deadset-baseline.json": `{"baseline": [{"code": "DS1802", "symbol": "proto://v1#A.n", "path": "v1/a.proto", "reason": "kept"}]}`},
+			want:  "DS1802 at probable, withheld by a baseline row",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			files := map[string]string{"v1/a.proto": schema, "buf.gen.yaml": gen}
+			maps.Copy(files, c.files)
+			if c.ungen {
+				delete(files, "buf.gen.yaml")
+			}
+			r := readTree(t, files, c.settings)
+			var got []string
+			for _, s := range r.Report.StaleSuppressions {
+				got = append(got, s.Message)
+			}
+			if want := []string{stale + c.want}; !slices.Equal(got, want) {
+				t.Errorf("stale suppression messages = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
