@@ -8,4 +8,6 @@ CI installs neither analyzer, so every test that runs a real one skips there. A 
 
 Run those tests before you change how deadset starts an analyzer or reads its report, or change an archive under `testdata/harness/`.
 
-Install the `deadset-go` and `deadset-ts` versions that `testdata/harness/result.json` records, with `go install github.com/cplieger/deadset-go/v2/cmd/deadset-go@v<version>` and `npm install --global @cplieger/deadset-ts@<version>`. Then run `go test ./...`. A newer analyzer can implement a report schema this module does not read yet, and the tests then fail.
+Install the analyzer versions that cplieger/ci pins in [`deadset-ci.yaml`](https://github.com/cplieger/ci/blob/main/.github/workflows/deadset-ci.yaml): `go install github.com/cplieger/deadset-go/v2/cmd/deadset-go@<DEADSET_GO_VERSION>` and `npm install --global @cplieger/deadset-ts@<DEADSET_TS_VERSION>`. Then run `go test ./...`. The tests expect what those versions write. An analyzer on a newer report schema than this module reads fails them.
+
+The harness tests compare report bytes only for the analyzer builds that `testdata/harness/result.json` records. For any other build, they compare the run's outcome.

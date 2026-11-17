@@ -61,7 +61,7 @@ func TestAnalyzeRunsTheGoAnalyzerOverAGoModule(t *testing.T) {
 		{name: "clean", source: "package main\n\nfunc main() { used() }\n\nfunc used() {}\n", code: vocab.ExitClean},
 		{
 			name: "dead-function", source: "package main\n\nfunc main() {}\n\nfunc unused() {}\n", code: vocab.ExitFindings,
-			line: "main.go:5:6: function unused: unexported function has no reference in the target [certain] (DS1002)\n",
+			line: "main.go:5:6: function unused: unexported function unused has no reference in the target [certain] (DS1002)\n",
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {

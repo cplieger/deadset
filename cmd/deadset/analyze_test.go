@@ -915,6 +915,42 @@ func TestAnalyzeRunsEveryAnalyzerAsAProcess(t *testing.T) {
 	}
 }
 
+// A Go analyzer's report holding an unread-entry note, a kind deadset-go
+// emits, is admitted and its note carried into the merged report.
+func TestAnalyzeAdmitsAGoReportHoldingAnUnreadEntryNote(t *testing.T) {
+	t.Parallel()
+
+	body, err := spec.Vectors.ReadFile(goFindings)
+	if err != nil {
+		t.Fatalf("Setup: read %s: %v", goFindings, err)
+	}
+	var written map[string]any
+	if err := json.Unmarshal(body, &written); err != nil {
+		t.Fatalf("Setup: decode %s: %v", goFindings, err)
+	}
+	note := report.Note{Kind: "unread-entry", Path: "testdata/app", Message: "the run leaves out testdata/app, the directory of a package a load compiles"}
+	written["notes"] = []report.Note{note}
+	if body, err = json.Marshal(written); err != nil {
+		t.Fatalf("Setup: encode the report: %v", err)
+	}
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "written.json"), body)
+	command := scriptedAnalyzer(t, dir, "deadset-go", []string{"go"}, strings.Join([]string{
+		`for argument in "$@"; do case "$argument" in --report=*) report="${argument#--report=}" ;; esac; done`,
+		fmt.Sprintf(`cp '%s/written.json' "$report"`, dir),
+		"exit 1",
+	}, "\n"))
+	target, runDir := goTarget(t, []provider{{Name: "deadset-go", Command: command, Languages: []string{"go"}}}, "")
+
+	got := analyze(t, target, runDir)
+	if got.code != vocab.ExitFindings {
+		t.Fatalf("analyze = %d, want %d\nstderr: %s", got.code, vocab.ExitFindings, got.stderr)
+	}
+	if notes := mergedReport(t, runDir).Notes; !slices.Equal(notes, []report.Note{note}) {
+		t.Errorf("the merged report's notes = %+v, want %+v", notes, []report.Note{note})
+	}
+}
+
 // listing is the name of every file in dir.
 func listing(t *testing.T, dir string) []string {
 	t.Helper()

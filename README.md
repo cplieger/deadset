@@ -39,7 +39,7 @@ deadset analyze
 On a Go module with one uncalled function, the run prints:
 
 ```text
-main.go:5:6: function unused: unexported function has no reference in the target [certain] (DS1002)
+main.go:5:6: function unused: unexported function unused has no reference in the target [certain] (DS1002)
 analyzer deadset-go <version> sha256:<digest of the deadset-go binary>
 summary: 1 finding (0 allow, 0 warn, 1 deny), 1 deletable line, 0 suppressions in effect, 0 reasons recorded, 0 stale suppressions, 0 pending, 0 omitted, across go
 remediation: for each failing finding about a declaration: delete the symbol, or wire it up so the program uses it; or record an adjudication with its reason in an inline directive, a deadset-ignore.json entry or a deadset-baseline.json row

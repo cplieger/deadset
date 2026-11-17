@@ -48,7 +48,7 @@ func (r *reading) suppress(ctx context.Context) error {
 		_, unclean := r.unclean[s.Path]
 		return unclean
 	})
-	r.selfChecks(refusals, stale, would)
+	r.selfChecks(refusals, stale, would, ledger)
 	return nil
 }
 
@@ -87,23 +87,25 @@ func (r *reading) entries(ctx context.Context) ([]suppress.Record, []suppress.Re
 }
 
 // decide decides the records against every record's pending finding, would,
-// and holds each record whose finding they withhold or that a record marks.
+// each at its declaration's confidence and withheld by the dial that withholds
+// it, and holds each record whose finding they withhold or that a record marks.
 func (r *reading) decide(records []suppress.Record) (*suppress.Ledger, []suppress.Finding) {
 	var would []suppress.Finding
 	var held []*decl
 	byKey := map[string]*decl{}
 	for _, d := range r.decls {
 		if d.held == "" {
-			would = append(would, suppress.Finding{Code: codeOf[d.kind], SymbolKind: d.kind, Ref: d.ref, Path: d.file.rel, File: d.file.rel, Decl: key(d), ID: key(d)})
+			code := codeOf[d.kind]
+			would = append(would, suppress.Finding{
+				Code: code, SymbolKind: d.kind, Ref: d.ref, Path: d.file.rel, File: d.file.rel, Decl: key(d), ID: key(d),
+				Confidence: d.class, Withheld: r.dialed(code, d.class),
+			})
 			held = append(held, d)
 			byKey[key(d)] = d
 		}
 	}
 	ledger := suppress.Decide(records, would, &suppress.Dials{
 		Allows: func(code vocab.Code) bool { return r.in.Settings.severity(code) == vocab.Allow },
-		Withholds: func(f *suppress.Finding) bool {
-			return r.in.Settings.severity(f.Code) == vocab.Allow || r.in.Settings.below(r.byRef[f.Ref].class)
-		},
 	})
 	for i := range would {
 		if ledger.Withheld(&would[i]) {
@@ -116,6 +118,18 @@ func (r *reading) decide(records []suppress.Record) (*suppress.Ledger, []suppres
 		}
 	}
 	return ledger, would
+}
+
+// dialed is the dial that withholds a finding of code at confidence class, the
+// severity dial before analysis.min_confidence, empty where neither does.
+func (r *reading) dialed(code vocab.Code, class vocab.Class) suppress.Withholding {
+	switch {
+	case r.in.Settings.severity(code) == vocab.Allow:
+		return suppress.WithheldBySeverity
+	case r.in.Settings.below(class):
+		return suppress.WithheldByMinConfidence
+	}
+	return ""
 }
 
 // directive reads one // comment: no record where it is no directive, one
@@ -164,8 +178,9 @@ func (r *reading) lookup(symbol, path string) []string {
 }
 
 // selfChecks writes the findings suppression.md reports about suppressions:
-// a refused one, and one stale suppression per site, naming every code.
-func (r *reading) selfChecks(refusals []suppress.Refusal, stale []suppress.Record, would []suppress.Finding) {
+// a refused one, and one stale suppression per site, naming every code and
+// what ledger says withholds each other code its declaration reports.
+func (r *reading) selfChecks(refusals []suppress.Refusal, stale []suppress.Record, would []suppress.Finding, ledger *suppress.Ledger) {
 	for i := range refusals {
 		refused := &refusals[i]
 		what := "carries no reason"
@@ -184,7 +199,7 @@ func (r *reading) selfChecks(refusals []suppress.Refusal, stale []suppress.Recor
 			Entry:     report.SuppressionEntry{Code: first.Code, Symbol: first.Symbol, Path: first.Path, Reason: first.Reason},
 			Position:  report.SuppressionPosition{Path: site.Path, Line: max(site.Line, 1), Column: max(site.Column, 1)},
 			Symbol:    cmp.Or(first.Symbol, r.fileRef(first.Path)),
-			Message:   suppress.StaleMessage(held, would),
+			Message:   suppress.StaleMessage(held, would, ledger),
 		})
 	}
 }
@@ -232,17 +247,20 @@ func (r *reading) withhold() {
 		case d.held != "":
 		case len(r.unclean) > 0:
 			d.hold("unclean-file")
-		case r.in.Settings.severity(codeOf[d.kind]) == vocab.Allow:
-			d.hold("severity-allow")
-		case r.in.Settings.below(d.class):
-			d.hold("withheld")
-			switch d.class {
-			case vocab.Certain:
-				r.withheld.Certain++
-			case vocab.Probable:
-				r.withheld.Probable++
-			case vocab.Possible:
-				r.withheld.Possible++
+		default:
+			switch r.dialed(codeOf[d.kind], d.class) {
+			case suppress.WithheldBySeverity:
+				d.hold("severity-allow")
+			case suppress.WithheldByMinConfidence:
+				d.hold("withheld")
+				switch d.class {
+				case vocab.Certain:
+					r.withheld.Certain++
+				case vocab.Probable:
+					r.withheld.Probable++
+				case vocab.Possible:
+					r.withheld.Possible++
+				}
 			}
 		}
 	}
