@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/cplieger/deadset-spec/v8/vocab"
@@ -103,9 +102,7 @@ func TestCheckReadsADocumentInsideTheTargetUpToTheBound(t *testing.T) {
 			link(t, "/dev/zero", filepath.Join(root, "deadset-baseline.json"))
 		}},
 		{name: "named-pipe", fails: "not a regular file", setup: func(t *testing.T, root string) {
-			if err := syscall.Mkfifo(filepath.Join(root, "deadset-baseline.json"), 0o600); err != nil {
-				t.Fatalf("Setup: %v", err)
-			}
+			mkfifo(t, filepath.Join(root, "deadset-baseline.json"))
 		}},
 		{name: "symbolic-link-inside-the-target", setup: func(t *testing.T, root string) {
 			if err := os.WriteFile(filepath.Join(root, "recorded.json"), baseline, 0o600); err != nil {

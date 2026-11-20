@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/cplieger/deadset/v2/internal/config"
@@ -119,9 +118,7 @@ func TestReadDocuments_readsTheRepositoryConfigurationInsideTheTarget(t *testing
 			link(t, "/dev/zero", filepath.Join(target, config.RepositoryFile))
 		}},
 		{name: "named-pipe", setup: func(t *testing.T, target string) {
-			if err := syscall.Mkfifo(filepath.Join(target, config.RepositoryFile), 0o600); err != nil {
-				t.Fatalf("Setup: %v", err)
-			}
+			mkfifo(t, filepath.Join(target, config.RepositoryFile))
 		}},
 		{name: "link-inside-the-target", reads: true, setup: func(t *testing.T, target string) {
 			writeFile(t, target, "shared.json", repository)
