@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/segment"
 	"github.com/cplieger/deadset-spec/v8/suppress"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/documents"
@@ -225,12 +226,15 @@ func (r *reading) selfCheck(code vocab.Code, symbol, at string, site suppress.Si
 	}
 }
 
-// fileRef is symbol-ref.md's schema file reference of a target-relative path,
-// the path itself where no schema file is there.
+// fileRef is symbol-ref.md's schema file reference of a target-relative path:
+// the package's scope, the import path spelled segment by segment as a file
+// operand, and the :file selector. Only an inline directive's record lacks a
+// symbol, and its path is a parsed schema file's; any other path is returned
+// as it is.
 func (r *reading) fileRef(rel string) string {
 	for _, f := range r.files {
 		if f.rel == rel && f.unit != nil {
-			return scopeOf(f.unit.File.Package) + f.importPath + ":file"
+			return scopeOf(f.unit.File.Package) + segment.SpellPath(segment.FileOperand, f.importPath) + ":file"
 		}
 	}
 	return rel

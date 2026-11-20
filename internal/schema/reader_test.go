@@ -3,6 +3,7 @@ package schema
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -12,11 +13,13 @@ import (
 
 	"github.com/cplieger/deadset-spec/v8/facts"
 	"github.com/cplieger/deadset-spec/v8/report"
+	"github.com/cplieger/deadset-spec/v8/suppress"
 	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/merge"
 )
 
-func readTree(t *testing.T, files map[string]string, settings Settings) *Result {
+// writeTree writes files into a fresh directory and returns it.
+func writeTree(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for name, body := range files {
@@ -27,13 +30,25 @@ func readTree(t *testing.T, files map[string]string, settings Settings) *Result 
 			t.Fatal(err)
 		}
 	}
+	return dir
+}
+
+// readTreeOrError reads files as a target, with min_confidence possible
+// unless settings names one.
+func readTreeOrError(t *testing.T, files map[string]string, settings Settings) (*Result, error) {
+	t.Helper()
 	if settings.MinConfidence == "" {
 		settings.MinConfidence = vocab.Possible
 	}
-	result, err := Read(t.Context(), &Input{
-		Target: dir, Version: "1.0.0", Settings: settings, Analyzed: []vocab.Language{vocab.Go, vocab.TS},
+	return Read(t.Context(), &Input{
+		Target: writeTree(t, files), Version: "1.0.0", Settings: settings, Analyzed: []vocab.Language{vocab.Go, vocab.TS},
 		Conformance: report.Conformance{CorpusVersion: "6.0.0", Result: report.ResultPass, Digest: "sha256:" + string(bytes.Repeat([]byte("0"), 64))},
 	})
+}
+
+func readTree(t *testing.T, files map[string]string, settings Settings) *Result {
+	t.Helper()
+	result, err := readTreeOrError(t, files, settings)
 	if err != nil {
 		t.Fatalf("Read = %v", err)
 	}
@@ -154,6 +169,72 @@ func TestStaleSuppressionNamesWhatWithholdsTheOtherCode(t *testing.T) {
 				t.Errorf("stale suppression messages = %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+// TestASchemaFileReferenceSpellsItsImportPathByTheFileOperandSet holds the
+// reference of a schema file a suppression finding names to symbol-ref.md's
+// Path segments: each segment of the import path keeps the file operand set's
+// bytes and encodes every other byte, while the position keeps the path as
+// it is.
+func TestASchemaFileReferenceSpellsItsImportPathByTheFileOperandSet(t *testing.T) {
+	cases := []struct{ path, want string }{
+		{path: "v1/plain.proto", want: "proto://v1#v1/plain.proto:file"},
+		{path: "my protos/a b.proto", want: "proto://v1#my%20protos/a%20b.proto:file"},
+		{path: "100%/c#d.proto", want: "proto://v1#100%25/c%23d.proto:file"},
+		{path: `x/it's [1]:e.proto`, want: "proto://v1#x/it%27s%20%5B1%5D%3Ae.proto:file"},
+		{path: "a*b/c?d.proto", want: "proto://v1#a%2Ab/c%3Fd.proto:file"},
+		{path: "données/é.proto", want: "proto://v1#données/é.proto:file"},
+		{path: "a\u00a0b/c\u2028d\u0085.proto", want: "proto://v1#a%C2%A0b/c%E2%80%A8d%C2%85.proto:file"},
+	}
+	files := map[string]string{}
+	for i, c := range cases {
+		files[c.path] = fmt.Sprintf("syntax = \"proto3\";\npackage v1;\n\n// deadset:ignore DS1802 -- bound to nothing\n\n// deadset:ignore DS1801\n\nmessage M%d {}\n", i)
+	}
+	r := readTree(t, files, Settings{})
+	stale, reasonless := map[string]string{}, map[string]string{}
+	for _, s := range r.Report.StaleSuppressions {
+		stale[s.Position.Path] = s.Symbol
+	}
+	for _, f := range r.Report.Findings {
+		if f.Code == vocab.SuppressionWithoutReason {
+			reasonless[f.Position.Path] = f.Symbol.Ref + " " + f.Symbol.Name
+		}
+	}
+	for _, c := range cases {
+		if got := stale[c.path]; got != c.want {
+			t.Errorf("stale suppression in %q names %q, want %q", c.path, got, c.want)
+		}
+		if got, want := reasonless[c.path], c.want+" "+c.want; got != want {
+			t.Errorf("DS9001 in %q names ref and name %q, want %q", c.path, got, want)
+		}
+	}
+}
+
+// TestAnEntryNamesASchemaFileByItsEncodedSpelling holds the ignore file to
+// symbol-ref.md's Path segments: an entry naming a schema file by the encoded
+// spelling is read and reported stale under that spelling, and one naming it
+// by the raw path is malformed.
+func TestAnEntryNamesASchemaFileByItsEncodedSpelling(t *testing.T) {
+	const (
+		schema  = "syntax = \"proto3\";\npackage v1;\nmessage A {}\n"
+		encoded = "proto://v1#my%20protos/a%20b.proto:file"
+	)
+	entry := func(symbol string) string {
+		return `{"ignore": [{"code": "DS1802", "symbol": "` + symbol + `", "path": "my protos/a b.proto", "reason": "kept"}]}`
+	}
+	r := readTree(t, map[string]string{"my protos/a b.proto": schema, "deadset-ignore.json": entry(encoded)}, Settings{})
+	var got []string
+	for _, s := range r.Report.StaleSuppressions {
+		got = append(got, s.Entry.Symbol+" "+s.Symbol)
+	}
+	if want := []string{encoded + " " + encoded}; !slices.Equal(got, want) {
+		t.Errorf("stale suppressions = %q, want %q", got, want)
+	}
+
+	raw := entry("proto://v1#my protos/a b.proto:file")
+	if _, err := readTreeOrError(t, map[string]string{"my protos/a b.proto": schema, "deadset-ignore.json": raw}, Settings{}); !errors.Is(err, suppress.ErrMalformed) {
+		t.Errorf("Read(an entry naming the raw import path) = %v, want suppress.ErrMalformed", err)
 	}
 }
 
@@ -1309,6 +1390,31 @@ func TestUnreadFileLeavesEdgesUnjudged(t *testing.T) {
 		}, Settings{Roots: []string{"proto://p#A", "proto://p#B"}})
 		check(t, r, map[string]report.State{"only-unclean": report.StateLive, "readable": report.StateLive, "none": report.StateAbsent}, []string{"none"})
 	})
+}
+
+// TestAnEdgeSideIsEvaluatedUnderTheBytesItIsWritten holds each proto side's
+// evaluation to the reference the edges document writes, byte for byte: a
+// declaration's side is dead with its finding, a schema file's encoded
+// reference names no declaration and is absent, and a side of another
+// scheme, a quoted member holding a space included, is not this reader's.
+func TestAnEdgeSideIsEvaluatedUnderTheBytesItIsWritten(t *testing.T) {
+	const (
+		declared = "proto://v1#A"
+		file     = "proto://v1#my%20protos/a%20b.proto:file"
+	)
+	r := readTree(t, map[string]string{
+		"my protos/a b.proto": "syntax = \"proto3\";\npackage v1;\nmessage A {}\n",
+		"deadset-edges.json": `{"edges": {"wire/a": {"provides": "` + declared + `", "used_by": "ts://./src/h.ts#Headers.'content type'"}, ` +
+			`"wire/file": {"provides": "` + file + `", "used_by": "go://example.com/app/c%2B%2B#Run"}}}`,
+	}, Settings{})
+	var got []string
+	for _, e := range r.Report.EdgeEvaluations {
+		got = append(got, e.Edge+" "+string(e.Side)+" "+e.Symbol+" "+string(e.State))
+	}
+	want := []string{"wire/a provides " + declared + " dead", "wire/file provides " + file + " absent"}
+	if !slices.Equal(got, want) {
+		t.Errorf("evaluations = %q, want %q", got, want)
+	}
 }
 
 // TestRootsPatterns holds a matched entry to a live record, an entry the

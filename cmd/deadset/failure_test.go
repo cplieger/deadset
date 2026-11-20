@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 	"unicode"
@@ -346,7 +345,7 @@ func (*interrupting) Admit(ctx context.Context, kept rundir.Entry, _ []string) e
 }
 
 func (s *interrupting) Produce(ctx context.Context, _ source.Files) source.Outcome {
-	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+	if err := interruptSelf(); err != nil {
 		return source.Outcome{Analyzer: s.name, Err: err, Exit: -1}
 	}
 	<-ctx.Done()
@@ -400,7 +399,7 @@ func TestAnAnalyzerEndingAnInterruptedRunWithItsClassLineKeepsIt(t *testing.T) {
 	go func() {
 		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 			if _, err := os.Stat(started); err == nil {
-				_ = syscall.Kill(os.Getpid(), syscall.SIGINT)
+				_ = interruptSelf()
 				return
 			}
 		}
@@ -410,4 +409,13 @@ func TestAnAnalyzerEndingAnInterruptedRunWithItsClassLineKeepsIt(t *testing.T) {
 		t.Errorf("analyze(an analyzer ending the interrupt with 3) = %d, want %d\nstderr: %s", got.code, vocab.ExitFailure, got.stderr)
 	}
 	holdsFailureLines(t, "analyzer-interrupted", got.stderr, []string{"run failure: interrupted-run: deadset-go stopped", "interrupted-run: the run stopped: interrupt"})
+}
+
+// interruptSelf sends this test process the interrupt a user's Ctrl-C sends.
+func interruptSelf() error {
+	self, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		return err
+	}
+	return self.Signal(os.Interrupt)
 }

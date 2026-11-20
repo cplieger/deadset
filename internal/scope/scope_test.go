@@ -8,12 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	spec "github.com/cplieger/deadset-spec/v8"
 	"github.com/cplieger/deadset-spec/v8/document"
-	"github.com/cplieger/deadset-spec/v8/vocab"
 	"github.com/cplieger/deadset/v2/internal/scope"
 )
 
@@ -225,15 +225,28 @@ func TestRootIsTheDeepestDirectoryHoldingEveryPath(t *testing.T) {
 	}
 }
 
-// A document larger than the bound every document is held to is refused
-// without being read whole.
-func TestReadRefusesADocumentOverTheBound(t *testing.T) {
+// A scope document is read at the Contract's bound of 16 MiB and refused one
+// byte above it, naming the bound.
+func TestReadHoldsADocumentToTheContractsBound(t *testing.T) {
 	t.Parallel()
 
-	body := []byte(`{"target": {"path": "` + strings.Repeat("a", vocab.DocumentMaxBytes) + `"}}`)
-	path := written(t, "scope.json", body)
-	if _, err := scope.Read(t.Context(), path); err == nil || !strings.Contains(err.Error(), "larger than") {
-		t.Errorf("Read(a document of %d bytes) = %v, want an error naming the bound", len(body), err)
+	const (
+		documentCap = 16 << 20
+		document    = `{"target": {"path": "."}}`
+	)
+	for _, size := range []int{documentCap, documentCap + 1} {
+		t.Run(strconv.Itoa(size), func(t *testing.T) {
+			t.Parallel()
+
+			path := written(t, "scope.json", []byte(document[:len(document)-1]+strings.Repeat(" ", size-len(document))+"}"))
+			read, err := scope.Read(t.Context(), path)
+			switch {
+			case size == documentCap && (err != nil || read.Target.Path != filepath.Dir(path)):
+				t.Errorf("Read(a document of %d bytes) = %+v, error %v, want the target beside it", size, read, err)
+			case size > documentCap && (err == nil || !strings.Contains(err.Error(), "16777216 bytes")):
+				t.Errorf("Read(a document of %d bytes) = %v, want an error naming the bound of 16777216 bytes", size, err)
+			}
+		})
 	}
 }
 
