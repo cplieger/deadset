@@ -3,6 +3,7 @@ package documents_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,17 @@ func TestCheck(t *testing.T) {
 		{name: "edges-identifier-form", files: map[string]string{"deadset-edges.json": `{"edges": {"a b": {"provides": "go://x#A", "used_by": "ts://x#A"}}}`}, refuses: `"a b"`},
 		{name: "edges-in-a-list", files: map[string]string{"deadset-edges.json": `{"edges": [{"id": "w/a", "provides": "go://x#A", "used_by": "ts://x#A"}]}`}, refuses: "/edges"},
 		{name: "edges-undeclared-member-first", files: map[string]string{"deadset-edges.json": `{"edges": {"a b": {"provides": "go://x#A", "used_by": "ts://x#A"}}, "extra": 1}`}, refuses: `"extra"`},
+		{name: "encoded-segments-and-a-quoted-member-with-a-space", files: map[string]string{
+			"deadset-ignore.json":   `{"ignore": [{"code": "DS1001", "symbol": "ts://./src/my%20file.ts#unused", "path": "src/my file.ts", "reason": "r"}]}`,
+			"deadset-baseline.json": `{"baseline": [{"code": "DS1601", "symbol": "go://example.com/app#100%25_x.go:file", "path": "100%_x.go", "reason": "r"}]}`,
+			"deadset-edges.json": `{"edges": {"w/a": {"provides": "ts://./src/h.ts#Headers.'content type'", "used_by": "proto://v1#my%20protos/a%20b.proto:file"}, ` +
+				`"w/b": {"provides": "go://example.com/app/c%2B%2B#Run", "used_by": "ts://./src/a%23b.ts#X"}}}`,
+		}},
+		{name: "ignore-raw-space-in-a-scope", files: map[string]string{"deadset-ignore.json": `{"ignore": [{"code": "DS1001", "symbol": "ts://./src/my file.ts#unused", "path": "src/my file.ts", "reason": "r"}]}`}, refuses: "deadset-ignore.json"},
+		{name: "baseline-raw-percent-in-a-scope", files: map[string]string{"deadset-baseline.json": `{"baseline": [{"code": "DS1001", "symbol": "go://example.com/app/100%#X", "path": "x.go", "reason": "r"}]}`}, refuses: "deadset-baseline.json"},
+		{name: "edges-raw-percent-in-a-scope", files: map[string]string{"deadset-edges.json": `{"edges": {"w/a": {"provides": "ts://./src/100%.ts#X", "used_by": "go://x#A"}}}`}, refuses: "deadset-edges.json"},
+		{name: "edges-lowercase-escape", files: map[string]string{"deadset-edges.json": `{"edges": {"w/a": {"provides": "go://example.com/c%2b%2b#Run", "used_by": "ts://x#A"}}}`}, refuses: "deadset-edges.json"},
+		{name: "edges-space-outside-quotes", files: map[string]string{"deadset-edges.json": `{"edges": {"w/a": {"provides": "ts://./src/h.ts#Headers.content type", "used_by": "go://x#A"}}}`}, refuses: "deadset-edges.json"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -123,6 +135,39 @@ func TestCheckReadsADocumentInsideTheTargetUpToTheBound(t *testing.T) {
 				t.Errorf("Check(%s) = %v, want nil", c.name, err)
 			}
 		})
+	}
+}
+
+// Each shared document is read at the Contract's bound of 16 MiB and refused
+// one byte above it, naming the document and the bound.
+func TestCheckHoldsEachSharedDocumentToTheContractsBound(t *testing.T) {
+	t.Parallel()
+
+	const documentCap = 16 << 20
+	for name, document := range map[string]string{
+		"deadset-ignore.json":   `{"ignore": []}`,
+		"deadset-baseline.json": `{"baseline": []}`,
+		"deadset-edges.json":    `{"edges": {}}`,
+	} {
+		for _, size := range []int{documentCap, documentCap + 1} {
+			t.Run(fmt.Sprintf("%s of %d bytes", name, size), func(t *testing.T) {
+				t.Parallel()
+
+				root := t.TempDir()
+				padded := document[:len(document)-1] + strings.Repeat(" ", size-len(document)) + "}"
+				if err := os.WriteFile(filepath.Join(root, name), []byte(padded), 0o600); err != nil {
+					t.Fatalf("Setup: %v", err)
+				}
+				err := documents.Check(t.Context(), root)
+				_, refused := errors.AsType[*documents.Error](err)
+				switch {
+				case size == documentCap && err != nil:
+					t.Errorf("Check = %v, want nil", err)
+				case size > documentCap && (!refused || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), "16777216 bytes")):
+					t.Errorf("Check = %v, want a *documents.Error naming %s and the bound of 16777216 bytes", err, name)
+				}
+			})
+		}
 	}
 }
 

@@ -39,7 +39,7 @@ deadset reads each setting from the first of four sources that sets it:
 3. The central configuration `--central` names.
 4. The setting's default.
 
-The keys are those of the contract's [configuration schema](https://github.com/cplieger/deadset-spec/blob/v8.0.0/contract/config.schema.json). A run exits with 2 on a key the schema does not declare, a value it refuses, or a document over 1 MiB. The table below names the settings deadset acts on itself. It checks every other setting and hands it to the analyzers, whose own docs describe them.
+The keys are those of the contract's [configuration schema](https://github.com/cplieger/deadset-spec/blob/v8.0.0/contract/config.schema.json). A run exits with 2 on a key the schema does not declare, a value it refuses, or a document over 16 MiB. The table below names the settings deadset acts on itself. It checks every other setting and hands it to the analyzers, whose own docs describe them.
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ The keys are those of the contract's [configuration schema](https://github.com/c
 
 ## Documents at the target root
 
-Before any analyzer runs, deadset checks the documents every analyzer reads at the target root: the ignore file `deadset-ignore.json`, the baseline `deadset-baseline.json` and the edges document `deadset-edges.json`. A run exits with 2 on one that is not strict JSON, that the contract refuses or that is larger than 1 MiB, every entry checked whatever its language, and names the document and the entry. An absent document is none. A document that cannot be read ends the run with exit code 3 and `setup failure: unreadable-document`, as does one that is not a regular file inside the target root, such as a symbolic link to a file outside it or a named pipe. Whether a symbol reference is valid in its language stays the check of that language's analyzer.
+Before any analyzer runs, deadset checks the documents every analyzer reads at the target root: the ignore file `deadset-ignore.json`, the baseline `deadset-baseline.json` and the edges document `deadset-edges.json`. A run exits with 2 on one that is not strict JSON, that the contract refuses or that is larger than 16 MiB, every entry checked whatever its language, and names the document and the entry. An absent document is none. A document that cannot be read ends the run with exit code 3 and `setup failure: unreadable-document`, as does one that is not a regular file inside the target root, such as a symbolic link to a file outside it or a named pipe. Every symbol reference must take the one shape the contract gives all of them, with the scope's path segments percent-encoded, whatever its language. Whether it is valid in its language stays the check of that language's analyzer.
 
 ## How languages are detected
 

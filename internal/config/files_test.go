@@ -3,9 +3,11 @@ package config_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -64,11 +66,36 @@ func TestReadDocuments(t *testing.T) {
 	if _, _, err := config.ReadDocuments(t.Context(), target, filepath.Join(elsewhere, "missing.json")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("ReadDocuments(a central configuration that does not exist) = error %v, want one wrapping fs.ErrNotExist", err)
 	}
+}
 
-	oversized := t.TempDir()
-	writeFile(t, oversized, config.RepositoryFile, bytes.Repeat([]byte(" "), 1<<20+1))
-	if _, _, err := config.ReadDocuments(t.Context(), oversized, ""); !isRefusal(err) {
-		t.Errorf("ReadDocuments(a repository configuration over the size bound) = error %v, want a *config.Error", err)
+// The repository and the central configuration are each read at the
+// Contract's bound of 16 MiB and refused one byte above it, naming the bound.
+func TestReadDocuments_holdsEachConfigurationToTheContractsBound(t *testing.T) {
+	t.Parallel()
+
+	const documentCap = 16 << 20
+	padded := func(size int) []byte { return append(append([]byte("{"), bytes.Repeat([]byte(" "), size-2)...), '}') }
+	for _, size := range []int{documentCap, documentCap + 1} {
+		for _, central := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d bytes, central %t", size, central), func(t *testing.T) {
+				t.Parallel()
+
+				target, named := t.TempDir(), ""
+				if central {
+					named = writeFile(t, t.TempDir(), "central.json", padded(size))
+				} else {
+					writeFile(t, target, config.RepositoryFile, padded(size))
+				}
+				repo, centralDocument, err := config.ReadDocuments(t.Context(), target, named)
+				read := len(repo.Data) + len(centralDocument.Data)
+				switch {
+				case size == documentCap && (err != nil || read != size):
+					t.Errorf("ReadDocuments = %d bytes, error %v, want %d bytes", read, err, size)
+				case size > documentCap && (!isRefusal(err) || !strings.Contains(err.Error(), "16777216 bytes")):
+					t.Errorf("ReadDocuments = error %v, want a *config.Error naming the bound of 16777216 bytes", err)
+				}
+			})
+		}
 	}
 }
 
