@@ -2,15 +2,6 @@
 
 package config_test
 
-import (
-	"syscall"
-	"testing"
-)
+import "syscall"
 
-// mkfifo makes a named pipe at path.
-func mkfifo(t *testing.T, path string) {
-	t.Helper()
-	if err := syscall.Mkfifo(path, 0o600); err != nil {
-		t.Fatalf("Setup: %v", err)
-	}
-}
+func init() { makeFifo = syscall.Mkfifo }

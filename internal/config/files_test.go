@@ -150,3 +150,18 @@ func link(t *testing.T, target, name string) {
 		t.Fatalf("Setup: %v", err)
 	}
 }
+
+// makeFifo makes a named pipe where the file system holds one, Unix's.
+var makeFifo func(path string, mode uint32) error
+
+// mkfifo makes a named pipe at path, and skips the case where no file system
+// the test runs on holds one.
+func mkfifo(t *testing.T, path string) {
+	t.Helper()
+	if makeFifo == nil {
+		t.Skip("a named pipe needs a Unix file system")
+	}
+	if err := makeFifo(path, 0o600); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+}
